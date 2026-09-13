@@ -647,6 +647,7 @@ const SKEY = 'gradnjaos_v3';
 const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','resursi','magacin','mag_promene'];
 let DATA = JSON.parse(JSON.stringify(DEMO));
 let supa=null, mode='memorija', saveTimer=null;
+let saving=false, dirty=false, saveErr=null;
 
 async function initSupa(){
   if(!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
@@ -665,10 +666,30 @@ async function initSupa(){
 }
 
 async function pushAll(d){
+  /* Ne prekidamo na prvoj gresci: ranije je jedan los red (npr. prazan datum)
+     zaustavljao upis SVIH tabela iza sebe u TABLES, tiho. */
+  const greske=[];
   for(const t of TABLES){
     const rows=d[t]||[];
-    if(rows.length){ const {error}=await supa.from(t).upsert(rows); if(error) throw error; }
+    if(!rows.length) continue;
+    try{ const {error}=await supa.from(t).upsert(rows); if(error) throw new Error(error.message||String(error)); }
+    catch(e){ greske.push(t+': '+(e.message||e)); }
   }
+  if(greske.length) throw new Error(greske.join(' | '));
+}
+
+/* Brisanje reda je EKSPLICITNA operacija, ne posledica diff-a.
+   (Diff-brisanje bi u vise-korisnickom radu obrisalo tudje redove.) */
+async function obrisiRed(tabela, id){
+  const list=DATA[tabela]; if(!Array.isArray(list)) return false;
+  const i=list.findIndex(r=>r.id===id); if(i<0) return false;
+  list.splice(i,1);
+  if(mode==='supabase'){
+    try{ const {error}=await supa.from(tabela).delete().eq('id',id); if(error) throw new Error(error.message); }
+    catch(e){ saveErr='brisanje: '+(e.message||e); console.error('Supabase delete:', e); }
+  }
+  rebuildMaps(); saveState(); updateFoot();
+  return true;
 }
 
 async function loadState(){
@@ -680,7 +701,10 @@ async function loadState(){
         if(error) throw error;
         out[t]=data||[];
       }
-      if(!out.gradilista.length){ await pushAll(DATA); } // prvi start: zasej demo
+      /* Ranije se gledala samo tabela gradilista: baza sa stvarnim klijentima
+         i zaposlenima, a bez projekata, bila bi pregazena demo podacima. */
+      const praznaBaza = TABLES.every(t=>!(out[t]||[]).length);
+      if(praznaBaza){ normalizeData(); await pushAll(DATA); } // prvi start: zasej demo
       else DATA=out;
       mode='supabase'; updateFoot(); return;
     }catch(e){
@@ -702,20 +726,49 @@ async function loadState(){
 
 function saveState(){ clearTimeout(saveTimer); saveTimer=setTimeout(doSave,400); }
 async function doSave(){
-  if(mode==='supabase'){ try{ await pushAll(DATA); }catch(e){ console.error('Supabase save:', e); } return; }
-  if(mode==='skladiste'){ try{ await window.storage.set(SKEY, JSON.stringify(DATA)); }catch(e){} }
+  /* pushAll je 13 uzastopnih HTTP poziva; bez ovog guarda dva preklopljena
+     upisa mogu da vrate stariji snapshot preko novijeg. */
+  if(saving){ dirty=true; return; }
+  saving=true;
+  try{
+    if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; }
+    else if(mode==='skladiste'){ await window.storage.set(SKEY, JSON.stringify(DATA)); saveErr=null; }
+  }catch(e){
+    saveErr=e.message||String(e);
+    console.error('Cuvanje nije uspelo:', e);
+  }finally{
+    saving=false; updateFoot();
+    if(dirty){ dirty=false; doSave(); }
+  }
+}
+/* Poslednja izmena unutar debounce prozora se gubila pri zatvaranju taba. */
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; doSave(); } }
+if(typeof window!=='undefined' && window.addEventListener){
+  window.addEventListener('pagehide', flushSave);
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushSave(); });
 }
 
 async function resetDemo(){
   if(!confirm('Vratiti sve podatke na pocetni demo? Tvoje izmene ce biti obrisane.')) return;
   if(mode==='supabase'){
+    /* Prvo upisi demo, pa tek onda pobrisi visak. Raniji redosled (obrisi sve ->
+       upisi) je pri padu upisa ostavljao praznu bazu bez ikakvog povratka. */
+    const novi=JSON.parse(JSON.stringify(DEMO));
     try{
-      for(const t of TABLES){ const {error}=await supa.from(t).delete().neq('id',''); if(error) throw error; }
-      DATA=JSON.parse(JSON.stringify(DEMO));
+      const stari=DATA; DATA=novi; normalizeData();
       await pushAll(DATA);
-    }catch(e){ console.error('Supabase reset:', e); alert('Reset nije uspeo — proveri konzolu.'); }
+      const zadrzi={}; TABLES.forEach(t=>zadrzi[t]=new Set((DATA[t]||[]).map(r=>r.id)));
+      for(const t of TABLES){
+        const ids=[...zadrzi[t]];
+        const q=supa.from(t).delete();
+        const {error} = ids.length ? await q.not('id','in','("'+ids.join('","')+'")') : await q.neq('id','');
+        if(error) throw new Error(error.message||String(error));
+      }
+      saveErr=null;
+    }catch(e){ console.error('Supabase reset:', e); saveErr='reset: '+(e.message||e); alert('Reset nije uspeo u potpunosti — proveri podnozje i konzolu.'); }
   } else {
     DATA=JSON.parse(JSON.stringify(DEMO));
+    normalizeData();
     if(mode==='skladiste'){ try{ await window.storage.delete(SKEY); }catch(e){} }
   }
   rebuildMaps(); renderNav(); render();
@@ -723,6 +776,12 @@ async function resetDemo(){
 
 function updateFoot(){
   const el=document.getElementById('sideFoot'); if(!el) return;
+  if(saveErr){
+    el.innerHTML='<span class="dot mem"></span> <b>Poslednje cuvanje NIJE uspelo</b><br>'
+      +'<span style="opacity:.7">'+esc(saveErr.slice(0,140))+'</span>'
+      +'<br><button class="reset" onclick="doSave()">\u21bb Pokusaj ponovo</button>';
+    return;
+  }
   const msg={
     supabase:'<span class="dot"></span> Baza: <b>Supabase</b> — izmene se cuvaju u bazi',
     skladiste:'<span class="dot"></span> Cuvanje: <b>aktivno</b> — izmene ostaju',
@@ -825,7 +884,7 @@ const KOLONE = [
 ];
 const PRIO = {high:{t:'Visok',c:'p-high'}, mid:{t:'Srednji',c:'p-mid'}, low:{t:'Nizak',c:'p-low'}};
 
-function badge(status){ const s=STATUS[status]; return `<span class="badge ${s.c}">${s.t}</span>`; }
+function badge(status){ const s=STATUS[status]||{t:esc(status||'\u2014'),c:'b-gray'}; return `<span class="badge ${s.c}">${s.t}</span>`; }
 function icon(name){
   const I={
     dash:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>',
@@ -2419,7 +2478,7 @@ function saveSit(){
       else if(!v.st) v.st='nema';
     });
   });
-  DATA.situacije.push({ id:'s'+Date.now(), gr:v('f_sgr'), br, opis:esc(v('f_sopis').trim())||'—', iznos, izdato:v('f_sizdato'), valuta:v('f_svaluta'), status:'ceka' });
+  DATA.situacije.push({ id:'s'+Date.now(), gr:v('f_sgr'), br, opis:esc(v('f_sopis').trim())||'—', iznos, izdato:v('f_sizdato')||todayStr(), valuta:v('f_svaluta')||plusDays(30), status:'ceka' });
   saveState(); closeModal(); renderNav(); render();
 }
 
@@ -2448,7 +2507,7 @@ function saveUpdate(id){
   const g=grById[id]; if(!g)return;
   if(!(isDirector()||g.rukovodilac===ROLE)) return;
   const el=x=>document.getElementById(x);
-  g.napredak=Math.max(0,Math.min(100,+el('u_nap').value||0));
+  g.napredak=Math.round(Math.max(0,Math.min(100,+el('u_nap').value||0)));
   g.status=el('u_st').value; g.faza=el('u_faza').value;
   if(canFinance()&&el('u_pot')) g.potroseno=+el('u_pot').value||0;
   if(g.napredak===100&&(g.status==='u toku'||g.status==='kasni')) g.status='zavrseno';
@@ -2535,7 +2594,7 @@ function saveSite(){
   const jeProNovi = v('f_modul')==='projektovanje';
   DATA.gradilista.push({
     id:gid, naziv, modul:v('f_modul')||'izvodjenje', tip:(v('f_modul')==='projektovanje'?null:(v('f_tip')||'visokogradnja')), lok:esc(v('f_lok').trim())||'—', povrsina:+v('f_povrsina')||null, nadzor:esc(v('f_nadzor').trim())||'', adm:{}, nivo:(jeProNovi?(v('f_nivo')||'IDR'):null), klijent:klijentId, rukovodilac:v('f_ruk'),
-    pocetak:v('f_poc'), rok:v('f_rok'), napredak:0, status:'planirano', faza:(jeProNovi?'Idejno rešenje':'Priprema terena'),
+    pocetak:v('f_poc')||todayStr(), rok:v('f_rok')||plusDays(180), napredak:0, status:'planirano', faza:(jeProNovi?'Idejno rešenje':'Priprema terena'),
     budzet:cena, troskovi:tro, potroseno:0, naplaceno:0
   });
   if(jeProNovi){
@@ -2573,7 +2632,7 @@ function formTask(){
 function saveTask(){
   const v=id=>document.getElementById(id).value;
   const naziv=esc(v('f_tnaziv').trim()); if(!naziv){ alert('Unesi naziv zadatka.'); return; }
-  DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok') });
+  DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||null });
   saveState(); closeModal(); renderNav(); render();
 }
 
@@ -2624,7 +2683,7 @@ function formDiary(){
 function saveDiary(){
   const v=id=>document.getElementById(id).value;
   const tekst=esc(v('f_dtekst').trim()); if(!tekst){ alert('Unesi tekst izveštaja.'); return; }
-  DATA.dnevnik.push({ id:'d'+Date.now(), datum:v('f_ddatum'), gr:v('f_dgr'), autor:v('f_dautor'), tekst });
+  DATA.dnevnik.push({ id:'d'+Date.now(), datum:v('f_ddatum')||todayStr(), gr:v('f_dgr'), autor:v('f_dautor'), tekst });
   saveState(); closeModal(); renderNav(); render();
 }
 

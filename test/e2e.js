@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { makeGlobals } = require('./dom-stub');
+const { makeSupabaseMock } = require('./supabase-mock');
 
 const ROOT = path.join(__dirname, '..');
 const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -35,6 +36,10 @@ function check(name, fn){
   try { const r = fn(); if (r === false) bad(name, 'vratio false'); else ok(name); }
   catch (e) { bad(name, e && e.stack ? e.stack : e); }
 }
+async function acheck(name, fn){
+  try { const r = await fn(); if (r === false) bad(name, 'vratio false'); else ok(name); }
+  catch (e) { bad(name, e && e.stack ? e.stack : e); }
+}
 function section(t){ process.stdout.write('\n' + t.padEnd(46, ' ') + ' '); }
 
 /* ---------- izvlačenje <script> bloka ---------- */
@@ -48,8 +53,18 @@ const SCRIPT = extractScript(HTML);
 /* ---------- podizanje app-a u vm kontekstu ---------- */
 async function boot(opts = {}){
   const g = makeGlobals(opts);
+  let script = SCRIPT;
+  if (opts.supabase) {
+    // aktiviraj Supabase granu: konstante su namerno prazne u repou
+    script = script
+      .replace("const SUPABASE_URL = '';", "const SUPABASE_URL = 'https://test.supabase.co';")
+      .replace("const SUPABASE_ANON_KEY = '';", "const SUPABASE_ANON_KEY = 'test-anon-key';");
+    if (script === SCRIPT) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
+    g.supabase = makeSupabaseMock(opts.seed || {}, opts.faults || {});
+    g.__mock = g.supabase;
+  }
   const ctx = vm.createContext(g);
-  vm.runInContext(SCRIPT, ctx, { filename: 'index.html<script>', displayErrors: true });
+  vm.runInContext(script, ctx, { filename: 'index.html<script>', displayErrors: true });
   // pusti async IIFE (loadState -> normalizeData -> render) da se izvrši
   for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
   return {
@@ -415,6 +430,143 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
     app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
     const kol = app.run('DATA.predmer[DATA.predmer.length-1].kol');
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
+  });
+
+
+  /* ---- T10 sloj cuvanja (Supabase mock) ----
+     Konstante SUPABASE_URL/KEY su u repou namerno prazne; boot({supabase:true})
+     ih privremeno popuni i podmetne mock klijenta. */
+  section('T10 Supabase: ucitavanje i sejanje');
+
+  await acheck('prazna baza -> zaseje se demo u svih 13 tabela', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    if (a.run('mode') !== 'supabase') throw new Error("mode = " + a.run('mode'));
+    const prazne = a.run('TABLES').filter(t => a.g.__mock._count(t) === 0);
+    if (prazne.length) throw new Error('nezasejane tabele: ' + prazne.join(', '));
+  });
+
+  await acheck('puna baza -> ucita se, demo se NE upisuje', async () => {
+    const seed = {
+      gradilista: [{ id: 'gX', naziv: 'Stvarni projekat', modul: 'izvodjenje', tip: 'visokogradnja', lok: 'Beograd', klijent: 'cX', rukovodilac: null, pocetak: '2026-01-01', rok: '2026-12-31', napredak: 10, status: 'u toku', faza: 'Pripremni radovi', budzet: 100000, troskovi: 80000, potroseno: 10000, naplaceno: 0, adm: {} }],
+      clijenti: [{ id: 'cX', naziv: 'Stvarni klijent' }],
+      zaposleni: [], zadaci: [], dnevnik: [], situacije: [], narudzbe: [],
+      troskovi_st: [], podizvodjaci: [], predmer: [], resursi: [], magacin: [], mag_promene: [],
+    };
+    const a = await boot({ supabase: true, seed });
+    const nazivi = a.run('DATA.gradilista.map(g=>g.naziv)');
+    if (!nazivi.includes('Stvarni projekat')) throw new Error('nije ucitano iz baze: ' + JSON.stringify(nazivi));
+    if (nazivi.length !== 1) throw new Error('demo je pregazio bazu: ' + JSON.stringify(nazivi));
+  });
+
+  /* V1 — detekcija "prvog starta" gleda samo gradilista */
+  await acheck('baza sa klijentima ali bez gradilista se NE gazi demom', async () => {
+    const seed = {
+      gradilista: [],
+      clijenti: [{ id: 'cX', naziv: 'Stvarni klijent koji ne sme nestati' }],
+      zaposleni: [{ id: 'zX', ime: 'Stvarni radnik', poz: 'Zidar', grs: [], bivsi: [] }],
+      zadaci: [], dnevnik: [], situacije: [], narudzbe: [],
+      troskovi_st: [], podizvodjaci: [], predmer: [], resursi: [], magacin: [], mag_promene: [],
+    };
+    const a = await boot({ supabase: true, seed });
+    const kli = a.g.__mock._db.clijenti.map(c => c.naziv);
+    if (!kli.includes('Stvarni klijent koji ne sme nestati'))
+      throw new Error('stvarni klijent obrisan/pregazen; u bazi: ' + JSON.stringify(kli));
+    if (kli.length > 1)
+      throw new Error('demo klijenti dodati preko stvarnih: ' + JSON.stringify(kli));
+  });
+
+  section('T10b Supabase: greske i vidljivost');
+
+  /* K2 — prazan <input type=date> salje '' u date kolonu */
+  await acheck('prazan datum se upisuje kao null, ne kao ""', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formTask();");
+    const html = a.g.document.getElementById('modal').innerHTML;
+    for (const m of html.matchAll(/<(input|textarea|select)\b([^>]*)>/gi)) {
+      const idm = /\bid=["']?([A-Za-z0-9_]+)/.exec(m[2]); if (!idm) continue;
+      const type = (/\btype=["']?([a-z]+)/i.exec(m[2]) || [, 'text'])[1];
+      const el = a.g.document.getElementById(idm[1]);
+      if (type === 'date') el.value = '';                       // korisnik obrisao rok
+      else if (m[1].toLowerCase() === 'select') {
+        const rest = html.slice(m.index);
+        const om = /<option[^>]*\bvalue=["']([^"']*)["']/i.exec(rest.slice(0, rest.indexOf('</select>') + 9));
+        el.value = om ? om[1] : '';
+      } else el.value = 'Zadatak bez roka';
+    }
+    a.run('saveTask();');
+    const rok = a.run('DATA.zadaci[DATA.zadaci.length-1].rok');
+    if (rok === '') throw new Error('rok je prazan string -> Postgres odbija ceo upsert (22007)');
+    if (!(rok === null || (typeof rok === 'string' && rok.length === 10)))
+      throw new Error('neocekivan rok: ' + JSON.stringify(rok));
+  });
+
+  await acheck('prazan datum u DATA ne obara ceo lanac cuvanja', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    a.run("DATA.zadaci[0].rok=''; DATA.magacin.push({id:'mZ', naziv:'Posle zadataka', jm:'kom', stanje:1});");
+    await a.run('doSave()');
+    for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    // magacin dolazi POSLE zadaci u TABLES — ne sme da ostane neupisan
+    const ids = (a.g.__mock._db.magacin || []).map(m => m.id);
+    if (!ids.includes('mZ'))
+      throw new Error('tabele posle prve greske nisu upisane (magacin: ' + JSON.stringify(ids) + ')');
+  });
+
+  /* V5 — neuspelo cuvanje mora biti vidljivo */
+  await acheck('neuspelo cuvanje je vidljivo korisniku (footer)', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    a.g.__mock._faults.upsertFail = { zadaci: 'nema veze sa mrezom' };
+    a.run("DATA.zadaci.push({id:'tZ', gr:DATA.gradilista[0].id, zad:'x', kol:'todo', prio:'mid', rok:todayStr()});");
+    await a.run('doSave()');
+    for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    a.run('updateFoot()');
+    const foot = a.g.document.getElementById('sideFoot').innerHTML || '';
+    if (/izmene se cuvaju u bazi|izmene se čuvaju u bazi/i.test(foot) && !/nije|gre[sš]k/i.test(foot))
+      throw new Error('footer i dalje tvrdi da je sve sacuvano: ' + foot.replace(/<[^>]+>/g, ' ').trim().slice(0, 120));
+  });
+
+  section('T10c Supabase: brisanje i reset');
+
+  /* K3 — pushAll radi samo upsert */
+  await acheck('obrisan red lokalno nestaje i iz baze', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    const id = a.run('DATA.zadaci[0].id');
+    await a.run("obrisiRed('zadaci',"+JSON.stringify(id)+")");
+    for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    const still = (a.g.__mock._db.zadaci || []).some(z => z.id === id);
+    if (still) throw new Error('red ' + id + ' i dalje u bazi — pushAll nikad ne brise');
+  });
+
+  /* K1 — resetDemo prvo obrise sve, pa seje */
+  await acheck('neuspeo reset ne ostavlja praznu bazu', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    a.g.__mock._faults.upsertFail = { gradilista: 'pukla mreza' };
+    const preClijenti = a.g.__mock._count('clijenti');
+    if (!preClijenti) throw new Error('priprema: baza nije zasejana');
+    await a.run('resetDemo()');
+    for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    const posle = a.g.__mock._count('clijenti');
+    if (posle === 0)
+      throw new Error('reset je obrisao bazu pa pukao na upisu — podaci izgubljeni (clijenti: 0)');
+  });
+
+  /* S2 — normalizeData se ne poziva posle reseta */
+  await acheck('posle reseta su adm polja normalizovana', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    await a.run('resetDemo()');
+    for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    const loši = a.run(`DATA.gradilista.filter(g=>Object.values(g.adm||{}).some(v=>typeof v!=='object'||v===null)).map(g=>g.id)`);
+    if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
+  });
+
+  /* N4 — napredak je int kolona */
+  await acheck('napredak se upisuje kao ceo broj', async () => {
+    const a = await boot();
+    const gid = a.run('DATA.gradilista[0].id');
+    a.run(`ROLE='all'; formUpdate(${JSON.stringify(gid)});`);
+    a.g.document.getElementById('u_nap').value = '50.5';
+    a.run(`saveUpdate(${JSON.stringify(gid)});`);
+    const n = a.run(`grById[${JSON.stringify(gid)}].napredak`);
+    if (!Number.isInteger(n)) throw new Error('napredak = ' + n + ' (int kolona u schema.sql)');
   });
 
 
