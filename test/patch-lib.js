@@ -55,10 +55,12 @@ class Patcher {
     const s = src.slice(src.indexOf('<script>'), src.indexOf('</script>'));
     return new Set([...s.matchAll(/^(?:\s*)(?:function|let|const|var)\s+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
   }
-  assertNoLostDeclarations(){
+  assertNoLostDeclarations(namernoUklonjene = []){
     const before = this.declarations(this.orig), after = this.declarations(this.src);
-    const lost = [...before].filter(d => !after.has(d));
+    const lost = [...before].filter(d => !after.has(d) && !namernoUklonjene.includes(d));
     if (lost.length) throw new Error('ASSERT: izgubljene deklaracije: ' + lost.join(', '));
+    const nisuBile = namernoUklonjene.filter(d => after.has(d));
+    if (nisuBile.length) throw new Error('ASSERT: "uklonjene" deklaracije i dalje postoje: ' + nisuBile.join(', '));
     const added = [...after].filter(d => !before.has(d));
     this.log.push(`  ✓ assert: nijedna deklaracija nije izgubljena${added.length ? ' (nove: ' + added.join(', ') + ')' : ''}`);
     return this;

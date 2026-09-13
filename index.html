@@ -854,14 +854,20 @@ const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 /* Obrnuto od esc(). DATA cuva tekst HTML-escapovan (CLAUDE.md pravilo 3), pa svaki
    izlaz koji NIJE HTML — CSV, telo mejla, ime fajla — mora proci kroz unesc(),
    inace korisnik dobije "Petrovic &amp; Sinovi" umesto "Petrovic & Sinovi". */
+/* Broj iz korisnickog unosa. "1.234,50" i "1234.50" i "1.250" (hiljade) i "12.5".
+   Pravilo: zarez je uvek decimalni; tacka je hiljade samo u obliku d{1,3}(.ddd)+. */
+const broj=s=>{ s=String(s??'').trim().replace(/\s/g,''); if(!s) return 0;
+  const n = s.includes(',') ? +s.replace(/\./g,'').replace(',','.')
+          : +(/^-?\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g,'') : s);
+  return Number.isFinite(n)?n:0; };
 const unesc=v=>String(v??'').replace(/&#96;/g,'`').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&gt;/g,'>').replace(/&lt;/g,'<').replace(/&amp;/g,'&');
 const fmtEur = n => '€' + Math.round(n).toLocaleString('sr-RS');
-const fmtEurK = n => n>=1000000 ? '€'+(n/1000000).toFixed(2).replace('.',',')+'M' : '€'+Math.round(n/1000)+'k';
+const fmtEurK = n => { const a=Math.abs(n), s=n<0?'-':''; return a>=1000000 ? '€'+s+(a/1000000).toFixed(2).replace('.',',')+'M' : '€'+s+Math.round(a/1000)+'k'; };
 const initials = ime => ime.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 const dParse = s => new Date(s+'T00:00:00');
 const daysBetween = (a,b) => Math.round((b-a)/86400000);
 function fmtDate(s){ const d=dParse(s); return d.getDate()+'. '+MESECI[d.getMonth()]+' '+d.getFullYear(); }
-function marzaPct(g){ return Math.round((g.budzet - g.troskovi)/g.budzet*1000)/10; }
+function marzaPct(g){ return g.budzet ? Math.round((g.budzet - g.troskovi)/g.budzet*1000)/10 : 0; }
 function sitZa(id){ return (DATA.situacije||[]).filter(s=>s.gr===id); }
 function naplSum(g){ const s=sitZa(g.id); return s.length? s.filter(x=>x.status==='placeno').reduce((a,b)=>a+b.iznos,0) : (g.naplaceno||0); }
 function naplataPct(g){ return g.budzet?Math.round(naplSum(g)/g.budzet*100):0; }
@@ -871,6 +877,8 @@ function troskoviZa(grId){ return (DATA.troskovi_st||[]).filter(t=>t.gr===grId).
 function potroseno(g){ const l=troskoviZa(g.id); return l.length ? l.reduce((a,b)=>a+(+b.iznos||0),0) : (g.potroseno||0); }
 function subsZa(grId){ return (DATA.podizvodjaci||[]).filter(x=>(x.grs||[]).includes(grId)); }
 function timNa(grId){ return DATA.zaposleni.filter(z=>(z.grs||[]).includes(grId)); }
+/* 'Petar Kovacevic' -> 'Petar K.'; jednoclano ime ostaje kakvo jeste. */
+function kratkoIme(ime){ const d=String(ime||'').trim().split(/\s+/); return d[0]+(d[1]?' '+d[1][0]+'.':''); }
 function marzaClass(m){ return m>=15?'m-good':m>=8?'m-mid':'m-bad'; }
 
 const STATUS = {
@@ -934,7 +942,8 @@ function tabs(){
 }
 function renderNav(){
   const t=tabs();
-  if(!t.find(x=>x.id===current) && current!=='empPage') current='dash';
+  const podPogled = current==='empPage' || current==='predmer';   // nisu tabovi, ali su legitimna stanja
+  if(!t.find(x=>x.id===current) && !podPogled) current='dash';
   document.getElementById('nav').innerHTML = t.map(tb=>`
     <button class="${tb.id===current||(current==='empPage'&&tb.id==='emps')?'active':''}" onclick="go('${tb.id}')">
       ${icon(tb.ic)} ${tb.naziv}
@@ -948,6 +957,8 @@ function go(id){ current=id; renderNav(); render(); window.scrollTo(0,0); docume
    POGLEDI
    ============================================================ */
 function render(){
+  /* Alat stoji otvoren danima; bez ovoga bi sutradan upisivao jucerasnji datum. */
+  const _n=new Date(); _n.setHours(0,0,0,0); if(_n.getTime()!==TODAY.getTime()) TODAY.setTime(_n.getTime());
   const v = document.getElementById('view');
   v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin}[current])();
   animateUI();
@@ -1072,7 +1083,6 @@ function viewDash(){
   const aktivni = sites.filter(g=>g.status==='u toku'||g.status==='kasni');
   const kasne = sites.filter(g=>g.status==='kasni');
   const emps = DATA.zaposleni.filter(z=>(z.grs||[]).some(x=>ids.has(x)));
-  const naTerenu = emps.filter(z=>z.status==='Na terenu').length;
   const ukCena = sites.reduce((s,g)=>s+g.budzet,0);
   const ukNapl = sites.reduce((s,g)=>s+naplSum(g),0);
   const nenap = sites.filter(g=>g.status!=='zavrseno').reduce((s,g)=>s+Math.max(0, g.napredak/100*g.budzet - naplSum(g)),0);
@@ -1128,7 +1138,7 @@ function viewDash(){
   // poslednji unosi u dnevnik
   const diaryEntries = DATA.dnevnik.filter(d=>ids.has(d.gr)).sort((a,b)=>dParse(b.datum)-dParse(a.datum)).slice(0,3);
   const diaryHtml = diaryEntries.map(e=>{
-    const z=zapById[e.autor], g=grById[e.gr];
+    const z=zapById[e.autor]||{ime:'\u2014'}, g=grById[e.gr]||{naziv:'\u2014'};
     return `<div class="dl">
       <div class="av" style="margin-top:2px">${initials(z.ime)}</div>
       <div style="flex:1">
@@ -1185,7 +1195,7 @@ function viewDash(){
               + DATA.zadaci.filter(t=>t.kol!=='done'&&ids.has(t.gr)&&daysBetween(TODAY,dParse(t.rok))>=0&&daysBetween(TODAY,dParse(t.rok))<=7).length;
   const bl=[];
   if(fin){
-    const dosp=(DATA.situacije||[]).filter(x=>x.status!=='placeno'&&sitKasni(x));
+    const dosp=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&x.status!=='placeno'&&sitKasni(x));
     if(dosp.length) bl.push(['var(--red)',`<b>${fmtEur(dosp.reduce((a,b)=>a+b.iznos,0))}</b> dospelo za naplatu (${dosp.length} situacij${dosp.length===1?'a':'e'}) — proveri tab Naplata`]);
     if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`Najrizičniji projekat: <b>${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova (projekti + zadaci)`]);
@@ -1300,7 +1310,7 @@ function sitesCards(){
         <div class="kv"><span>Klijent</span><b>${cl?cl.naziv:'—'}</b></div>
         ${canFinance()?`<div class="kv"><span>Cena / marža</span><b>${fmtEurK(g.budzet)} · <span class="${marzaClass(m)}">${String(m).replace('.',',')}%</span></b></div>
         <div class="kv"><span>Naplaćeno</span><b>${naplataPct(g)}%</b></div>`:''}
-        <div class="kv"><span>Rukovodilac</span><b>${ruk?ruk.ime.split(' ')[0]+' '+ruk.ime.split(' ')[1][0]+'.':'—'}</b></div>
+        <div class="kv"><span>Rukovodilac</span><b>${ruk?kratkoIme(ruk.ime):'—'}</b></div>
         <div class="kv"><span>Početak</span><b>${fmtDate(g.pocetak)}</b></div>
         <div class="kv"><span>Rok završetka</span><b>${g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))<0?`<span style="color:var(--red)">${fmtDate(g.rok)}</span>`:fmtDate(g.rok)}</b></div>
         <div class="foot">
@@ -1870,12 +1880,12 @@ function saveMagPromena(mid,tip){
   if(kol<=0){ alert('Unesi količinu.'); return; }
   let gr=null;
   if(tip==='izlaz'){
-    if(kol>m.stanje){ alert('Nema dovoljno na stanju ('+m.stanje+' '+m.jm+').'); return; }
+    if(kol>(+m.stanje||0)){ alert('Nema dovoljno na stanju ('+m.stanje+' '+m.jm+').'); return; }
     gr=v('f_mpgr')||null;
     const g=gr?grById[gr]:null;
     if(!g || !(isDirector()||g.rukovodilac===ROLE)){ alert('Izdavanje je moguće samo na tvoje gradilište.'); return; }
   }
-  m.stanje=Math.round((m.stanje+(tip==='ulaz'?kol:-kol))*100)/100;
+  m.stanje=Math.round(((+m.stanje||0)+(tip==='ulaz'?kol:-kol))*100)/100;
   DATA.mag_promene.push({ id:'mp'+Date.now(), mid, datum:todayStr(), tip, kol, gr });
   saveState(); closeModal(); render();
 }
@@ -1913,7 +1923,6 @@ function viewPredmer(){
       ${pro?`<td>${zaduzenIme(x.zaduzen)}</td>`:''}
     </tr>`;
   }).join('');
-  const cols = 5 + (fin?2:0) + 2 + (pro?1:0) - 2;
   return `
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
     <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="current='sites';render();openSite('${g.id}')">← Detalji gradilišta</button>
@@ -1939,7 +1948,9 @@ function viewPredmer(){
 function setIzv(pid,val){
   const x=(DATA.predmer||[]).find(r=>r.id===pid); if(!x) return;
   const g=grById[x.gr]; if(!g||!(isDirector()||g.rukovodilac===ROLE)) return;
-  x.izv=Math.max(0,+String(val).replace(',','.')||0);
+  /* Klamp na ugovorenu kolicinu: prikaz je i ranije klampovao, ali CSV i kumulativ
+     (osnov za fakturisanje) su izvozili sirovu vrednost. */
+  x.izv=Math.min(+x.kol||0, Math.max(0, broj(val)));
   saveState(); render();
 }
 function formPredmerRed(grId){
@@ -1985,9 +1996,9 @@ function savePredmerImport(grId){
     const c=l.split(/\t|;/).map(x=>x.trim());
     if(c.length<2) return;
     const poz=esc(c[0]); if(!poz) return;
-    const kol=+String(c[2]||'1').replace(/\./g,'').replace(',','.')||+String(c[2]||'1').replace(',','.')||1;
-    const cena=+String(c[3]||'0').replace(',','.')||0;
-    DATA.predmer.push({ id:'pm'+(ts+n), gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null });
+    const kol=broj(c[2])||1;
+    const cena=broj(c[3]);
+    DATA.predmer.push({ id:'pm'+ts+'-'+n, gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null });
     n++;
   });
   if(!n){ alert('Nijedna pozicija nije prepoznata — proveri da su kolone razdvojene tabom ili tačka-zarezom.'); return; }
@@ -2072,7 +2083,7 @@ function saveTrosak(grId){
   if(!opis||!iznos){ alert('Unesi opis i iznos troška.'); return; }
   const g=grById[grId];
   if(g && !troskoviZa(grId).length && g.potroseno>0){
-    DATA.troskovi_st.push({ id:'tr'+(Date.now()-1), gr:grId, datum:g.pocetak, opis:'Preneto — troškovi do uvođenja evidencije', kat:'Ostalo', iznos:g.potroseno });
+    DATA.troskovi_st.push({ id:'tr'+Date.now()+'-0', gr:grId, datum:g.pocetak, opis:'Preneto — troškovi do uvođenja evidencije', kat:'Ostalo', iznos:g.potroseno });
   }
   DATA.troskovi_st.push({ id:'tr'+Date.now(), gr:grId, datum:v('f_tr_datum')||todayStr(), opis, kat:v('f_tr_kat')||'Ostalo', iznos, dobavljac:esc(String(v('f_tr_dob')).trim()), fakt:esc(String(v('f_tr_fakt')).trim()) });
   saveState(); closeModal(); renderNav(); render(); openSite(grId);
@@ -2191,7 +2202,6 @@ function openPresek(id){
   const ocek=Math.round(g.troskovi*g.napredak/100);
   const nenap=Math.max(0, Math.round(g.napredak/100*g.budzet - naplSum(g)));
   const dosp=sits.filter(x=>x.status!=='placeno'&&sitKasni(x)).reduce((a,b)=>a+b.iznos,0);
-  const projMarza=g.budzet-Math.max(g.troskovi, pot>ocek? Math.round(pot/Math.max(1,g.napredak)*100) : g.troskovi);
   // troskovi po kategorijama
   const kats={};
   trSt.forEach(t=>{ kats[t.kat]=(kats[t.kat]||0)+(+t.iznos||0); });
@@ -2478,24 +2488,6 @@ function saveSit(){
   const v=id=>document.getElementById(id).value;
   const br=esc(v('f_sbr').trim()); const iznos=+v('f_siznos')||0;
   if(!br||!iznos){ alert('Unesi broj situacije i iznos.'); return; }
-  if(!DATA.situacije) DATA.situacije=[];
-  if(!DATA.narudzbe) DATA.narudzbe=[];
-  if(!DATA.troskovi_st) DATA.troskovi_st=[];
-  if(!DATA.podizvodjaci) DATA.podizvodjaci=[];
-  (DATA.podizvodjaci||[]).forEach(x=>{ if(!Array.isArray(x.grs)) x.grs=[]; });
-  if(!DATA.predmer) DATA.predmer=[];
-  if(!DATA.resursi) DATA.resursi=[];
-  if(!DATA.magacin) DATA.magacin=[];
-  if(!DATA.mag_promene) DATA.mag_promene=[];
-  (DATA.gradilista||[]).forEach(g=>{
-    if(!g.adm) g.adm={};
-    Object.keys(g.adm).forEach(k=>{
-      const v=g.adm[k];
-      if(v===true) g.adm[k]={st:'ima'};
-      else if(v===false||v==null) g.adm[k]={st:'nema'};
-      else if(!v.st) v.st='nema';
-    });
-  });
   DATA.situacije.push({ id:'s'+Date.now(), gr:v('f_sgr'), br, opis:esc(v('f_sopis').trim())||'—', iznos, izdato:v('f_sizdato')||todayStr(), valuta:v('f_svaluta')||plusDays(30), status:'ceka' });
   saveState(); closeModal(); renderNav(); render();
 }
@@ -2620,7 +2612,7 @@ function saveSite(){
     const niv=v('f_nivo')||'IDR';
     if(fill&&fill.checked&&NIVOI_DOK[niv]){
       const ts=Date.now();
-      NIVOI_DOK[niv].forEach((sv,i)=>DATA.predmer.push({id:'pm'+(ts+i+1), gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
+      NIVOI_DOK[niv].forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
     }
   }
   rebuildMaps(); saveState(); closeModal(); renderNav(); render();

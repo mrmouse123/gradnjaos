@@ -433,6 +433,117 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T12 racunska ispravnost i otpornost prikaza ---- */
+  section('T12 brojevi i otpornost');
+
+  await acheck('marzaPct ne vraca NaN/Infinity kad je budzet 0', async () => {
+    const r = app.run("marzaPct({budzet:0, troskovi:0})");
+    const r2 = app.run("marzaPct({budzet:0, troskovi:100})");
+    if (!Number.isFinite(r) || !Number.isFinite(r2))
+      throw new Error(`budzet 0 -> ${r} / ${r2} (renderuje se kao "NaN%" i "Marža pala na -Infinity%")`);
+  });
+
+  await acheck('fmtEurK ispravno prikazuje negativne iznose', async () => {
+    const a = app.run('fmtEurK(-2000000)'), b = app.run('fmtEurK(2000000)');
+    if (!/^€-2[.,]00M$/.test(a)) throw new Error(`fmtEurK(-2000000) = ${a}, ocekivano oblik €-2,00M (dobija se "${a}")`);
+    if (!/M$/.test(b)) throw new Error('fmtEurK(2000000) = ' + b);
+  });
+
+  await acheck('kontrolna tabla se ne rusi na unos nepoznatog autora', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`DATA.dnevnik.push({id:'d_t12', datum:todayStr(), gr:${JSON.stringify(gid)}, autor:'z-nepostojeci', tekst:'unos'});`);
+    let err = null;
+    try { app.run("ROLE='all'; MODUL='sve'; current='dash'; render();"); } catch (e) { err = e.message; }
+    app.run("DATA.dnevnik = DATA.dnevnik.filter(d=>d.id!=='d_t12'); render();");
+    if (err) throw new Error('render pukao -> cela kontrolna tabla prazna: ' + err);
+  });
+
+  await acheck('kartice gradilista podnose jednoclano ime rukovodioca', async () => {
+    app.run(`(()=>{ DATA.zaposleni.push({id:'z_t12', ime:'Marko', poz:'Rukovodilac gradilišta', grs:[], bivsi:[], status:'Na terenu', tel:'060'});
+      DATA.gradilista.push({id:'g_t12', modul:'izvodjenje', tip:'visokogradnja', naziv:'Test jednoclano', lok:'x', klijent:DATA.clijenti[0].id,
+        rukovodilac:'z_t12', pocetak:todayStr(), rok:plusDays(30), napredak:10, status:'u toku', faza:'x', budzet:1000, troskovi:800, potroseno:0, naplaceno:0, adm:{}});
+      rebuildMaps(); })()`);
+    let err = null;
+    try { app.run("ROLE='all'; current='sites'; render();"); } catch (e) { err = e.message; }
+    app.run(`(()=>{ DATA.zaposleni=DATA.zaposleni.filter(z=>z.id!=='z_t12'); DATA.gradilista=DATA.gradilista.filter(g=>g.id!=='g_t12');
+      rebuildMaps(); current='dash'; render(); })()`);
+    if (err) throw new Error('tab Gradilista pukao: ' + err);
+  });
+
+  await acheck('uvoz: cena "1.234,50" i kolicina "1.250" iz Excela', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.g.document.getElementById('f_pm_paste').value = 'Beton;m3;1.250;1.234,50';
+    app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
+    const r = app.run('DATA.predmer[DATA.predmer.length-1]');
+    if (r.kol !== 1250) throw new Error('kolicina = ' + r.kol + ', ocekivano 1250');
+    if (r.cena !== 1234.5) throw new Error('cena = ' + r.cena + ', ocekivano 1234.5 (hiljade se ne skidaju kao kod kolicine)');
+  });
+
+  await acheck('uvoz: engleski zapis "12.5" nije 125', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.g.document.getElementById('f_pm_paste').value = 'Malterisanje;m2;12.5;10';
+    app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
+    const r = app.run('DATA.predmer[DATA.predmer.length-1]');
+    if (r.kol !== 12.5) throw new Error('kolicina = ' + r.kol + ', ocekivano 12.5');
+  });
+
+  await acheck('setIzv prihvata srpski decimalni zapis', async () => {
+    const pid = app.run('DATA.predmer[0].id');
+    app.run(`ROLE='all'; setIzv(${JSON.stringify(pid)}, '1.234,5');`);
+    const izv = app.run(`DATA.predmer.find(r=>r.id===${JSON.stringify(pid)}).izv`);
+    if (izv === 0) throw new Error('vrednost tiho obrisana (izv=0) umesto 1234.5');
+  });
+
+  await acheck('setIzv ne dozvoljava izvedeno iznad ugovorenog', async () => {
+    const p0 = app.run('DATA.predmer[0]');
+    app.run(`ROLE='all'; setIzv(${JSON.stringify(p0.id)}, 999999);`);
+    const izv = app.run(`DATA.predmer.find(r=>r.id===${JSON.stringify(p0.id)}).izv`);
+    app.run(`setIzv(${JSON.stringify(p0.id)}, ${p0.izv || 0});`);
+    if (izv > p0.kol) throw new Error(`izv=${izv} > ugovoreno ${p0.kol} — CSV i kumulativ prijavljuju netacnu kolicinu`);
+  });
+
+  await acheck('serijski uvoz ne pravi duple ID-eve', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    const red = Array.from({ length: 40 }, (_, i) => `Pozicija ${i};m2;1;1`).join('\n');
+    app.g.document.getElementById('f_pm_paste').value = red;
+    app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
+    app.g.document.getElementById('f_pm_paste').value = red;
+    app.run(`savePredmerImport(${JSON.stringify(gid)});`);
+    const dup = app.run(`(()=>{const ids=DATA.predmer.map(r=>r.id); const s=new Set(ids); return ids.length-s.size;})()`);
+    if (dup > 0) throw new Error(dup + ' duplih ID-eva — setIzv bi menjao pogresan red, upsert bi ih spojio');
+  });
+
+  await acheck('jutarnji brif postuje filter modula', async () => {
+    app.run("ROLE='all'; MODUL='projektovanje'; PODTIP='sve'; current='dash'; render();");
+    const dash = app.g.document.getElementById('view').innerHTML;
+    const ukupnoPro = app.run(`(()=>{const ids=visibleSiteIds();
+      return (DATA.situacije||[]).filter(x=>ids.has(x.gr)&&x.status!=='placeno'&&sitKasni(x)).reduce((a,b)=>a+b.iznos,0);})()`);
+    const svihModula = app.run(`(DATA.situacije||[]).filter(x=>x.status!=='placeno'&&sitKasni(x)).reduce((a,b)=>a+b.iznos,0)`);
+    app.run("MODUL='sve'; current='dash'; render();");
+    if (ukupnoPro === svihModula) return;                       // nema razlike u demo podacima
+    const pogresan = app.run(`fmtEurK(${svihModula})`);
+    if (dash.includes(pogresan))
+      throw new Error(`brif prikazuje ${pogresan} (svi moduli) umesto iznosa za Projektovanje`);
+  });
+
+  await acheck('magacin: stanje kao string ne pravi nadovezivanje', async () => {
+    app.run(`(()=>{ DATA.magacin.push({id:'m_t12', naziv:'Test', jm:'kom', stanje:'18'}); })()`);
+    app.g.document.getElementById('f_mpkol').value = '5';
+    app.run("ROLE='all'; saveMagPromena('m_t12','ulaz');");
+    const st = app.run("DATA.magacin.find(m=>m.id==='m_t12').stanje");
+    app.run("DATA.magacin = DATA.magacin.filter(m=>m.id!=='m_t12');");
+    if (st !== 23) throw new Error('stanje = ' + JSON.stringify(st) + ', ocekivano 23 (dobija se "185" nadovezivanjem)');
+  });
+
+  await acheck('predmer ostaje otvoren kad se promeni modul', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`ROLE='all'; openPredmer(${JSON.stringify(gid)}); renderNav();`);
+    const cur = app.run('current');
+    app.run("current='dash'; render();");
+    if (cur !== 'predmer') throw new Error("renderNav() vraca korisnika na 'dash' iz predmera (current=" + cur + ')');
+  });
+
+
   /* ---- T11 vlasnistvo: rukovodilac ne sme da dira TUDJE gradiliste ----
      Pravilo 2 iz CLAUDE.md. Raniji T5 je zvao mutacije sa PRAZNOM formom, pa su
      padale na validaciji naziva i test je lazno prolazio. Ovde se forma popuni
