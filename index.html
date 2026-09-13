@@ -842,6 +842,10 @@ function visibleSites(){
 }
 function visibleSiteIds(){ return new Set(visibleSites().map(g=>g.id)); }
 function isDirector(){ return ROLE==='all'; }
+/* Vlasnistvo gradilista: direktor sve, rukovodilac samo svoje.
+   Koristiti u SVAKOJ funkciji koja prima grId spolja — funkcije su globalne,
+   pa sakriveno dugme nije zastita (CLAUDE.md pravilo 2). */
+function smemNa(grId){ const g=grById[grId]; return !!g && (isDirector() || g.rukovodilac===ROLE); }
 
 /* ============================================================
    POMOĆNE
@@ -1035,6 +1039,7 @@ function computeAlerts(){
   });
   (DATA.resursi||[]).forEach(r=>{
     if(!r.istice) return;
+    if(r.gr && !ids.has(r.gr)) return;   // tudje gradiliste ne sme ni u upozorenja
     const d=daysBetween(TODAY,dParse(r.istice));
     const nas=r.gr&&grById[r.gr]?grById[r.gr].naziv:'Firma';
     if(d<0) out.push({sev:'red', gr:r.gr||null, tekst:'Isteklo: '+r.naziv+' ('+(r.napomena||RES_TIP[r.tip]||'resurs')+', '+fmtDate(r.istice)+')', nas});
@@ -1314,6 +1319,7 @@ function bindSitesSearch(){ const el=document.getElementById('siteSearch'); if(!
 /* ---------- KLIJENTI ---------- */
 let clientQuery='';
 function viewClients(){
+  if(!isDirector()){ current='dash'; return viewDash(); }
   return head('Klijenti','Investitori i naručioci — kontakt podaci i aktivni projekti.') +
   `<div class="tools">
     <div class="search">${icon('search')}<input id="clSearch" placeholder="Pretraži klijente…" value="${esc(clientQuery)}"></div>
@@ -1381,7 +1387,7 @@ function bindEmpSearch(){ const el=document.getElementById('empSearch'); if(!el)
 
 /* profil zaposlenog: direktor dobija punu stranicu, rukovodilac fioku */
 let empPageId=null;
-function openEmpPage(id){ empPageId=id; closeDrawer(); current='empPage'; renderNav(); render(); window.scrollTo(0,0); }
+function openEmpPage(id){ if(!isDirector()) return openEmp(id); empPageId=id; closeDrawer(); current='empPage'; renderNav(); render(); window.scrollTo(0,0); }
 function openEmp(id){
   const z=zapById[id]; if(!z)return;
   if(isDirector()){ openEmpPage(id); return; }
@@ -1617,7 +1623,14 @@ function viewTasks(){
 }
 let dragId=null;
 function dragStart(e,id){ dragId=id; e.dataTransfer.effectAllowed='move'; }
-function dropTask(e,col){ e.preventDefault(); if(!dragId)return; const t=DATA.zadaci.find(x=>x.id===dragId); if(t){t.kol=col;} dragId=null; saveState(); render(); }
+function dropTask(e,col){
+  e.preventDefault();
+  const id=dragId; dragId=null;
+  if(!id || !KOLONE.some(k=>k.id===col)) return;
+  const t=DATA.zadaci.find(x=>x.id===id);
+  if(!t || !smemNa(t.gr)) return;
+  t.kol=col; saveState(); render();
+}
 
 /* ---------- DNEVNIK RADOVA ---------- */
 function viewDiary(){
@@ -1737,7 +1750,8 @@ const RES_TIP={vozilo:'Vozila', alat:'Alati i oprema', racunar:'Računari', lice
 let resFilter='sve';
 function resIstice(r){ if(!r.istice) return 9999; return daysBetween(TODAY,dParse(r.istice)); }
 function viewResursi(){
-  const list=(DATA.resursi||[]).filter(r=>resFilter==='sve'||r.tip===resFilter);
+  const vidljiva=visibleSiteIds();
+  const list=(DATA.resursi||[]).filter(r=>(resFilter==='sve'||r.tip===resFilter) && (!r.gr || isDirector() || vidljiva.has(r.gr)));
   const cips=[['sve','Svi'],...Object.entries(RES_TIP)].map(c=>`<button class="chip ${resFilter===c[0]?'on':''}" onclick="resFilter='${c[0]}';render()">${c[1]}</button>`).join('');
   const rows=list.sort((a,b)=>resIstice(a)-resIstice(b)).map(r=>{
     const d=resIstice(r);
@@ -1848,6 +1862,7 @@ function formMagPromena(mid,tip){
     </div>`);
 }
 function saveMagPromena(mid,tip){
+  if(tip!=='ulaz' && tip!=='izlaz') return;   // trecа vrednost je ranije prolazila kroz sve provere
   const m=(DATA.magacin||[]).find(x=>x.id===mid); if(!m) return;
   if(tip==='ulaz'&&!isDirector()) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
@@ -2121,6 +2136,7 @@ function saveSub(){
 /* ---------- IZVESTAJ ZA INVESTITORA ---------- */
 function openIzvestaj(id){
   const g=grById[id]; if(!g) return;
+  if(!smemNa(id)) return;
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const od=new Date(TODAY); od.setDate(od.getDate()-7);
   const unosi=DATA.dnevnik.filter(d=>d.gr===id && dParse(d.datum)>=od).sort((a,b)=>dParse(b.datum)-dParse(a.datum));
@@ -2244,6 +2260,7 @@ function narudzbaMailBody(n){
 }
 function posaljiMejlNabavci(id){
   const n=(DATA.narudzbe||[]).find(x=>x.id===id); if(!n) return;
+  if(!smemNa(n.gr)) return;
   const g=grById[n.gr];
   const subject='Trebovanje materijala \u2014 '+(g?unesc(g.naziv):'')+' \u2014 '+fmtDate(n.datum);
   const url='mailto:'+encodeURIComponent(NABAVKA_EMAIL)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(narudzbaMailBody(n));
@@ -2394,6 +2411,7 @@ function saveRaspored(id){
 
 /* ---------- NAPLATA (SITUACIJE) ---------- */
 function viewPay(){
+  if(!canFinance()){ current='dash'; return viewDash(); }
   const mIds=visibleSiteIds();
   const sits=[...(DATA.situacije||[])].filter(x=>mIds.has(x.gr)).sort((a,b)=>dParse(b.izdato)-dParse(a.izdato));
   const uk=arr=>arr.reduce((a,b)=>a+b.iznos,0);
@@ -2631,6 +2649,7 @@ function formTask(){
 }
 function saveTask(){
   const v=id=>document.getElementById(id).value;
+  if(!smemNa(v('f_tgr'))){ alert('Zadatke mozes da otvaras samo na svom gradilistu.'); return; }
   const naziv=esc(v('f_tnaziv').trim()); if(!naziv){ alert('Unesi naziv zadatka.'); return; }
   DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||null });
   saveState(); closeModal(); renderNav(); render();
@@ -2682,8 +2701,11 @@ function formDiary(){
 }
 function saveDiary(){
   const v=id=>document.getElementById(id).value;
+  if(!smemNa(v('f_dgr'))){ alert('Dnevnik mozes da vodis samo za svoje gradiliste.'); return; }
   const tekst=esc(v('f_dtekst').trim()); if(!tekst){ alert('Unesi tekst izveštaja.'); return; }
-  DATA.dnevnik.push({ id:'d'+Date.now(), datum:v('f_ddatum')||todayStr(), gr:v('f_dgr'), autor:v('f_dautor'), tekst });
+  /* Rukovodilac ne moze da potpise unos tudjim imenom. */
+  const autor = isDirector() ? v('f_dautor') : ROLE;
+  DATA.dnevnik.push({ id:'d'+Date.now(), datum:v('f_ddatum')||todayStr(), gr:v('f_dgr'), autor, tekst });
   saveState(); closeModal(); renderNav(); render();
 }
 
@@ -2692,6 +2714,7 @@ function saveDiary(){
    ============================================================ */
 function openSite(id){
   const g=grById[id]; if(!g)return;
+  if(!smemNa(id)) return;
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const tim=timNa(id);
   const zad=DATA.zadaci.filter(t=>t.gr===id);

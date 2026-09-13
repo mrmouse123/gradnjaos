@@ -433,6 +433,152 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T11 vlasnistvo: rukovodilac ne sme da dira TUDJE gradiliste ----
+     Pravilo 2 iz CLAUDE.md. Raniji T5 je zvao mutacije sa PRAZNOM formom, pa su
+     padale na validaciji naziva i test je lazno prolazio. Ovde se forma popuni
+     validnim podacima, a ciljno gradiliste je tudje. */
+  section('T11 vlasnistvo (tudje gradiliste)');
+
+  const ruk2 = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+  const mojeG = app.run(`DATA.gradilista.filter(g=>g.rukovodilac===${JSON.stringify(ruk2)}).map(g=>g.id)[0]`);
+  const tudjeG = app.run(`DATA.gradilista.filter(g=>g.rukovodilac && g.rukovodilac!==${JSON.stringify(ruk2)}).map(g=>g.id)[0]`);
+  if (!mojeG || !tudjeG) bad('T11 priprema', 'nema para svoje/tudje gradiliste u DEMO');
+
+  const kaoRuk = (code) => app.run(`(()=>{ const _p=ROLE; ROLE=${JSON.stringify(ruk2)}; try{ return (${code}); } finally { ROLE=_p; } })()`);
+
+  await acheck('saveTask ne upisuje zadatak na tudje gradiliste', async () => {
+    app.run(`ROLE=${JSON.stringify(ruk2)};`);
+    app.run('formTask();');
+    const html = app.g.document.getElementById('modal').innerHTML;
+    for (const m of html.matchAll(/<(input|textarea|select)\b([^>]*)>/gi)) {
+      const idm = /\bid=["']?([A-Za-z0-9_]+)/.exec(m[2]); if (!idm) continue;
+      app.g.document.getElementById(idm[1]).value = 'Zadatak';
+    }
+    app.g.document.getElementById('f_tgr').value = tudjeG;      // tudje gradiliste
+    app.g.document.getElementById('f_tprio').value = 'mid';
+    app.g.document.getElementById('f_trok').value = app.run('todayStr()');
+    const pre = app.run('DATA.zadaci.length');
+    app.run('saveTask();');
+    const post = app.run('DATA.zadaci.length');
+    app.run("ROLE='all';");
+    if (post !== pre) {
+      const z = app.run('DATA.zadaci[DATA.zadaci.length-1]');
+      throw new Error('zadatak upisan na tudje gradiliste: gr=' + z.gr);
+    }
+  });
+
+  await acheck('saveDiary ne upisuje u tudji dnevnik niti pod tudjim imenom', async () => {
+    app.run(`ROLE=${JSON.stringify(ruk2)};`);
+    app.run('formDiary();');
+    const html = app.g.document.getElementById('modal').innerHTML;
+    for (const m of html.matchAll(/<(input|textarea|select)\b([^>]*)>/gi)) {
+      const idm = /\bid=["']?([A-Za-z0-9_]+)/.exec(m[2]); if (!idm) continue;
+      app.g.document.getElementById(idm[1]).value = 'Tekst unosa u dnevnik';
+    }
+    app.g.document.getElementById('f_dgr').value = tudjeG;
+    app.g.document.getElementById('f_ddatum').value = app.run('todayStr()');
+    const tudjiAutor = app.run(`DATA.zaposleni.filter(z=>z.id!==${JSON.stringify(ruk2)})[0].id`);
+    app.g.document.getElementById('f_dautor').value = tudjiAutor;
+    const pre = app.run('DATA.dnevnik.length');
+    app.run('saveDiary();');
+    const post = app.run('DATA.dnevnik.length');
+    const zadnji = post > pre ? app.run('DATA.dnevnik[DATA.dnevnik.length-1]') : null;
+    app.run("ROLE='all';");
+    if (zadnji && zadnji.gr === tudjeG) throw new Error('unos u dnevnik tudjeg gradilista: gr=' + zadnji.gr);
+    if (zadnji && zadnji.autor === tudjiAutor) throw new Error('unos potpisan tudjim imenom: autor=' + zadnji.autor);
+  });
+
+  await acheck('dropTask ne pomera tudji zadatak', async () => {
+    const tz = app.run(`DATA.zadaci.filter(t=>t.gr===${JSON.stringify(tudjeG)})[0]`);
+    if (!tz) return;  // nema takvog zadatka u demo podacima
+    const pre = tz.kol;
+    const nova = pre === 'done' ? 'todo' : 'done';
+    app.run(`ROLE=${JSON.stringify(ruk2)}; dragStart({dataTransfer:{}}, ${JSON.stringify(tz.id)}); dropTask({preventDefault(){}}, ${JSON.stringify(nova)});`);
+    const posle = app.run(`DATA.zadaci.find(t=>t.id===${JSON.stringify(tz.id)}).kol`);
+    app.run("ROLE='all';");
+    if (posle !== pre) throw new Error(`tudji zadatak pomeren ${pre} -> ${posle}`);
+  });
+
+  await acheck('dropTask odbija nepostojecu kolonu', async () => {
+    const tm = app.run(`DATA.zadaci.filter(t=>t.gr===${JSON.stringify(mojeG)})[0]`);
+    if (!tm) return;
+    const pre = tm.kol;
+    app.run(`ROLE=${JSON.stringify(ruk2)}; dragStart({dataTransfer:{}}, ${JSON.stringify(tm.id)}); dropTask({preventDefault(){}}, 'ne-postoji');`);
+    const posle = app.run(`DATA.zadaci.find(t=>t.id===${JSON.stringify(tm.id)}).kol`);
+    app.run("ROLE='all';");
+    if (posle !== pre) throw new Error(`zadatak zavrsio u nepostojecoj koloni: ${posle}`);
+  });
+
+  await acheck('saveMagPromena odbija nepoznat tip (ne obara stanje)', async () => {
+    const mid = app.run('DATA.magacin[0].id');
+    const pre = app.run('DATA.magacin[0].stanje');
+    app.g.document.getElementById('f_mpkol').value = '9999';
+    app.run(`ROLE=${JSON.stringify(ruk2)}; saveMagPromena(${JSON.stringify(mid)}, 'bilo-sta');`);
+    const posle = app.run('DATA.magacin[0].stanje');
+    app.run("ROLE='all';");
+    if (posle !== pre) throw new Error(`stanje ${pre} -> ${posle} kroz nepoznat tip promene`);
+  });
+
+  section('T11b izolacija gradilista (citanje)');
+
+  await acheck('openSite ne otvara tudje gradiliste', async () => {
+    app.g.document.getElementById('drawer').innerHTML = '';
+    kaoRuk(`openSite(${JSON.stringify(tudjeG)}), 1`);
+    const d = app.g.document.getElementById('drawer').innerHTML || '';
+    if (d.length > 200) throw new Error('fioka otvorena za tudje gradiliste (' + d.length + ' znakova)');
+  });
+
+  await acheck('openIzvestaj ne radi za tudje gradiliste', async () => {
+    const pre = app.g._calls.open.length;
+    kaoRuk(`openIzvestaj(${JSON.stringify(tudjeG)}), 1`);
+    const izv = app.g.document.getElementById('izvestajWrap');
+    const sadrzaj = (izv && izv.innerHTML) || '';
+    if (app.g._calls.open.length > pre || sadrzaj.length > 200)
+      throw new Error('izvestaj generisan za tudje gradiliste');
+  });
+
+  await acheck('posaljiMejlNabavci ne salje tudje trebovanje', async () => {
+    const tn = app.run(`(DATA.narudzbe||[]).filter(n=>n.gr===${JSON.stringify(tudjeG)})[0]`);
+    if (!tn) return;
+    const pre = app.g._calls.open.length;
+    kaoRuk(`posaljiMejlNabavci(${JSON.stringify(tn.id)}), 1`);
+    if (app.g._calls.open.length > pre)
+      throw new Error('otvoren mailto za tudje trebovanje: ' + app.g._calls.open[app.g._calls.open.length - 1].slice(0, 120));
+  });
+
+  await acheck('openEmpPage ne otvara punu karticu rukovodiocu', async () => {
+    const zid = app.run(`DATA.zaposleni.filter(z=>z.id!==${JSON.stringify(ruk2)})[0].id`);
+    app.run(`ROLE=${JSON.stringify(ruk2)}; openEmpPage(${JSON.stringify(zid)});`);
+    const cur = app.run('current');
+    app.run("ROLE='all'; current='dash'; render();");
+    if (cur === 'empPage') throw new Error('rukovodilac otvorio punu karticu zaposlenog');
+  });
+
+  await acheck('viewPay/viewClients pozvani direktno ne odaju finansije', async () => {
+    const leaks = [];
+    for (const fn of ['viewPay', 'viewClients']) {
+      const html = kaoRuk(`${fn}()`) || '';
+      const hit = FIN_TERMS.filter(t => html.includes(t));
+      if (hit.length) leaks.push(`${fn}: ${hit.join(', ')}`);
+    }
+    if (leaks.length) throw new Error(leaks.join('\n'));
+  });
+
+  await acheck('upozorenja ne pominju tudja gradilista', async () => {
+    const nazivi = app.run(`DATA.gradilista.filter(g=>g.rukovodilac && g.rukovodilac!==${JSON.stringify(ruk2)}).map(g=>g.naziv)`);
+    const al = kaoRuk('JSON.stringify(computeAlerts())');
+    const hit = nazivi.filter(n => al.includes(n));
+    if (hit.length) throw new Error('tudja gradilista u upozorenjima: ' + hit.join(', '));
+  });
+
+  await acheck('viewResursi ne prikazuje resurse tudjih gradilista', async () => {
+    const nazivi = app.run(`DATA.gradilista.filter(g=>g.rukovodilac && g.rukovodilac!==${JSON.stringify(ruk2)}).map(g=>g.naziv)`);
+    const html = kaoRuk('viewResursi()') || '';
+    const hit = nazivi.filter(n => html.includes(n));
+    if (hit.length) throw new Error('tudja gradilista u resursima: ' + hit.join(', '));
+  });
+
+
   /* ---- T10 sloj cuvanja (Supabase mock) ----
      Konstante SUPABASE_URL/KEY su u repou namerno prazne; boot({supabase:true})
      ih privremeno popuni i podmetne mock klijenta. */
