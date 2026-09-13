@@ -788,6 +788,10 @@ function isDirector(){ return ROLE==='all'; }
    POMOĆNE
    ============================================================ */
 const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+/* Obrnuto od esc(). DATA cuva tekst HTML-escapovan (CLAUDE.md pravilo 3), pa svaki
+   izlaz koji NIJE HTML — CSV, telo mejla, ime fajla — mora proci kroz unesc(),
+   inace korisnik dobije "Petrovic &amp; Sinovi" umesto "Petrovic & Sinovi". */
+const unesc=v=>String(v??'').replace(/&#96;/g,'`').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&gt;/g,'>').replace(/&lt;/g,'<').replace(/&amp;/g,'&');
 const fmtEur = n => '€' + Math.round(n).toLocaleString('sr-RS');
 const fmtEurK = n => n>=1000000 ? '€'+(n/1000000).toFixed(2).replace('.',',')+'M' : '€'+Math.round(n/1000)+'k';
 const initials = ime => ime.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
@@ -1909,7 +1913,7 @@ function savePredmerImport(grId){
     const poz=esc(c[0]); if(!poz) return;
     const kol=+String(c[2]||'1').replace(/\./g,'').replace(',','.')||+String(c[2]||'1').replace(',','.')||1;
     const cena=+String(c[3]||'0').replace(',','.')||0;
-    DATA.predmer.push({ id:'pm'+(ts+n), gr:grId, poz, jm:esc(c[1]||'kom'), kol:+String(c[2]||'1').replace(',','.')||1, cena, izv:0, zaduzen:null });
+    DATA.predmer.push({ id:'pm'+(ts+n), gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null });
     n++;
   });
   if(!n){ alert('Nijedna pozicija nije prepoznata — proveri da su kolone razdvojene tabom ili tačka-zarezom.'); return; }
@@ -1919,12 +1923,12 @@ function izvozPredmer(grId){
   if(!isDirector()) return;
   const g=grById[grId]; const list=predmerZa(grId);
   const head=['Pozicija','JM','Ugovorena kol.','Jed. cena EUR','Izvedeno','Izvedena vrednost EUR','Preostalo kol.'];
-  const rows=list.map(x=>[x.poz.replace(/;/g,','),x.jm,x.kol,x.cena,(x.izv||0),Math.round(Math.min(x.izv||0,x.kol)*x.cena*100)/100,Math.max(0,x.kol-(x.izv||0))]);
+  const rows=list.map(x=>[unesc(x.poz).replace(/;/g,','),unesc(x.jm),x.kol,x.cena,(x.izv||0),Math.round(Math.min(x.izv||0,x.kol)*x.cena*100)/100,Math.max(0,x.kol-(x.izv||0))]);
   const csv=[head.join(';'),...rows.map(r=>r.join(';'))].join('\n');
   try{
     const a=document.createElement('a');
     a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-    a.download='izvedene-kolicine-'+(g?g.naziv.replace(/[^\w]+/g,'-'):grId)+'.csv';
+    a.download='izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\w]+/g,'-'):grId)+'.csv';
     document.body.appendChild&&document.body.appendChild(a); a.click&&a.click(); a.remove&&a.remove();
   }catch(err){}
 }
@@ -2169,20 +2173,20 @@ function autorIme(n){ if(n.autor==='direkcija') return 'Direkcija'; const z=zapB
 function narudzbaMailBody(n){
   const g=grById[n.gr], z=zapById[n.autor];
   const lines=['Trebovanje materijala','',
-    'Gradili\u0161te: '+(g?g.naziv+' ('+g.lok+')':'\u2014'),
-    'Naru\u010dio: '+(n.autor==='direkcija'?'Direkcija':(z?z.ime+' \u00b7 '+z.tel:'\u2014')),
+    'Gradili\u0161te: '+(g?unesc(g.naziv)+' ('+unesc(g.lok)+')':'\u2014'),
+    'Naru\u010dio: '+(n.autor==='direkcija'?'Direkcija':(z?unesc(z.ime)+' \u00b7 '+unesc(z.tel):'\u2014')),
     'Datum trebovanja: '+fmtDate(n.datum),
     'Potrebno na gradili\u0161tu do: '+fmtDate(n.rok),'',
     'STAVKE:'];
-  (n.stavke||[]).forEach((st,i)=>lines.push((i+1)+'. '+st.naziv+' \u2014 '+st.kolicina+' '+st.jm));
-  if(n.napomena) lines.push('','Napomena: '+n.napomena);
+  (n.stavke||[]).forEach((st,i)=>lines.push((i+1)+'. '+unesc(st.naziv)+' \u2014 '+unesc(st.kolicina)+' '+unesc(st.jm)));
+  if(n.napomena) lines.push('','Napomena: '+unesc(n.napomena));
   lines.push('','\u2014 Poslato iz GradnjaOS');
   return lines.join('\n');
 }
 function posaljiMejlNabavci(id){
   const n=(DATA.narudzbe||[]).find(x=>x.id===id); if(!n) return;
   const g=grById[n.gr];
-  const subject='Trebovanje materijala \u2014 '+(g?g.naziv:'')+' \u2014 '+fmtDate(n.datum);
+  const subject='Trebovanje materijala \u2014 '+(g?unesc(g.naziv):'')+' \u2014 '+fmtDate(n.datum);
   const url='mailto:'+encodeURIComponent(NABAVKA_EMAIL)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(narudzbaMailBody(n));
   try{ window.open(url,'_self'); }catch(e){}
 }

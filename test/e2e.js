@@ -1,0 +1,433 @@
+'use strict';
+/* ============================================================
+   GradnjaOS — e2e regresija (bez test framework-a, namerno)
+   Pokretanje:  node test/e2e.js
+   Izlaz: 0 = sve prošlo, 1 = bar jedan pad.
+
+   Pokriva (CLAUDE.md "Testiranje"):
+     T1  sintaksa: new Function(script)
+     T2  boot: app se podigne bez exceptiona (režim 'memorija')
+     T3  pogledi × uloge × moduli — bez exceptiona
+     T4  th==td simetrija tabela (lekcija iz lessons.md)
+     T5  role-guardovi: mutacija kao rukovodilac ne menja DATA
+     T6  finansijska izolacija: rukovodilac ne vidi cene/marže/naplatu
+     T7  esc() — XSS payload u podacima ne izlazi kao živ HTML
+     T8  integritet: TABLES == DEMO ključevi, normalize kompletan
+   ============================================================ */
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+const { makeGlobals } = require('./dom-stub');
+
+const ROOT = path.join(__dirname, '..');
+const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+
+/* ---------- infrastruktura za prijavu rezultata ---------- */
+let pass = 0, fail = 0;
+const failures = [];
+function ok(name){ pass++; process.stdout.write('.'); }
+function bad(name, detail){
+  fail++; process.stdout.write('X');
+  failures.push({ name, detail: String(detail).split('\n').slice(0, 6).join('\n') });
+}
+function check(name, fn){
+  try { const r = fn(); if (r === false) bad(name, 'vratio false'); else ok(name); }
+  catch (e) { bad(name, e && e.stack ? e.stack : e); }
+}
+function section(t){ process.stdout.write('\n' + t.padEnd(46, ' ') + ' '); }
+
+/* ---------- izvlačenje <script> bloka ---------- */
+function extractScript(html){
+  const m = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)];
+  if (!m.length) throw new Error('nije nađen inline <script> blok');
+  return m.map(x => x[1]).join('\n;\n');
+}
+const SCRIPT = extractScript(HTML);
+
+/* ---------- podizanje app-a u vm kontekstu ---------- */
+async function boot(opts = {}){
+  const g = makeGlobals(opts);
+  const ctx = vm.createContext(g);
+  vm.runInContext(SCRIPT, ctx, { filename: 'index.html<script>', displayErrors: true });
+  // pusti async IIFE (loadState -> normalizeData -> render) da se izvrši
+  for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+  return {
+    ctx,
+    g,
+    /** izvrši izraz u ISTOM kontekstu (vidi top-level let/const app-a) */
+    run: (code) => vm.runInContext(code, ctx, { filename: 'e2e-eval' }),
+  };
+}
+
+/* ---------- parser tabela: broji kolone uz colspan ---------- */
+function colCount(rowHtml, tagRe){
+  let n = 0;
+  for (const cell of rowHtml.matchAll(tagRe)) {
+    const attrs = cell[1] || '';
+    const cs = /colspan\s*=\s*["']?(\d+)/i.exec(attrs);
+    n += cs ? parseInt(cs[1], 10) : 1;
+  }
+  return n;
+}
+/** Vrati listu nesimetričnih tabela: {headCols, bodyCols, rowIndex}. */
+function tableAsymmetry(html){
+  const problems = [];
+  const tables = html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi);
+  let ti = 0;
+  for (const t of tables) {
+    ti++;
+    const inner = t[1];
+    const rows = [...inner.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(r => r[1]);
+    if (!rows.length) continue;
+    // prvi red koji ima <th> je zaglavlje
+    const headIdx = rows.findIndex(r => /<th\b/i.test(r));
+    if (headIdx === -1) continue;
+    const headCols = colCount(rows[headIdx], /<th\b([^>]*)>/gi);
+    rows.forEach((r, i) => {
+      if (i === headIdx) return;
+      if (!/<td\b/i.test(r)) return;              // npr. dodatni th red
+      const bodyCols = colCount(r, /<td\b([^>]*)>/gi);
+      if (bodyCols !== headCols) {
+        problems.push({ table: ti, rowIndex: i, headCols, bodyCols, snippet: r.replace(/\s+/g, ' ').slice(0, 120) });
+      }
+    });
+  }
+  return problems;
+}
+
+/* ---------- matrica: uloge × moduli × pogledi ---------- */
+const VIEWS = ['dash','sites','clients','emps','time','tasks','diary','pay','nabavka','subs','resursi','magacin'];
+const MODULI = [
+  { modul: 'sve',           podtip: 'sve' },
+  { modul: 'projektovanje', podtip: 'sve' },
+  { modul: 'izvodjenje',    podtip: 'sve' },
+  { modul: 'izvodjenje',    podtip: 'visokogradnja' },
+  { modul: 'izvodjenje',    podtip: 'niskogradnja' },
+];
+
+/* ---------- funkcije koje MORAJU imati role-guard ---------- */
+/* [ime, pozivArgumenti] — poziv se radi kao rukovodilac; DATA se ne sme promeniti */
+const MUTATORS = [
+  ['saveSit', ''], ['markPaid', "'s1'"], ['saveEmp', ''], ['saveClient', ''],
+  ['saveSite', ''], ['saveSub', ''], ['saveNarudzba', ''], ['saveTrosak', "'g1'"],
+  ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
+  ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
+  ['saveTask', ''], ['saveDiary', ''],
+];
+
+/* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
+const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed. cena', 'Jedinična cena', 'Budžet'];
+
+(async function main(){
+  console.log('GradnjaOS e2e — ' + new Date().toISOString().slice(0, 19).replace('T', ' '));
+  console.log('index.html: ' + HTML.length + ' bajtova, script: ' + SCRIPT.length + ' bajtova\n');
+
+  /* ---- T1 sintaksa ---- */
+  section('T1 sintaksa');
+  check('new Function(script)', () => { new Function(SCRIPT); });
+
+  /* ---- T2 boot ---- */
+  section('T2 boot (režim memorija)');
+  let app;
+  try {
+    app = await boot();
+    ok('boot');
+    check('mode === memorija', () => app.run('mode') === 'memorija');
+    check('DATA.gradilista popunjen', () => app.run('DATA.gradilista.length') > 0);
+    check('#view ima sadržaj', () => app.g.document.getElementById('view').innerHTML.length > 500);
+    check('#nav ima dugmad', () => app.g.document.getElementById('nav').innerHTML.includes('<button'));
+    check('bez alert() pri startu', () => app.g._calls.alert.length === 0);
+  } catch (e) {
+    bad('boot', e && e.stack ? e.stack : e);
+    report(); return;
+  }
+
+  /* ---- T8 integritet podataka (rano, jer diktira ostalo) ---- */
+  section('T8 integritet TABLES/DEMO/normalize');
+  check('TABLES pokriva sve DEMO ključeve', () => {
+    const tables = app.run('TABLES');
+    const demoKeys = app.run('Object.keys(DEMO)');
+    const missing = demoKeys.filter(k => !tables.includes(k));
+    if (missing.length) throw new Error('DEMO ključevi van TABLES: ' + missing.join(', '));
+  });
+  check('svaki TABLES ključ postoji u DATA', () => {
+    const missing = app.run('TABLES.filter(t=>!Array.isArray(DATA[t]))');
+    if (missing.length) throw new Error('DATA nema niz za: ' + missing.join(', '));
+  });
+  check('normalize: svi zaposleni imaju grs[] i bivsi[]', () =>
+    app.run('DATA.zaposleni.every(z=>Array.isArray(z.grs)&&Array.isArray(z.bivsi)&&z.gr===undefined)'));
+  check('normalize: svako gradilište ima modul i adm', () =>
+    app.run("DATA.gradilista.every(g=>g.modul&&typeof g.adm==='object'&&g.adm!==null)"));
+  check('normalize je idempotentan', () => {
+    const a = app.run('JSON.stringify(DATA)');
+    app.run('normalizeData()');
+    const b = app.run('JSON.stringify(DATA)');
+    if (a !== b) throw new Error('drugi normalizeData() menja DATA');
+  });
+  check('ID-evi jedinstveni po tabeli', () => {
+    const dup = app.run(`(()=>{const out=[];for(const t of TABLES){const ids=(DATA[t]||[]).map(r=>r.id);
+      const s=new Set(ids); if(s.size!==ids.length) out.push(t);} return out;})()`);
+    if (dup.length) throw new Error('duplikati ID-eva u: ' + dup.join(', '));
+  });
+  check('strane reference postoje (zadaci/dnevnik/situacije -> gradiliste)', () => {
+    const broken = app.run(`(()=>{const gid=new Set(DATA.gradilista.map(g=>g.id)); const out=[];
+      for(const t of ['zadaci','dnevnik','situacije','narudzbe','troskovi_st','predmer']){
+        (DATA[t]||[]).forEach(r=>{ if(r.gr && !gid.has(r.gr)) out.push(t+':'+r.id); });
+      } return out;})()`);
+    if (broken.length) throw new Error('visece reference: ' + broken.join(', '));
+  });
+
+  /* ---- T3 + T4 pogledi × uloge × moduli ---- */
+  section('T3/T4 pogledi × uloge × moduli');
+  const roles = ['all', ...app.run('DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)')];
+  let combos = 0;
+  const asymm = [];
+  for (const role of roles) {
+    for (const m of MODULI) {
+      app.run(`ROLE=${JSON.stringify(role)}; MODUL=${JSON.stringify(m.modul)}; PODTIP=${JSON.stringify(m.podtip)};`);
+      // tabovi vidljivi ovoj ulozi
+      const visible = app.run('tabs().map(t=>t.id)');
+      for (const v of VIEWS) {
+        if (!visible.includes(v)) continue;      // tab nije ponuđen ovoj ulozi
+        combos++;
+        const label = `${v} [${role}/${m.modul}${m.podtip !== 'sve' ? '/' + m.podtip : ''}]`;
+        let html = null;
+        try {
+          app.run(`current=${JSON.stringify(v)}; renderNav(); render();`);
+          html = app.g.document.getElementById('view').innerHTML;
+          if (typeof html !== 'string' || !html.length) throw new Error('prazan render');
+          ok(label);
+        } catch (e) { bad(label, e && e.stack ? e.stack : e); continue; }
+        const probs = tableAsymmetry(html);
+        if (probs.length) asymm.push({ label, probs: probs.slice(0, 3) });
+      }
+    }
+  }
+  check(`th==td simetrija (${combos} kombinacija)`, () => {
+    if (asymm.length) {
+      throw new Error(asymm.map(a =>
+        a.label + ' -> ' + a.probs.map(p => `tabela#${p.table} red#${p.rowIndex}: th=${p.headCols} td=${p.bodyCols}`).join('; ')
+      ).join('\n'));
+    }
+  });
+
+  /* ---- detaljni pogledi (stranica zaposlenog, predmer) ---- */
+  section('T3b detaljni pogledi');
+  app.run("ROLE='all'; MODUL='sve'; PODTIP='sve';");
+  check('viewEmpPage za svakog zaposlenog', () => {
+    const bad2 = app.run(`(()=>{const out=[]; const prev=empPageId;
+      DATA.zaposleni.forEach(z=>{ try{ empPageId=z.id; const h=viewEmpPage(); if(!h) out.push(z.id+':prazno'); }
+      catch(e){ out.push(z.id+':'+e.message); } }); empPageId=prev; return out;})()`);
+    if (bad2.length) throw new Error(bad2.join('\n'));
+  });
+  check('viewPredmer za svako gradilište', () => {
+    const bad2 = app.run(`(()=>{const out=[]; const prev=PRED_ID;
+      DATA.gradilista.forEach(g=>{ try{ PRED_ID=g.id; const h=viewPredmer(); if(!h) out.push(g.id+':prazno'); }
+      catch(e){ out.push(g.id+':'+e.message); } }); PRED_ID=prev; return out;})()`);
+    if (bad2.length) throw new Error(bad2.join('\n'));
+  });
+  check('openSite (drawer) za svako gradilište × obe uloge', () => {
+    const bad2 = app.run(`(()=>{const out=[]; const pr=ROLE;
+      const rukovodioci=DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id);
+      ['all',...rukovodioci].forEach(r=>{ ROLE=r;
+        DATA.gradilista.forEach(g=>{ try{ openSite(g.id); }catch(e){ out.push(r+'/'+g.id+':'+e.message); } });
+      }); ROLE=pr; return out;})()`);
+    if (bad2.length) throw new Error(bad2.join('\n'));
+  });
+  check('izveštaji: openIzvestaj / openPresek / openKumulativ', () => {
+    const bad2 = app.run(`(()=>{const out=[]; const pr=ROLE; ROLE='all';
+      DATA.gradilista.forEach(g=>{
+        ['openIzvestaj','openPresek','openKumulativ'].forEach(fn=>{
+          try{ this[fn]?this[fn](g.id):eval(fn+'(g.id)'); }catch(e){ out.push(fn+'/'+g.id+':'+e.message); }
+        });
+      }); ROLE=pr; return out;})()`);
+    if (bad2.length) throw new Error(bad2.join('\n'));
+  });
+
+  /* ---- T5 role-guardovi ---- */
+  section('T5 role-guardovi (kao rukovodilac)');
+  const ruk = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+  if (!ruk) bad('role-guard setup', 'nema rukovodioca u DEMO podacima');
+  else {
+    for (const [fn, args] of MUTATORS) {
+      check(`guard: ${fn}()`, () => {
+        const exists = app.run(`typeof ${fn}==='function'`);
+        if (!exists) throw new Error('funkcija ne postoji');
+        const before = app.run(`(ROLE=${JSON.stringify(ruk)}, JSON.stringify(DATA))`);
+        let threw = null;
+        try { app.run(`${fn}(${args});`); } catch (e) { threw = e.message; }
+        const after = app.run('JSON.stringify(DATA)');
+        app.run("ROLE='all';");
+        if (before !== after) throw new Error('DATA je promenjen bez prava' + (threw ? ' (uz throw: ' + threw + ')' : ''));
+        if (threw) throw new Error('guard ne postoji ili je posle DOM pristupa — baca: ' + threw);
+      });
+    }
+  }
+
+  /* ---- T6 finansijska izolacija ---- */
+  section('T6 finansijska izolacija');
+  check('rukovodilac nema tabove Klijenti/Naplata', () => {
+    const ids = app.run(`(ROLE=${JSON.stringify(ruk)}, MODUL='sve', PODTIP='sve', tabs().map(t=>t.id))`);
+    app.run("ROLE='all';");
+    const leak = ['clients', 'pay'].filter(x => ids.includes(x));
+    if (leak.length) throw new Error('vidljivi tabovi: ' + leak.join(', '));
+  });
+  check('rukovodilac: nijedan pogled ne prikazuje finansije', () => {
+    const leaks = [];
+    app.run(`ROLE=${JSON.stringify(ruk)}; MODUL='sve'; PODTIP='sve';`);
+    const visible = app.run('tabs().map(t=>t.id)');
+    for (const v of visible) {
+      if (!VIEWS.includes(v)) continue;
+      app.run(`current=${JSON.stringify(v)}; render();`);
+      const html = app.g.document.getElementById('view').innerHTML;
+      const hit = FIN_TERMS.filter(t => html.includes(t));
+      if (hit.length) leaks.push(`${v}: ${hit.join(', ')}`);
+    }
+    app.run("ROLE='all'; current='dash'; render();");
+    if (leaks.length) throw new Error(leaks.join('\n'));
+  });
+  check('canFinance() false za rukovodioca', () =>
+    app.run(`(ROLE=${JSON.stringify(ruk)}, (()=>{const r=canFinance(); ROLE='all'; return r===false;})())`));
+
+  /* ---- T7 esc() / XSS kroz STVARNI put upisa ----
+     CLAUDE.md pravilo 3 tvrdi: sve što uđe u DATA prošlo je kroz esc().
+     Zato test ide kroz forme (kao korisnik), a ne ubacivanjem u DATA direktno. */
+  section('T7 esc() / XSS (kroz forme)');
+  const PAYLOAD = '<img src=x onerror=xss()>';
+
+  check('esc() escapuje < > & " \' `', () => {
+    const out = app.run(`esc('<img src=x onerror=alert(1)> & "q" \\'a\\' \\\`t\\\`')`);
+    for (const ch of ['<', '>']) if (out.includes(ch)) throw new Error('nije escapovano: ' + ch + ' -> ' + out);
+    if (out.includes('"') || out.includes("'") || out.includes('`')) throw new Error('navodnici nisu escapovani -> ' + out);
+  });
+  check('unesc(esc(x)) === x (round-trip)', () => {
+    const s = 'Petrović & Sinovi <d.o.o.> "AB" \'x\' `y`';
+    const r = app.run(`unesc(esc(${JSON.stringify(s)}))`);
+    if (r !== s) throw new Error(JSON.stringify(r) + ' !== ' + JSON.stringify(s));
+  });
+
+  /* Popuni sva polja otvorene forme: tekst -> payload, broj/datum/select -> validna vrednost. */
+  function fillOpenForm(payload){
+    const html = app.g.document.getElementById('modal').innerHTML || '';
+    const today = app.run('todayStr()');
+    const seen = [];
+    for (const m of html.matchAll(/<(input|textarea|select)\b([^>]*)>/gi)) {
+      const [ , tag, attrs ] = m;
+      const idm = /\bid=["']?([A-Za-z0-9_]+)/.exec(attrs);
+      if (!idm) continue;
+      const id = idm[1];
+      const type = (/\btype=["']?([a-z]+)/i.exec(attrs) || [, 'text'])[1].toLowerCase();
+      const el = app.g.document.getElementById(id);
+      if (tag.toLowerCase() === 'select') {
+        // uzmi prvu <option value="..."> posle ovog <select>
+        const rest = html.slice(m.index);
+        const om = /<option[^>]*\bvalue=["']([^"']*)["']/i.exec(rest.slice(0, rest.indexOf('</select>') + 9));
+        el.value = om ? om[1] : '';
+      } else if (type === 'number') { el.value = '5'; }
+      else if (type === 'date')     { el.value = today; }
+      else if (type === 'checkbox') { el.checked = false; }
+      else { el.value = payload; }
+      seen.push(id);
+    }
+    return seen;
+  }
+
+  /* [labela, otvaranje forme, poziv snimanja, tabela u DATA] */
+  const FORME = [
+    ['klijent',    "formClient()",                 "saveClient()",             'clijenti'],
+    ['zaposleni',  "formEmp()",                    "saveEmp()",                'zaposleni'],
+    ['gradiliste', "formSite()",                   "saveSite()",               'gradilista'],
+    ['zadatak',    "formTask()",                   "saveTask()",               'zadaci'],
+    ['dnevnik',    "formDiary()",                  "saveDiary()",              'dnevnik'],
+    ['situacija',  "formSit()",                    "saveSit()",                'situacije'],
+    ['podizvodjac',"formSub()",                    "saveSub()",                'podizvodjaci'],
+    ['resurs',     "formResurs(null)",             "saveResurs(null)",         'resursi'],
+    ['artikal',    "formArtikal()",                "saveArtikal()",            'magacin'],
+    ['trosak',     "formTrosak(DATA.gradilista[0].id)", "saveTrosak(DATA.gradilista[0].id)", 'troskovi_st'],
+    ['predmer',    "formPredmerRed(DATA.gradilista[0].id)", "savePredmerRed(DATA.gradilista[0].id)", 'predmer'],
+  ];
+
+  for (const [label, openFn, saveFn, tabela] of FORME) {
+    check(`upis "${label}": payload završi escapovan u DATA`, () => {
+      app.run("ROLE='all'; MODUL='sve'; PODTIP='sve';");
+      const before = app.run(`DATA.${tabela}.length`);
+      app.run(openFn);
+      const fields = fillOpenForm(PAYLOAD);
+      if (!fields.length) throw new Error('forma nema nijedno polje (modal prazan?)');
+      app.run(saveFn);
+      const after = app.run(`DATA.${tabela}.length`);
+      if (after === before) throw new Error('zapis nije dodat — validacija odbila (polja: ' + fields.join(', ') + ')');
+      const rec = app.run(`JSON.stringify(DATA.${tabela}[DATA.${tabela}.length-1])`);
+      if (rec.includes('<img'))
+        throw new Error('SIROV payload u DATA: ' + rec.slice(0, 200));
+      if (!rec.includes('&lt;img'))
+        throw new Error('payload nije ni stigao do zapisa: ' + rec.slice(0, 200));
+    });
+  }
+
+  check('nijedan pogled ne renderuje živ payload posle svih upisa', () => {
+    const dirty = [];
+    app.run("ROLE='all'; MODUL='sve'; PODTIP='sve'; rebuildMaps();");
+    for (const v of VIEWS) {
+      try {
+        app.run(`current=${JSON.stringify(v)}; render();`);
+        if (app.g.document.getElementById('view').innerHTML.includes('<img src=x onerror=')) dirty.push(v);
+      } catch (e) { dirty.push(v + '(throw:' + e.message + ')'); }
+    }
+    app.run("current='dash'; render();");
+    if (dirty.length) throw new Error('živ payload u: ' + dirty.join(', '));
+  });
+
+  check('uvoz predmera iz Excela escapuje pozicije', () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.g.document.getElementById('f_pm_paste').value = `${PAYLOAD}\tm3\t10\t100`;
+    app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
+    const rec = app.run('JSON.stringify(DATA.predmer[DATA.predmer.length-1])');
+    if (rec.includes('<img')) throw new Error('sirov payload iz uvoza: ' + rec.slice(0, 200));
+  });
+
+  /* ---- T9 ne-HTML izlazi moraju biti RAW (ne &amp;) ---- */
+  section('T9 ne-HTML izlazi (CSV / mailto)');
+  check('CSV izvoz nosi & i < kao prave znake', () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`(()=>{ DATA.predmer.push({id:'pm_t9', gr:${JSON.stringify(gid)}, poz:esc('Beton & čelik <C25>'), jm:esc('m³'), kol:2, cena:100, izv:1, zaduzen:null}); })()`);
+    app.run(`ROLE='all'; izvozPredmer(${JSON.stringify(gid)});`);
+    const a = app.g.document._created.filter(c => c.tagName === 'A' && String(c.href).includes('text/csv')).pop();
+    if (!a) throw new Error('CSV link nije napravljen');
+    const csv = decodeURIComponent(String(a.href).split(',').slice(1).join(','));
+    if (csv.includes('&amp;') || csv.includes('&lt;'))
+      throw new Error('CSV sadrži HTML entitete: ' + csv.split('\n').find(l => l.includes('Beton')));
+    if (!csv.includes('Beton & čelik <C25>'))
+      throw new Error('tekst nije ispravno dekodiran: ' + csv.split('\n').find(l => l.includes('Beton')));
+  });
+  check('telo mejla trebovanja nosi & kao pravi znak', () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`(()=>{ DATA.narudzbe.push({id:'n_t9', gr:${JSON.stringify(gid)}, autor:'direkcija', datum:todayStr(), rok:todayStr(), status:'poslato',
+      napomena:esc('hitno & obavezno'), stavke:[{naziv:esc('Cement & kreč'), kolicina:'10', jm:esc('m³')}]}); })()`);
+    const body = app.run("narudzbaMailBody(DATA.narudzbe.find(x=>x.id==='n_t9'))");
+    if (body.includes('&amp;')) throw new Error('telo mejla sadrži &amp;:\n' + body);
+    if (!body.includes('Cement & kreč')) throw new Error('stavka nije dekodirana:\n' + body);
+  });
+  check('uvoz predmera: "1.250" -> 1250 (hiljade iz Excela)', () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.g.document.getElementById('f_pm_paste').value = 'Iskop temelja\tm3\t1.250\t22';
+    app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
+    const kol = app.run('DATA.predmer[DATA.predmer.length-1].kol');
+    if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
+  });
+
+
+  report();
+})().catch(e => { console.error('\nHARNESS PUKAO:\n', e); process.exit(2); });
+
+function report(){
+  console.log('\n\n' + '='.repeat(60));
+  if (failures.length) {
+    console.log('PADOVI (' + failures.length + '):\n');
+    failures.forEach((f, i) => console.log(`${i + 1}. ${f.name}\n   ${f.detail.replace(/\n/g, '\n   ')}\n`));
+  }
+  console.log(`Prošlo: ${pass}   Palo: ${fail}`);
+  console.log('='.repeat(60));
+  process.exit(fail ? 1 : 0);
+}
