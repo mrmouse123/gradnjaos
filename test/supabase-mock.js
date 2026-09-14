@@ -99,6 +99,16 @@ function makeSupabaseMock(seed = {}, faults = {}){
   const log = [];
   const client = {
     from(table){ return new Query(db, table, null, faults, log); },
+    functions: {
+      /* Simulira supa.functions.invoke(name, {body}). Podrazumevano: nije deployed
+         (404-nalik greška) — isto ponašanje kao pre nego sto Jovan pokrene deploy. */
+      async invoke(name, opts){
+        log.push({ op: 'functions.invoke', name, body: opts && opts.body });
+        if (faults.functionsFail) return { data: null, error: { message: faults.functionsFail } };
+        if (!faults.functionsDeployed) return { data: null, error: { message: `Function not found: ${name}` } };
+        return { data: { ok: true, id: 'mock-' + Date.now() }, error: null };
+      },
+    },
   };
   return {
     createClient: () => client,

@@ -2359,12 +2359,25 @@ function narudzbaMailBody(n){
   lines.push('','\u2014 Poslato iz GradnjaOS');
   return lines.join('\n');
 }
-function posaljiMejlNabavci(id){
+async function posaljiMejlNabavci(id){
   const n=(DATA.narudzbe||[]).find(x=>x.id===id); if(!n) return;
   if(!smemNa(n.gr)) return;
   const g=grById[n.gr];
   const subject='Trebovanje materijala \u2014 '+(g?unesc(g.naziv):'')+' \u2014 '+fmtDate(n.datum);
-  const url='mailto:'+encodeURIComponent(NABAVKA_EMAIL)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(narudzbaMailBody(n));
+  const telo=narudzbaMailBody(n);
+  /* Pravo slanje preko Edge Function-a (supabase/functions/posalji-trebovanje),
+     samo kad je Supabase povezan. Deploy ceka Jovanovo "da" (CLAUDE.md). Dok
+     funkcija nije deploy-ovana (ili RESEND_API_KEY nije podesen), invoke()
+     vraca gresku i padamo nazad na mailto — bez ikakve vidljive razlike za
+     korisnika osim sto (kad proradi) ne treba klik u mail klijentu. */
+  if(mode==='supabase' && supa && supa.functions){
+    try{
+      const {error}=await supa.functions.invoke('posalji-trebovanje', { body:{ to:NABAVKA_EMAIL, subject, body:telo } });
+      if(error) throw new Error(error.message||JSON.stringify(error));
+      return;
+    }catch(e){ console.error('Edge function posalji-trebovanje (fallback na mailto):', e); }
+  }
+  const url='mailto:'+encodeURIComponent(NABAVKA_EMAIL)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(telo);
   try{ window.open(url,'_self'); }catch(e){}
 }
 function viewNabavka(){

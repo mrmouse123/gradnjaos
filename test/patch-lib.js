@@ -53,7 +53,7 @@ class Patcher {
   /** Popiši sve top-level deklaracije — lekcija 1: brisanje bloka ne sme pojesti deklaraciju. */
   declarations(src = this.src){
     const s = src.slice(src.indexOf('<script>'), src.indexOf('</script>'));
-    return new Set([...s.matchAll(/^(?:\s*)(?:function|let|const|var)\s+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
+    return new Set([...s.matchAll(/^(?:\s*)(?:async\s+function|function|let|const|var)\s+([A-Za-z_$][\w$]*)/gm)].map(m => m[1]));
   }
   assertNoLostDeclarations(namernoUklonjene = []){
     const before = this.declarations(this.orig), after = this.declarations(this.src);

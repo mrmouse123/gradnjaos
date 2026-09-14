@@ -433,6 +433,68 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T15 F2: Edge Function za trebovanje (sa fallback na mailto) ---- */
+  section('T15 edge function trebovanja');
+
+  await acheck('bez Supabase: trebovanje ide direktno na mailto (bez mreznog poziva)', async () => {
+    const a = await boot();      // mode = 'memorija', nema supa uopste
+    const nid = a.run('DATA.narudzbe[0]?.id');
+    if (!nid) return;
+    const preOpen = a.g._calls.open.length;
+    await a.run(`ROLE='all'; posaljiMejlNabavci(${JSON.stringify(nid)});`);
+    if (a.g._calls.open.length !== preOpen + 1) throw new Error('mailto nije otvoren van Supabase rezima');
+    if (!/^mailto:/.test(a.g._calls.open[a.g._calls.open.length - 1])) throw new Error('otvoren URL nije mailto:');
+  });
+
+  await acheck('Supabase povezan ali funkcija NIJE deploy-ovana: pada na mailto', async () => {
+    const a = await boot({ supabase: true, seed: {} }); // faults.functionsDeployed nije postavljen -> "not found"
+    const nid = a.run('DATA.narudzbe[0]?.id');
+    if (!nid) return;
+    const preOpen = a.g._calls.open.length;
+    await a.run(`ROLE='all'; posaljiMejlNabavci(${JSON.stringify(nid)});`);
+    const pozivi = a.g.__mock._log.filter(l => l.op === 'functions.invoke');
+    if (!pozivi.length) throw new Error('invoke() nije ni pokusan');
+    if (a.g._calls.open.length !== preOpen + 1) throw new Error('nije palo na mailto kad funkcija ne postoji');
+  });
+
+  await acheck('Supabase + funkcija deploy-ovana: salje se pravi mejl, BEZ mailto', async () => {
+    const a = await boot({ supabase: true, seed: {}, faults: { functionsDeployed: true } });
+    const n = a.run('DATA.narudzbe[0]');
+    if (!n) return;
+    const preOpen = a.g._calls.open.length;
+    await a.run(`ROLE='all'; posaljiMejlNabavci(${JSON.stringify(n.id)});`);
+    const poziv = a.g.__mock._log.filter(l => l.op === 'functions.invoke').pop();
+    if (!poziv) throw new Error('invoke() nije pozvan');
+    if (poziv.name !== 'posalji-trebovanje') throw new Error('pogresno ime funkcije: ' + poziv.name);
+    if (!poziv.body || !poziv.body.to || !poziv.body.subject || !poziv.body.body)
+      throw new Error('nepotpun payload: ' + JSON.stringify(poziv.body));
+    if (poziv.body.to !== NABAVKA_EMAIL_TEST(a)) throw new Error('to != NABAVKA_EMAIL: ' + poziv.body.to);
+    if (a.g._calls.open.length !== preOpen) throw new Error('mailto otvoren iako je mejl uspesno poslat preko funkcije');
+  });
+  function NABAVKA_EMAIL_TEST(a){ return a.run('NABAVKA_EMAIL'); }
+
+  await acheck('mrezna greska u funkciji i dalje pada na mailto (korisnik nikad ne ostaje bez opcije)', async () => {
+    const a = await boot({ supabase: true, seed: {}, faults: { functionsDeployed: true, functionsFail: 'mreza pukla' } });
+    const nid = a.run('DATA.narudzbe[0]?.id');
+    if (!nid) return;
+    const preOpen = a.g._calls.open.length;
+    await a.run(`ROLE='all'; posaljiMejlNabavci(${JSON.stringify(nid)});`);
+    if (a.g._calls.open.length !== preOpen + 1) throw new Error('nije palo na mailto posle mrezne greske');
+  });
+
+  await acheck('telo mejla poslato funkciji ne sadrzi HTML entitete (unesc primenjen)', async () => {
+    const a = await boot({ supabase: true, seed: {}, faults: { functionsDeployed: true } });
+    const gid = a.run('DATA.gradilista[0].id');
+    a.run(`(()=>{ DATA.gradilista.find(g=>g.id===${JSON.stringify(gid)}).naziv = esc('Petrović & Sinovi'); rebuildMaps();
+      DATA.narudzbe.push({id:'n_t15', gr:${JSON.stringify(gid)}, autor:'direkcija', datum:todayStr(), rok:todayStr(), status:'poslato',
+        napomena:'', stavke:[{naziv:esc('Cement & krec'), kolicina:'5', jm:'kom'}]}); })()`);
+    await a.run("ROLE='all'; posaljiMejlNabavci('n_t15');");
+    const poziv = a.g.__mock._log.filter(l => l.op === 'functions.invoke').pop();
+    if (poziv.body.subject.includes('&amp;') || poziv.body.body.includes('&amp;'))
+      throw new Error('HTML entiteti u mejlu poslatom pravoj funkciji:\n' + poziv.body.subject + '\n' + poziv.body.body);
+  });
+
+
   /* ---- T14 F3: prilog (faktura PDF/slika) uz stavku troska ---- */
   section('T14 prilog uz trosak');
 
