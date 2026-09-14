@@ -23,3 +23,15 @@ izvrsavanjem kroz pravi put upisa, ne citanjem regexa.
 esc() escapuje samo < > & " ' ` — NE i `=` ili `()`. Zato detektor XSS-a u testu ne sme
 da trazi `onerror=xss()` (to prezivi i escapovano, kao bezopasan tekst) nego neescapovanu
 `<img`. Prva verzija testa je zbog toga prijavila dva lazna pada.
+
+## Lekcija 8 (2026-09-14, F3 prilog uz trosak)
+Test koji broji app.g.document._created mora pamtiti duzinu niza PRE akcije i
+posmatrati samo novododate elemente (.slice(preN)) — _created se akumulira kroz
+CEO test fajl, ne resetuje se po testu. Prvi pokusaj je nasao file input koji je
+napravio PRETHODNI (uspesan) test, pa je "guard blokira rukovodioca" lazno pao.
+
+## Lekcija 9 (2026-09-14, F3 prilog uz trosak)
+Bash -e sa ugnjezdenim template-literal backtick-ovima (JS kod unutar JS koda,
+sa \${...}) je nepouzdano u ovom shell-u — quoting/escaping pravila iz bash i iz
+JS se sudaraju. Za izmenu vec postojeceg test fajla koristiti Edit alat direktno
+(Read pa Edit), ne node -e sa inline stringom, cim string sadrzi backtick+${.

@@ -83,7 +83,8 @@ create table if not exists troskovi_st (
   kat   text,              -- Materijal | Radna snaga | Mehanizacija | Podizvođači | Ostalo
   iznos numeric default 0,
   dobavljac text,
-  fakt text
+  fakt text,
+  prilog jsonb            -- {name, datum, data} — faktura kao PDF/slika, data-URL u pilotu (do Supabase Storage)
 );
 
 create table if not exists podizvodjaci (

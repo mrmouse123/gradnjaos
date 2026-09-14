@@ -433,6 +433,80 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T14 F3: prilog (faktura PDF/slika) uz stavku troska ---- */
+  section('T14 prilog uz trosak');
+
+  function fakeFile(name, sizeBytes, dataUrl) {
+    return {
+      name, size: sizeBytes,
+      _dataUrl: dataUrl || 'data:application/pdf;base64,JVBERi0xLjQK',
+    };
+  }
+  /* simulira klik na uploadTrosakPrilog: napravi <input type=file>, uhvati onchange, "izaberi" fajl */
+  function simulirajUpload(app, trId, file) {
+    app.run(`ROLE='all'; uploadTrosakPrilog(${JSON.stringify(trId)});`);
+    const inp = app.g.document._created.filter(c => c.tagName === 'INPUT' && c.type === 'file').pop();
+    if (!inp) throw new Error('input[type=file] nije kreiran');
+    inp.files = [file];
+    // FileReader stub u dom-stub.js cita 'data:,' fiksno — patch je po potrebi
+    inp.onchange({ target: inp });
+  }
+
+  await acheck('upload priloga: file > 2.5MB je odbijen', async () => {
+    const t = app.run('DATA.troskovi_st[0]');
+    const pre = app.run(`DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog`);
+    simulirajUpload(app, t.id, fakeFile('faktura.pdf', 3 * 1024 * 1024));
+    const post = app.run(`DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog`);
+    if (JSON.stringify(post) !== JSON.stringify(pre)) throw new Error('prevelik fajl je ipak prihvacen');
+  });
+
+  await acheck('uploadTrosakPrilog je guardovan (rukovodilac ne moze)', async () => {
+    const t = app.run('DATA.troskovi_st[0]');
+    const ruk4 = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    app.run(`ROLE=${JSON.stringify(ruk4)};`);
+    const preN = app.g.document._created.length;
+    app.run(`uploadTrosakPrilog(${JSON.stringify(t.id)});`);
+    app.run("ROLE='all';");
+    const kreiran = app.g.document._created.slice(preN).some(c => c.tagName === 'INPUT' && c.type === 'file');
+    if (kreiran) throw new Error('rukovodilac je uspeo da otvori file picker za prilog');
+  });
+
+  await acheck('otvoriTrosakPrilog / ukloniTrosakPrilog su guardovani', async () => {
+    const t = app.run('DATA.troskovi_st[0]');
+    app.run(`(()=>{ DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog = {name:'x.pdf', datum:todayStr(), data:'data:application/pdf;base64,AAA='}; })()`);
+    const ruk5 = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    const preOpen = app.g._calls.open.length;
+    app.run(`ROLE=${JSON.stringify(ruk5)}; otvoriTrosakPrilog(${JSON.stringify(t.id)});`);
+    if (app.g._calls.open.length > preOpen) throw new Error('rukovodilac je otvorio prilog uz trosak');
+    app.run(`ukloniTrosakPrilog(${JSON.stringify(t.id)});`);
+    app.run("ROLE='all';");
+    const stillThere = app.run(`!!DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog`);
+    if (!stillThere) throw new Error('rukovodilac je uspeo da obrise prilog');
+    app.run(`delete DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog;`);
+  });
+
+  await acheck('prilog se prikazuje u fioci gradilista', async () => {
+    const t = app.run('DATA.troskovi_st[0]');
+    app.run(`(()=>{ DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog = {name:'racun-t14.pdf', datum:todayStr(), data:'data:application/pdf;base64,AAA='}; })()`);
+    app.run(`ROLE='all'; openSite(${JSON.stringify(t.gr)});`);
+    const drawer = app.g.document.getElementById('drawer').innerHTML;
+    if (!drawer.includes('racun-t14.pdf')) throw new Error('naziv priloga nije prikazan u fioci');
+    app.run(`delete DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog; current='dash'; render();`);
+  });
+
+  await acheck('prilog ne curi HTML kroz naziv fajla (esc na upisu)', async () => {
+    const t = app.run('DATA.troskovi_st[0]');
+    simulirajUpload(app, t.id, fakeFile('<img src=x onerror=xss()>.pdf', 100));
+    const naziv = app.run(`DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog?.name`);
+    app.run(`ROLE='all'; openSite(${JSON.stringify(t.gr)});`);
+    const drawer = app.g.document.getElementById('drawer').innerHTML;
+    app.run("current='dash'; render();");
+    if (naziv && naziv.includes('<img')) throw new Error('sirov payload u nazivu fajla: ' + naziv);
+    if (drawer.includes('<img src=x onerror=')) throw new Error('zivi payload u fioci preko naziva fajla priloga');
+    app.run(`delete DATA.troskovi_st.find(x=>x.id===${JSON.stringify(t.id)}).prilog;`);
+  });
+
+
   /* ---- T13 F1: sabloni faza za Izvodjenje ---- */
   section('T13 sabloni faza (Izvodjenje)');
 

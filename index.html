@@ -2145,6 +2145,41 @@ function saveTrosak(grId){
   saveState(); closeModal(); renderNav(); render(); openSite(grId);
 }
 
+/* ---------- PRILOG UZ TROSAK (faktura kao PDF/slika) ---------- */
+function uploadTrosakPrilog(trId){
+  if(!canFinance()) return;
+  const t=(DATA.troskovi_st||[]).find(x=>x.id===trId); if(!t) return;
+  try{
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='.pdf,.jpg,.jpeg,.png';
+    inp.onchange=e=>{
+      const f=e.target.files&&e.target.files[0]; if(!f) return;
+      if(f.size>2.5*1024*1024){ alert('Dokument je veći od 2.5MB — u pilotu važi taj limit (veći fajlovi stižu uz Supabase Storage).'); return; }
+      const r=new FileReader();
+      r.onload=()=>{ t.prilog={name:esc(f.name),datum:todayStr(),data:r.result}; saveState(); render(); openSite(t.gr); };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }catch(e){}
+}
+function otvoriTrosakPrilog(trId){
+  if(!canFinance()) return;
+  const t=(DATA.troskovi_st||[]).find(x=>x.id===trId); if(!t||!t.prilog||!t.prilog.data) return;
+  try{
+    const parts=String(t.prilog.data).split(',');
+    const bin=atob(parts[1]);
+    const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const mime=(parts[0].match(/data:(.*?);/)||[])[1]||'application/pdf';
+    window.open(URL.createObjectURL(new Blob([arr],{type:mime})),'_blank');
+  }catch(e){}
+}
+function ukloniTrosakPrilog(trId){
+  if(!canFinance()) return;
+  const t=(DATA.troskovi_st||[]).find(x=>x.id===trId); if(!t) return;
+  delete t.prilog; saveState(); render(); openSite(t.gr);
+}
+
 /* ---------- PODIZVODJACI ---------- */
 function viewSubs(){
   const ids=visibleSiteIds();
@@ -2840,7 +2875,7 @@ function openSite(id){
         <div class="dr-kv"><span class="k">Utrošeno do sada</span><span class="v num">${fmtEur(pot)} (${budPct}%)${trSt.length?' · iz '+trSt.length+' stavki':''}</span></div>
         <div class="dr-kv"><span class="k">Naplaćeno</span><span class="v num">${fmtEur(naplSum(g))} (${n}%)</span></div>
         <div class="budget-bar ${budPct>90?'hot':''}"><span style="width:${Math.min(100,budPct)}%"></span></div>
-        ${trSt.length?`<div style="margin-top:12px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:4px">Poslednji troškovi</div>${trSt.slice(-4).reverse().map(t=>`<div class="dr-kv"><span class="k">${fmtDate(t.datum)} · ${t.opis} <span style="color:var(--faint)">· ${t.kat}</span></span><span class="v num">${fmtEur(t.iznos)}</span></div>`).join('')}</div>`:''}
+        ${trSt.length?`<div style="margin-top:12px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:4px">Poslednji troškovi</div>${trSt.slice(-4).reverse().map(t=>`<div class="dr-kv"><span class="k">${fmtDate(t.datum)} · ${t.opis} <span style="color:var(--faint)">· ${t.kat}</span>${t.prilog?`<br><span style="color:var(--blue);font-weight:600;cursor:pointer;font-size:11px" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span> <span style="color:var(--red);cursor:pointer;font-size:11px" onclick="ukloniTrosakPrilog('${t.id}')" title="Ukloni prilog">✕</span>`:`<br><span style="color:var(--blue);cursor:pointer;font-size:11px" onclick="uploadTrosakPrilog('${t.id}')">📎 Dodaj fakturu</span>`}</span><span class="v num">${fmtEur(t.iznos)}</span></div>`).join('')}</div>`:''}
         <button class="btn ghost" style="margin-top:10px;padding:6px 12px;font-size:12px" onclick="formTrosak('${id}')">＋ Dodaj trošak</button>
         ${sitZa(id).length?`<div style="margin-top:12px">${sitZa(id).map(s=>{
           const st=s.status==='placeno'?'<span class="badge b-green">Plaćeno</span>':sitKasni(s)?'<span class="badge b-red">Kasni</span>':'<span class="badge b-amber">Čeka</span>';
