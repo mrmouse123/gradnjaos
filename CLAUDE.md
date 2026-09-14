@@ -8,8 +8,9 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 ## Arhitektura
 - `index.html`: CSS + HTML ljuska + sav JS u jednom <script> bloku
 - Storage adapter (troslojni): Supabase (konstante SUPABASE_URL/SUPABASE_ANON_KEY
-  u bloku "KONFIGURACIJA ZA DEPLOYMENT", trenutno PRAZNE — namerno) →
-  window.storage → memorija. `saveState()` debounce 400ms → `doSave()` (guard
+  u bloku "KONFIGURACIJA ZA DEPLOYMENT" — POVEZANO od 2026-09-14, projekat
+  `gradnjaos` / ref `xqggoxrihitvqaocowlb`, org "jovan.miskovic@think-tech.co's
+  Org", region eu-central-1) → window.storage → memorija. `saveState()` debounce 400ms → `doSave()` (guard
   protiv preklapanja + `saveErr` vidljiv u footeru), flush na pagehide/
   visibilitychange. `pushAll` seed-uje demo pri praznoj bazi (proverava SVE
   tabele, ne samo gradilišta) i ne prekida se na prvoj grešci. Brisanje reda je
@@ -85,14 +86,21 @@ Supabase sync (prazna/puna baza, greške, reset, brisanje), Edge Function
 fallback lanac. Posle SVAKE izmene: `node test/e2e.js` mora vratiti 0.
 
 ## Sledeće (dogovoreno, čeka)
-- [ ] Supabase povezivanje (klijent još u requirements fazi — NE povezivati dok Jovan ne kaže)
+- [x] Supabase povezivanje — GOTOVO 2026-09-14. Novi projekat `gradnjaos`
+      (ref `xqggoxrihitvqaocowlb`, eu-central-1), schema.sql primenjen (svih 13
+      tabela + RLS `pilot_full`), URL/ANON_KEY upisani u index.html, demo
+      podaci zaseejani, round-trip upis proveren, `get_advisors` security: 0
+      nalaza. RLS i dalje `to anon using(true)` — svesni kompromis za pilot
+      (isto stanje kao pre povezivanja, samo sad na pravoj bazi umesto memorije).
 - [ ] Potom: Supabase Auth + RLS po ulogama (user_id + uloga kolone), zamena ROLE simulacije.
       `smemNa(grId)` je već izdvojen kao jedina tačka za pravilo vlasništva —
       RLS policy treba da izrazi isto pravilo na serveru, kod ostaje kao UI guard.
       NAPOMENA: `zaposleni.grs`/`podizvodjaci.grs` (array kolone) se ne mogu
       ograničiti RLS-om po gradilištu — trebaće join tabele ako se ide do kraja.
 - [x] Edge Function za pravo slanje mejla trebovanja — kod gotov
-      (`supabase/functions/posalji-trebovanje/`), čeka deploy + RESEND_API_KEY
+      (`supabase/functions/posalji-trebovanje/`), NIJE deploy-ovana (čeka
+      Jovanovo "da" + RESEND_API_KEY — Supabase projekat sad postoji pa je
+      deploy tehnički moguć u svakom trenutku, `supabase functions deploy`)
 - [ ] .xlsx binarni upload (Supabase Storage) — svesno odloženo, paste-iz-Excela
       (`savePredmerImport`) već pokriva praktičnu potrebu bez dodatne biblioteke
 - [x] Uvoz faktura kao PDF uz stavke troška — gotovo (`uploadTrosakPrilog`,

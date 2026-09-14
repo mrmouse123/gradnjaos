@@ -55,11 +55,14 @@ async function boot(opts = {}){
   const g = makeGlobals(opts);
   let script = SCRIPT;
   if (opts.supabase) {
-    // aktiviraj Supabase granu: konstante su namerno prazne u repou
+    // aktiviraj Supabase granu bez obzira da li su konstante u repou prazne
+    // (pre povezivanja) ili popunjene pravim vrednostima (posle povezivanja) —
+    // testu treba samo da je supa.createClient() pozvan sa NEKIM URL/ključem.
+    const before = script;
     script = script
-      .replace("const SUPABASE_URL = '';", "const SUPABASE_URL = 'https://test.supabase.co';")
-      .replace("const SUPABASE_ANON_KEY = '';", "const SUPABASE_ANON_KEY = 'test-anon-key';");
-    if (script === SCRIPT) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
+      .replace(/const SUPABASE_URL = '[^']*';/, "const SUPABASE_URL = 'https://test.supabase.co';")
+      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = 'test-anon-key';");
+    if (script === before) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
     g.supabase = makeSupabaseMock(opts.seed || {}, opts.faults || {});
     g.__mock = g.supabase;
   }

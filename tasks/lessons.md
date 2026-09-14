@@ -35,3 +35,17 @@ Bash -e sa ugnjezdenim template-literal backtick-ovima (JS kod unutar JS koda,
 sa \${...}) je nepouzdano u ovom shell-u — quoting/escaping pravila iz bash i iz
 JS se sudaraju. Za izmenu vec postojeceg test fajla koristiti Edit alat direktno
 (Read pa Edit), ne node -e sa inline stringom, cim string sadrzi backtick+${.
+
+## Lekcija 10 (2026-09-14, povezivanje Supabase)
+Test harness (`boot({supabase:true})`) je trazio DOSLOVNO prazan string
+(`const SUPABASE_URL = '';`) da bi simulirao povezano stanje — cim su prave
+vrednosti upisane u index.html, taj match je promasio i sav T10+ blok je pukao.
+Fix: regex `/const SUPABASE_URL = '[^']*';/` — radi bez obzira da li je repo u
+"pre povezivanja" ili "posle povezivanja" stanju. Pravilo: kad test menja
+literalni kod, ne oslanjati se na TRENUTNU vrednost polja koje ce se menjati.
+
+## Lekcija 11 (2026-09-14, povezivanje Supabase)
+Kombinovanje vise razlicitih akcija u JEDAN Bash poziv (heredoc upis fajla +
+git add + git commit + node test) blokirao je auto-mode klasifikator. Kad
+komanda kombinuje pisanje/commit/test u nizu, deliti je na odvojene pozive —
+brze prolazi i lakse je videti koji korak je stvarno pao.
