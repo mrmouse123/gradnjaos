@@ -433,6 +433,76 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T16 sitne korekcije (falsy-nula, prazan rok zadatka) ---- */
+  section('T16 sitne korekcije');
+
+  await acheck('prazan rok zadatka dobija smislen default, ne null', async () => {
+    app.run("ROLE='all'; formTask();");
+    const html = app.g.document.getElementById('modal').innerHTML;
+    for (const m of html.matchAll(/<(input|textarea|select)\b([^>]*)>/gi)) {
+      const idm = /\bid=["']?([A-Za-z0-9_]+)/.exec(m[2]); if (!idm) continue;
+      const el = app.g.document.getElementById(idm[1]);
+      if (idm[1] === 'f_trok') el.value = '';                 // korisnik obrisao rok
+      else if (m[1].toLowerCase() === 'select') {
+        const rest = html.slice(m.index);
+        const om = /<option[^>]*\bvalue=["']([^"']*)["']/i.exec(rest.slice(0, rest.indexOf('</select>') + 9));
+        el.value = om ? om[1] : '';
+      } else el.value = 'Zadatak T16';
+    }
+    app.run('saveTask();');
+    const t = app.run('DATA.zadaci[DATA.zadaci.length-1]');
+    if (t.rok === null || t.rok === '') throw new Error('rok = ' + JSON.stringify(t.rok) + ' — dParse/daysBetween se lome na null/prazno u 10+ mesta (viewTasks, viewTime, computeAlerts...)');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(t.rok)) throw new Error('rok nije validan datum: ' + t.rok);
+    // mora biti upotrebljiv u daysBetween bez NaN
+    const dana = app.run(`daysBetween(TODAY, dParse(${JSON.stringify(t.rok)}))`);
+    if (!Number.isFinite(dana)) throw new Error('daysBetween vraca NaN za dodeljeni rok');
+  });
+
+  await acheck('saveSite: eksplicitno uneta 0 za planirane troskove se ne zamenjuje', async () => {
+    app.run("ROLE='all'; formSite();");
+    const set = (id, val) => { const e = app.g.document.getElementById(id); if (e) e.value = val; };
+    set('f_naziv', 'T16 nula troskova'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja');
+    set('f_lok', 'x'); set('f_cena', '50000'); set('f_tro', '0');
+    set('f_ruk', app.run('DATA.zaposleni[0].id'));
+    set('f_poc', app.run('todayStr()')); set('f_rok', app.run('plusDays(100)'));
+    const cb = app.g.document.getElementById('f_faze_fill'); if (cb) cb.checked = false;
+    app.run('saveSite();');
+    const g = app.run('DATA.gradilista[DATA.gradilista.length-1]');
+    if (g.troskovi !== 0) throw new Error('troskovi = ' + g.troskovi + ', ocekivano 0 (korisnik je eksplicitno uneo 0)');
+  });
+
+  await acheck('savePredmerRed: eksplicitno uneta 0 kolicina se ne zamenjuje sa 1', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`ROLE='all'; formPredmerRed(${JSON.stringify(gid)});`);
+    const set = (id, val) => { const e = app.g.document.getElementById(id); if (e) e.value = val; };
+    set('f_pm_poz', 'Pozicija T16'); set('f_pm_kol', '0'); set('f_pm_cena', '100');
+    app.run(`savePredmerRed(${JSON.stringify(gid)});`);
+    const r = app.run('DATA.predmer[DATA.predmer.length-1]');
+    if (r.kol !== 0) throw new Error('kol = ' + r.kol + ', ocekivano 0 (korisnik je eksplicitno uneo 0)');
+  });
+
+  await acheck('savePredmerRed: prazna kolicina i dalje dobija default 1', async () => {
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`ROLE='all'; formPredmerRed(${JSON.stringify(gid)});`);
+    const set = (id, val) => { const e = app.g.document.getElementById(id); if (e) e.value = val; };
+    set('f_pm_poz', 'Pozicija T16b'); set('f_pm_kol', ''); set('f_pm_cena', '100');
+    app.run(`savePredmerRed(${JSON.stringify(gid)});`);
+    const r = app.run('DATA.predmer[DATA.predmer.length-1]');
+    if (r.kol !== 1) throw new Error('kol = ' + r.kol + ', ocekivano default 1 kad je polje prazno');
+  });
+
+  await acheck('dashSorted (smart): gradiliste sa nepoznatim statusom ne kvari sortiranje', async () => {
+    app.run(`(()=>{ DATA.gradilista.push({id:'g_t16', modul:'izvodjenje', tip:'visokogradnja', naziv:'T16 status',
+      lok:'x', klijent:DATA.clijenti[0].id, rukovodilac:null, pocetak:todayStr(), rok:plusDays(30),
+      napredak:0, status:'nepoznat-status', faza:'x', budzet:1000, troskovi:800, potroseno:0, naplaceno:0, adm:{}}); })()`);
+    let err = null;
+    try { app.run("ROLE='all'; dashSort.key='smart'; dashSorted(DATA.gradilista);"); }
+    catch (e) { err = e.message; }
+    app.run("DATA.gradilista = DATA.gradilista.filter(g=>g.id!=='g_t16');");
+    if (err) throw new Error('dashSorted baca na nepoznat status: ' + err);
+  });
+
+
   /* ---- T15 F2: Edge Function za trebovanje (sa fallback na mailto) ---- */
   section('T15 edge function trebovanja');
 

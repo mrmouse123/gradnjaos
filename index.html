@@ -1070,7 +1070,7 @@ function dashSorted(sites){
   const arr=[...sites];
   if(dashSort.key==='smart'){
     const st={'kasni':0,'u toku':1,'planirano':2,'zavrseno':3};
-    arr.sort((a,b)=> st[a.status]-st[b.status] || dParse(a.rok)-dParse(b.rok));
+    arr.sort((a,b)=> (st[a.status]??9)-(st[b.status]??9) || dParse(a.rok)-dParse(b.rok));
     return arr;
   }
   const v=g=>({cena:g.budzet, marza:marzaPct(g), naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
@@ -2030,7 +2030,7 @@ function savePredmerRed(grId){
   if(!isDirector()) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const poz=esc(String(v('f_pm_poz')).trim()); if(!poz){ alert('Unesi opis pozicije.'); return; }
-  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:+String(v('f_pm_kol')).replace(',','.')||1, cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
+  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''?broj(v('f_pm_kol')):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
   saveState(); closeModal(); render();
 }
 function formPredmerImport(grId){
@@ -2705,7 +2705,7 @@ function saveSite(){
     klijentId='c'+Date.now();
     DATA.clijenti.push({ id:klijentId, naziv:kNaziv, tip:v('f_nk_tip'), osoba:esc(v('f_nk_osoba').trim())||'—', tel:esc(v('f_nk_tel').trim())||'—', mail:'—' });
   }
-  const cena=+v('f_cena')||0, tro=+v('f_tro')||Math.round(cena*0.85);
+  const cena=+v('f_cena')||0; const troRaw=v('f_tro').trim(); const tro=troRaw!==''?(+troRaw||0):Math.round(cena*0.85);
   const gid='g'+Date.now();
   const jeProNovi = v('f_modul')==='projektovanje';
   DATA.gradilista.push({
@@ -2753,7 +2753,7 @@ function saveTask(){
   const v=id=>document.getElementById(id).value;
   if(!smemNa(v('f_tgr'))){ alert('Zadatke mozes da otvaras samo na svom gradilistu.'); return; }
   const naziv=esc(v('f_tnaziv').trim()); if(!naziv){ alert('Unesi naziv zadatka.'); return; }
-  DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||null });
+  DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||plusDays(14) });
   saveState(); closeModal(); renderNav(); render();
 }
 
