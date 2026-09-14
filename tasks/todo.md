@@ -1,29 +1,46 @@
 # GradnjaOS — v0.5: sređivanje koda + preostale funkcije
 
 Radi se po boris-cherny workflow-u. Mreža za sigurnost: `git` (baseline commit `cda1f50`)
-i `test/e2e.js` (448 asertacija na startu).
+i `test/e2e.js` (506 asertacija u ovom trenutku, raste sa svakim nalazom).
 
 ## Faza 0 — infrastruktura (gotovo)
-- [x] git init + baseline commit (fajl je 189KB, lessons.md beleži tihe promašaje patch-eva)
-- [x] `test/e2e.js` + `test/dom-stub.js` — trajni e2e harness umesto ad-hoc skripti
-      pokriva: sintaksu, boot, 12 pogleda × 3 uloge × 5 modula, th==td simetriju,
-      role-guardove, finansijsku izolaciju, XSS, integritet TABLES/DEMO/normalize
+- [x] git init + baseline commit
+- [x] `test/e2e.js` + `test/dom-stub.js` + `test/patch-lib.js` + `test/supabase-mock.js`
+      — trajni harness: sintaksa, boot, pogledi × uloge × moduli, th==td simetrija,
+      role-guardovi, vlasništvo nad gradilištem, finansijska izolacija, XSS kroz
+      stvarne forme, integritet TABLES/DEMO/normalize, Supabase sync (mock klijent)
 
-## Faza 1 — bezbednost i ispravnost ("sredi kod")
-- [ ] **B1 (visoko)** Pravilo 3 iz CLAUDE.md ne važi: ~10 save-funkcija ne escapuje
-      slobodna tekst-polja → stored XSS. Uzrok: svaka funkcija ima svoj `v()` helper
-      i esc() se dodaje ručno. Fix: zajednički `polje()` koji escapuje po difoltu
-      + `broj()`/`izbor()` za brojeve i selecte. Jedno mesto umesto 60.
-- [ ] **B2 (srednje)** Duplo escapovanje kvari podatke na ne-HTML izlazima:
-      `Petrović & Sinovi` → `Petrović &amp; Sinovi` u CSV izvozu i mailto trebovanju.
-      Fix: `unesc()` na tim izlazima (HTML izlazi ostaju escapovani).
-- [ ] **B3** Supabase sync briše samo lokalno: `pushAll` radi upsert, nikad delete →
-      obrisan red se vraća pri sledećem load-u. Fix: delete po diff-u.
-- [ ] **B4** Rezultati dubinske revizije (podagenti: logika, sync sloj, uloge/RLS)
+## Faza 1 — bezbednost i ispravnost ("sredi kod") — GOTOVO
+- [x] **B1** Pravilo 3 (esc() na upisu) — proveren kroz sve forme, važio je već;
+      popravljeno kvarenje na NE-HTML izlazima (CSV, mailto) — v. B2
+- [x] **B2** `unesc()` na CSV izvozu, telu mejla trebovanja i imenu fajla —
+      `Petrović & Sinovi` se više ne pretvara u `Petrović &amp; Sinovi`
+- [x] **B3** Sloj čuvanja: 6 bugova (pushAll je stao na prvoj grešci i tiho
+      nije upisivao ostatak baze; prazan `<input type=date>` slao `''` u date
+      kolonu; "prvi start" se detektovao samo po tabeli gradilišta; doSave bez
+      guarda protiv preklapanja; resetDemo brisao pre nego što zna da upis prolazi;
+      nema flush na zatvaranje taba) — sve popravljeno + `obrisiRed()` kao
+      eksplicitna operacija (pushAll i dalje ne brише automatski)
+- [x] **B4** Pravilo 2 (vlasništvo): 4 rupe visokog rizika (saveTask, saveDiary,
+      dropTask, saveMagPromena nisu proveravali da je gradilište/tip poznat ili
+      "moje") + 6 curenja tuđih gradilišta kroz globalne funkcije (openSite,
+      openIzvestaj, posaljiMejlNabavci, openEmpPage, viewPay/viewClients pozvani
+      direktno, upozorenja i tab Resursi). Uveden `smemNa(grId)` kao jedno mesto
+      za pravilo — tačka izmene kad dođe Supabase RLS.
+- [x] **B5** Logička ispravnost (12 nalaza): marzaPct/fmtEurK kod budžeta 0 i
+      negativnih iznosa; rušenje prikaza na nepoznatog autora / jednočlano ime;
+      parsiranje brojeva iz Excel uvoza (srpski vs engleski zapis) — uveden
+      zajednički `broj()`; setIzv bez gornje granice i bez podrške za zarez;
+      jutarnji brif ignorisao filter modula; magacin stanje kao string; ID-evi
+      u serijama kovali buduće Date.now() vrednosti; TODAY zamrznut na učitavanju;
+      renderNav izbacivao iz Predmera; mrtav kod i dupliran normalizeData() blok.
 
 ## Faza 2 — preostale funkcije iz CLAUDE.md
-- [ ] **F1** Šabloni faza/zadataka po modulu (visoko/nisko/projektovanje).
-      Mehanizam + podrazumevani sadržaj iz standardne prakse; Jovan kasnije koriguje.
+- [x] **F1** Šabloni faza/zadataka za Izvođenje (visoko/nisko) — `SABLONI_FAZA`,
+      sejanje pri kreiranju gradilišta (checkbox u formi) i naknadno iz fioke
+      (dugme "Ubaci šablon faza", nestaje čim gradilište ima bilo koji zadatak).
+      Rokovi raspoređeni proporcionalno unutar [početak, rok] gradilišta.
+      Sadržaj je standardna građevinska praksa — Jovan koriguje kad stignu materijali.
 - [ ] **F2** Edge Function za slanje trebovanja mejlom (kod kompletan; deploy čeka Supabase)
 - [ ] **F3** Prilozi: PDF faktura / .xlsx uz stavke (Supabase Storage + fallback na
       data-URL dok baza nije povezana)
@@ -31,13 +48,15 @@ i `test/e2e.js` (448 asertacija na startu).
       Aktivira se tek kad se popune SUPABASE_URL/ANON_KEY.
 
 ## Faza 3 — nastavak sređivanja
-- [ ] Mrtav kod, duplirana logika, konzistentnost izračunatih vrednosti
-- [ ] Ažuriranje CLAUDE.md (e2e komanda, nove konvencije)
+- [ ] Preostali niski nalazi iz revizije (N-serija) koji nisu bezbednosni ni
+      korupcija podataka — proceniti da li vrede diranja u ovoj iteraciji
+- [ ] Ažuriranje CLAUDE.md (e2e komanda, `smemNa`/`broj`/`unesc` konvencije, SABLONI_FAZA)
 
 ## BLOKIRANO — treba mi od Jovana
-- **Supabase URL + anon ključ** — bez toga F2/F3/F4 mogu da se napišu i testiraju,
-  ali ne i da se puste u rad. CLAUDE.md ionako kaže "ne povezivati dok Jovan ne kaže".
-- **Materijali za šablone faza** (F1) — implementiram razuman default, on koriguje.
+- **Supabase URL + anon ključ** — F2/F3/F4 su napisani i testirani (mock), ali
+  ne mogu da se puste u rad. CLAUDE.md ionako kaže "ne povezivati dok Jovan ne kaže".
+- **Materijali za šablone faza** (F1) — ugrađen razuman default; Jovan koriguje
+  nazive faza/zadataka kad ima vremena, mehanizam ostaje isti.
 
 ## Review
-(popunjava se na kraju)
+(popunjava se na kraju iteracije)

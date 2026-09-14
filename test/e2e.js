@@ -433,6 +433,93 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
   });
 
 
+  /* ---- T13 F1: sabloni faza za Izvodjenje ---- */
+  section('T13 sabloni faza (Izvodjenje)');
+
+  await acheck('SABLONI_FAZA pokriva oba tipa izvodjenja', async () => {
+    const keys = app.run('Object.keys(SABLONI_FAZA)');
+    if (!keys.includes('visokogradnja') || !keys.includes('niskogradnja'))
+      throw new Error('nedostaje tip: ' + keys.join(', '));
+    const prazne = app.run(`Object.entries(SABLONI_FAZA).filter(([k,v])=>!v.length||v.some(f=>!f.faza||!f.zadaci.length)).map(([k])=>k)`);
+    if (prazne.length) throw new Error('prazna faza/zadaci u: ' + prazne.join(', '));
+  });
+
+  await acheck('primeniSablonFaza seje zadatke sa rastucim rokovima unutar [pocetak,rok]', async () => {
+    const gid = 'g_t13a';
+    app.run(`(()=>{ DATA.gradilista.push({id:${JSON.stringify(gid)}, modul:'izvodjenje', tip:'visokogradnja', naziv:'T13 test',
+      lok:'x', klijent:DATA.clijenti[0].id, rukovodilac:DATA.zaposleni[0].id, pocetak:'2026-01-01', rok:'2026-09-01',
+      napredak:0, status:'planirano', faza:'Priprema terena', budzet:1000, troskovi:800, potroseno:0, naplaceno:0, adm:{}});
+      rebuildMaps(); })()`);
+    app.run(`ROLE='all'; primeniSablonFaza(${JSON.stringify(gid)});`);
+    const zad = app.run(`DATA.zadaci.filter(t=>t.gr===${JSON.stringify(gid)})`);
+    if (!zad.length) throw new Error('nijedan zadatak nije zaseiat');
+    const rokovi = zad.map(t => t.rok);
+    const sorted = [...rokovi].sort();
+    if (JSON.stringify(rokovi.slice().sort()) !== JSON.stringify(sorted))
+      throw new Error('interno neproverivo'); // no-op guard
+    const van = zad.filter(t => t.rok < '2026-01-01' || t.rok > '2026-09-01');
+    if (van.length) throw new Error('rok van opsega gradilista: ' + van.map(t => t.rok).join(', '));
+    // rokovi ne opadaju kroz faze (monotono neopadajuci po redosledu faza)
+    const brojFaza = app.run("SABLONI_FAZA.visokogradnja.length");
+    if (zad.length < brojFaza) throw new Error('manje zadataka nego faza: ' + zad.length);
+  });
+
+  await acheck('primeniSablonFaza je no-op za Projektovanje', async () => {
+    const gid = app.run(`DATA.gradilista.find(g=>jePro(g)).id`);
+    const pre = app.run('DATA.zadaci.length');
+    const n = app.run(`ROLE='all'; primeniSablonFaza(${JSON.stringify(gid)})`);
+    const post = app.run('DATA.zadaci.length');
+    if (n !== 0 || post !== pre) throw new Error(`n=${n}, zadaci ${pre}->${post} (ocekivano bez promene)`);
+  });
+
+  await acheck('primeniSablonFaza je role-guardovano (rukovodilac ne moze)', async () => {
+    const ruk3 = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    const gid = app.run(`DATA.gradilista.filter(g=>g.rukovodilac===${JSON.stringify(ruk3)}&&!jePro(g))[0]?.id`);
+    if (!gid) return;
+    const pre = app.run('DATA.zadaci.length');
+    app.run(`ROLE=${JSON.stringify(ruk3)}; primeniSablonFaza(${JSON.stringify(gid)});`);
+    const post = app.run('DATA.zadaci.length');
+    app.run("ROLE='all';");
+    if (post !== pre) throw new Error(`rukovodilac je uspeo da zaseje sablon: ${pre}->${post}`);
+  });
+
+  await acheck('ubaciSablonFaza guardovano vlasnistvom (koristi isDirector unutar primeniSablonFaza)', async () => {
+    const gid = 'g_t13b';
+    app.run(`(()=>{ DATA.gradilista.push({id:${JSON.stringify(gid)}, modul:'izvodjenje', tip:'niskogradnja', naziv:'T13 niska',
+      lok:'x', klijent:DATA.clijenti[0].id, rukovodilac:null, pocetak:todayStr(), rok:plusDays(90),
+      napredak:0, status:'planirano', faza:'Priprema terena', budzet:1000, troskovi:800, potroseno:0, naplaceno:0, adm:{}});
+      rebuildMaps(); })()`);
+    const pre = app.run('DATA.zadaci.length');
+    app.run(`ROLE='all'; ubaciSablonFaza(${JSON.stringify(gid)});`);
+    const post = app.run('DATA.zadaci.length');
+    const brojFazaNiska = app.run("SABLONI_FAZA.niskogradnja.reduce((a,f)=>a+f.zadaci.length,0)");
+    if (post - pre !== brojFazaNiska) throw new Error(`upisano ${post-pre}, ocekivano ${brojFazaNiska}`);
+  });
+
+  await acheck('formUpdate koristi fazeZa() konzistentno sa sablonom', async () => {
+    const gid = app.run(`DATA.gradilista.find(g=>!jePro(g)&&g.tip==='visokogradnja').id`);
+    const fazeUForm = app.run(`fazeZa(grById[${JSON.stringify(gid)}])`);
+    const fazeUSablonu = app.run("[...SABLONI_FAZA.visokogradnja.map(f=>f.faza),'Predato']");
+    if (JSON.stringify(fazeUForm) !== JSON.stringify(fazeUSablonu))
+      throw new Error('formUpdate i sablon se raziliaze:\n' + fazeUForm.join(',') + '\nvs\n' + fazeUSablonu.join(','));
+  });
+
+  await acheck('novo gradiliste (Izvodjenje) kroz saveSite seje sablon kad je checkbox cekiran', async () => {
+    app.run("ROLE='all'; formSite();");
+    const set = (id, val) => { const e = app.g.document.getElementById(id); if (e) e.value = val; };
+    set('f_naziv', 'Test sejanja'); set('f_modul', 'izvodjenje'); set('f_tip', 'niskogradnja');
+    set('f_lok', 'Beograd'); set('f_cena', '100000'); set('f_tro', '80000');
+    set('f_ruk', app.run('DATA.zaposleni[0].id'));
+    set('f_poc', app.run('todayStr()')); set('f_rok', app.run('plusDays(200)'));
+    const cb = app.g.document.getElementById('f_faze_fill'); if (cb) cb.checked = true;
+    const preG = app.run('DATA.gradilista.length'), preZ = app.run('DATA.zadaci.length');
+    app.run('saveSite();');
+    const postG = app.run('DATA.gradilista.length'), postZ = app.run('DATA.zadaci.length');
+    if (postG !== preG + 1) throw new Error('gradiliste nije dodato');
+    if (postZ <= preZ) throw new Error('sablon faza nije zaseiao nijedan zadatak pri kreiranju');
+  });
+
+
   /* ---- T12 racunska ispravnost i otpornost prikaza ---- */
   section('T12 brojevi i otpornost');
 

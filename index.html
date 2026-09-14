@@ -1896,6 +1896,62 @@ const NIVOI_DOK={
   'IDP/PGD':['1.0 Arhitektura','2.0 Konstrukcija','3.0 ViK','4.0 Elektroenergetika','5.1 Telekomunikacije i signalne inst.','5.2 Dojava požara','5.3 Video nadzor','6.0 Mašinske instalacije','7.0 Tehnologija','8.0 Saobraćaj i saobraćajna sign.','9.0 Parterno uređenje','10.0 Pripremni radovi','Elaborat energetske efikasnosti','Elaborat o geotehničkim uslovima','Elaborat zaštite od požara','Plan upravljanja otpadom','Energetski pasoš'],
   'PZI':['1.0 Arhitektura','2.0 Konstrukcija','3.0 ViK','4.0 Elektroenergetika','5.1 Telekomunikacije i signalne inst.','5.2 Dojava požara','5.3 Video nadzor','6.0 Mašinske instalacije','7.0 Tehnologija','8.0 Saobraćaj i saobraćajna sign.','9.0 Parterno uređenje','Plan preventivnih mera','Glavni projekat zaštite od požara']
 };
+/* Sabloni faza za Izvodjenje. Svaka faza nosi tipicne zadatke; pri kreiranju
+   gradilista (ili na zahtev iz fioke) sejemo ih u Kanban sa rokovima
+   rasporedjenim od pocetka do roka gradilista. Redosled = redosled faza. */
+const SABLONI_FAZA={
+  visokogradnja:[
+    {faza:'Priprema terena',  zadaci:['Prijava gradilišta i tabla','Ograđivanje i obezbeđenje','Geodetsko obeležavanje','Privremeni priključci (voda, struja)']},
+    {faza:'Zemljani radovi',  zadaci:['Iskop','Odvoz viška materijala','Nasipanje i nabijanje']},
+    {faza:'Temelji',          zadaci:['Podložni beton','Hidroizolacija temelja','Armiranje i betoniranje temelja']},
+    {faza:'Konstrukcija',     zadaci:['AB stubovi i zidovi','Međuspratne ploče','Stepeništa','Krovna konstrukcija']},
+    {faza:'Grubi radovi',     zadaci:['Zidanje','Krov i pokrivanje','Fasadna stolarija']},
+    {faza:'Instalacije',      zadaci:['ViK instalacije','Elektro instalacije','Mašinske instalacije / grejanje','Slabostrujne instalacije']},
+    {faza:'Završni radovi',   zadaci:['Malterisanje','Podovi','Keramika','Molersko-farbarski radovi','Unutrašnja stolarija','Fasada']},
+    {faza:'Tehnički prijem',  zadaci:['Atesti i dokumentacija','Tehnički pregled','Otklanjanje primedbi komisije']},
+  ],
+  niskogradnja:[
+    {faza:'Priprema terena',  zadaci:['Prijava gradilišta i tabla','Privremena saobraćajna signalizacija','Geodetsko obeležavanje trase','Uklanjanje rastinja i objekata']},
+    {faza:'Zemljani radovi',  zadaci:['Iskop','Nasip i nabijanje','Uređenje posteljice']},
+    {faza:'Odvodnjavanje',    zadaci:['Kanalizacija i slivnici','Rigole i propusti','Drenaža']},
+    {faza:'Instalacije',      zadaci:['Vodovod','Elektro i javna rasveta','Telekomunikacije','Gas']},
+    {faza:'Donji stroj',      zadaci:['Tamponski sloj','Nosivi sloj']},
+    {faza:'Gornji stroj',     zadaci:['Bitumenizirani nosivi sloj','Habajući sloj','Ivičnjaci i trotoari']},
+    {faza:'Signalizacija',    zadaci:['Horizontalna signalizacija','Vertikalna signalizacija','Zaštitna oprema']},
+    {faza:'Tehnički prijem',  zadaci:['Atesti i dokumentacija','Tehnički pregled','Otklanjanje primedbi komisije']},
+  ],
+};
+const FAZE_PRO=['Idejno rešenje','IDR','IDP/PGD','PZI','Tehnička kontrola','Predato'];
+/* Imena faza za gradiliste — jedan izvor i za sablon i za formUpdate. */
+function fazeZa(g){
+  if(jePro(g)) return FAZE_PRO;
+  const s=SABLONI_FAZA[g.tip||'visokogradnja']||SABLONI_FAZA.visokogradnja;
+  return [...s.map(x=>x.faza),'Predato'];
+}
+/* Sejanje zadataka iz sablona. Rokovi: faza i dobija (i+1)/N puta trajanje gradilista. */
+function primeniSablonFaza(grId){
+  if(!isDirector()) return 0;
+  const g=grById[grId]; if(!g || jePro(g)) return 0;
+  const s=SABLONI_FAZA[g.tip||'visokogradnja']; if(!s) return 0;
+  const od=dParse(g.pocetak||todayStr()), doD=dParse(g.rok||plusDays(180));
+  const traj=Math.max(1, daysBetween(od,doD));
+  const ts=Date.now(); let n=0;
+  s.forEach((f,i)=>{
+    const d=new Date(od); d.setDate(d.getDate()+Math.round(traj*(i+1)/s.length));
+    const rok=_iso(d);
+    f.zadaci.forEach(z=>{
+      DATA.zadaci.push({ id:'t'+ts+'-'+(n++), naziv:esc(f.faza+' — '+z), gr:grId, zad:g.rukovodilac||null, prio:'mid', kol:'todo', rok });
+    });
+  });
+  return n;
+}
+function ubaciSablonFaza(grId){
+  if(!isDirector()) return;
+  const ima=DATA.zadaci.some(t=>t.gr===grId);
+  if(ima && !confirm('Gradilište već ima zadatke. Dodati i zadatke iz šablona?')) return;
+  const n=primeniSablonFaza(grId);
+  if(n){ saveState(); renderNav(); render(); openSite(grId); }
+}
 let PRED_ID=null;
 function predmerZa(grId){ return (DATA.predmer||[]).filter(x=>x.gr===grId); }
 function jePro(g){ return (g.modul||'izvodjenje')==='projektovanje'; }
@@ -2495,7 +2551,7 @@ function saveSit(){
 /* ---------- AŽURIRANJE PROJEKTA ---------- */
 function formUpdate(id){
   const g=grById[id]; if(!g)return;
-  const faze = jePro(g) ? ['Idejno rešenje','IDR','IDP/PGD','PZI','Tehnička kontrola','Predato'] : ['Priprema terena','Zemljani radovi','Temelji','Konstrukcija','Grubi radovi','Instalacije','Završni radovi','Tehnički prijem','Predato'];
+  const faze = fazeZa(g);
   const fazeOpts = (faze.includes(g.faza)?faze:[g.faza,...faze]).map(f=>`<option ${g.faza===f?'selected':''}>${f}</option>`).join('');
   openModal(`
     <div class="m-h"><h3>Ažuriraj projekat</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
@@ -2549,6 +2605,7 @@ function formSite(){
         <div class="f-row" id="nivoBox" style="display:none"><label>Nivo dokumentacije</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
       <div class="f-row" id="nivoFillBox" style="display:none"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_nivo_fill" checked> Popuni Specifikaciju usluga sveskama izabranog nivoa (šablon)</label></div>
+      <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>
       <div class="f-2">
         <div class="f-row"><label>Klijent</label><select id="f_kli" onchange="toggleNoviKlijent(this.value)">${DATA.clijenti.map(c=>`<option value="${c.id}">${c.naziv}</option>`).join('')}<option value="__novi__">＋ Novi klijent…</option></select></div>
         <div class="f-row"><label>Rukovodilac</label><select id="f_ruk">${DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta').map(z=>`<option value="${z.id}">${z.ime}</option>`).join('')}</select></div>
@@ -2583,6 +2640,7 @@ function toggleTipRadova(val){
   const b=document.getElementById('tipRadovaBox'); if(b) b.style.display = pro?'none':'block';
   const n=document.getElementById('nivoBox'); if(n) n.style.display = pro?'block':'none';
   const f=document.getElementById('nivoFillBox'); if(f) f.style.display = pro?'block':'none';
+  const z=document.getElementById('fazeFillBox'); if(z) z.style.display = pro?'none':'block';
 }
 function toggleNoviKlijent(val){
   const box=document.getElementById('noviKlijentBox');
@@ -2614,6 +2672,10 @@ function saveSite(){
       const ts=Date.now();
       NIVOI_DOK[niv].forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
     }
+  } else {
+    const fz=document.getElementById('f_faze_fill');
+    rebuildMaps();                      // primeniSablonFaza cita grById
+    if(fz&&fz.checked) primeniSablonFaza(gid);
   }
   rebuildMaps(); saveState(); closeModal(); renderNav(); render();
 }
@@ -2744,6 +2806,7 @@ function openSite(id){
         <button class="btn" style="flex:1" onclick="openPresek('${id}')">Finansijski presek</button>
         <button class="btn ghost" style="flex:1" onclick="openIzvestaj('${id}')">Izveštaj za investitora</button>
       </div>`:''}
+      ${isDirector()&&!jePro(g)&&!DATA.zadaci.some(t=>t.gr===id)?`<button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="ubaciSablonFaza('${id}')">＋ Ubaci šablon faza (${PODTIPOVI[g.tip||'visokogradnja']})</button>`:''}
       <div class="dr-stats">
         <div class="dr-stat"><div class="l">Zdravlje projekta</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:6px">${ringSvg(zdravlje(g),40)}<span class="v num" style="color:${zdrBoja(zdravlje(g))}">${zdravlje(g)}<span style="font-size:12px;color:var(--faint)">/100</span></span></div>
