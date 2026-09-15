@@ -867,7 +867,10 @@ const initials = ime => ime.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperC
 const dParse = s => new Date(s+'T00:00:00');
 const daysBetween = (a,b) => Math.round((b-a)/86400000);
 function fmtDate(s){ const d=dParse(s); return d.getDate()+'. '+MESECI[d.getMonth()]+' '+d.getFullYear(); }
-function marzaPct(g){ return g.budzet ? Math.round((g.budzet - g.troskovi)/g.budzet*1000)/10 : 0; }
+function marzaPct(g){ return g.budzet ? Math.round((g.budzet - g.troskovi)/g.budzet*1000)/10 : 0; }   // PLANSKA: budzet - planirani troskovi
+/* OSTVARENA marza: budzet - stvarno potroseno (iz troskovi_st). Rano u projektu je
+   visoka (malo potroseno) — smisao dobija kad se troskovi nagomilaju. */
+function ostvMarzaPct(g){ return g.budzet ? Math.round((g.budzet - potroseno(g))/g.budzet*1000)/10 : 0; }
 function sitZa(id){ return (DATA.situacije||[]).filter(s=>s.gr===id); }
 function naplSum(g){ const s=sitZa(g.id); return s.length? s.filter(x=>x.status==='placeno').reduce((a,b)=>a+b.iznos,0) : (g.naplaceno||0); }
 function naplataPct(g){ return g.budzet?Math.round(naplSum(g)/g.budzet*100):0; }
@@ -988,12 +991,13 @@ function zdravlje(g){
   else if(diff<=30 && g.napredak<90) sc-=15;
   const kasneZad=DATA.zadaci.filter(t=>t.gr===g.id && t.kol!=='done' && daysBetween(TODAY,dParse(t.rok))<0).length;
   sc-=Math.min(15, kasneZad*5);
-  if(canFinance()){
-    const ocek=g.troskovi*g.napredak/100;
-    if(g.napredak>0 && potroseno(g)>ocek*1.1) sc-=20;
-    if(marzaPct(g)<8) sc-=10;
-    if(g.napredak-naplataPct(g)>25) sc-=15;
-  }
+  /* Finansijski penali ulaze UVEK — skor je objektivan i isti za sve uloge.
+     Rukovodilac vidi broj, ali ne i finansijsko obrazlozenje (alerti fin:true
+     su filtrirani u computeAlerts, iznosi su iza canFinance()). */
+  const ocek=g.troskovi*g.napredak/100;
+  if(g.napredak>0 && potroseno(g)>ocek*1.1) sc-=20;
+  if(ostvMarzaPct(g)<8) sc-=10;
+  if(g.napredak-naplataPct(g)>25) sc-=15;
   return Math.max(5,sc);
 }
 function zdrBoja(sc){ return sc>=80?'var(--green)':sc>=60?'var(--amber)':'var(--red)'; }
@@ -1036,8 +1040,9 @@ function computeAlerts(){
       if(g.napredak>0 && potroseno(g)>ocek*1.1) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi ('+fmtEurK(potroseno(g))+') idu ispred napretka — plan za ovu fazu '+fmtEurK(ocek), nas:g.naziv});
       if(g.napredak - naplataPct(g) > 25) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Naplata ('+naplataPct(g)+'%) zaostaje za izvedenim radovima ('+g.napredak+'%)', nas:g.naziv});
     }
-    const m=marzaPct(g);
-    if(m<8 && g.status!=='zavrseno') out.push({sev:'red', gr:g.id, fin:true, tekst:'Marža pala na '+String(m).replace('.',',')+'%', nas:g.naziv});
+    const om=ostvMarzaPct(g), pm=marzaPct(g);
+    if(om<8 && g.status!=='zavrseno') out.push({sev:'red', gr:g.id, fin:true, tekst:'Ostvarena marža pala na '+String(om).replace('.',',')+'%', nas:g.naziv});
+    else if(potroseno(g)>g.troskovi && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — ostvarena marža '+String(om).replace('.',',')+'% (plan '+String(pm).replace('.',',')+'%)', nas:g.naziv});
   });
   DATA.zadaci.forEach(t=>{
     if(t.kol==='done'||!ids.has(t.gr)) return;
@@ -1153,7 +1158,7 @@ function viewDash(){
   const mojiKasne = mojiZad.filter(t=>daysBetween(TODAY,dParse(t.rok))<0).length;
   const finKpis = fin ? `
     <div class="card kpi amber"><div class="accent"></div>
-      <div class="lab">${icon('trend')} Ukupna marža</div>
+      <div class="lab">${icon('trend')} Ukupna plan. marža</div>
       <div class="val num">${ukCena?Math.round(ukMarza/ukCena*100):0}<small>%</small></div>
       <div class="sub">${fmtEur(ukMarza)} na ${fmtEurK(ukCena)} portfolija</div>
     </div>
@@ -1184,7 +1189,7 @@ function viewDash(){
 
   const thS=(k,lab,r)=>`<th class="sortable ${r?'r':''}" onclick="setDashSort('${k}')">${lab}${dashSort.key===k&&k!=='smart'?`<span class="arr">${dashSort.dir===-1?'\u25bc':'\u25b2'}</span>`:''}</th>`;
   const finHead = fin
-    ? thS('smart','Projekat')+thS('zdr','Zdravlje')+thS('cena','Cena',1)+thS('marza','Mar\u017ea',1)+thS('naplata','Naplata',1)+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>'
+    ? thS('smart','Projekat')+thS('zdr','Zdravlje')+thS('cena','Cena',1)+thS('marza','Plan. mar\u017ea',1)+thS('naplata','Naplata',1)+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>'
     : thS('smart','Projekat')+thS('zdr','Zdravlje')+thS('rok','Rok')+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>';
 
   // jutarnji brif
@@ -1219,7 +1224,7 @@ function viewDash(){
   const grpRed=(lab,boja,gs,klik)=>{
     if(!gs.length) return '';
     const c=gs.reduce((a,b)=>a+b.budzet,0), m=gs.reduce((a,b)=>a+(b.budzet-b.troskovi),0), n=gs.reduce((a,b)=>a+naplSum(b),0);
-    return `<tr class="grp" onclick="${klik}"><td colspan="${NCOLS}"><span class="g-dot" style="background:${boja}"></span>${lab} · ${gs.length} proj.${fin?` · ${fmtEurK(c)} · marža ${c?String(Math.round(m/c*1000)/10).replace('.',','):0}% · naplata ${c?Math.round(n/c*100):0}%`:''}</td></tr>`
+    return `<tr class="grp" onclick="${klik}"><td colspan="${NCOLS}"><span class="g-dot" style="background:${boja}"></span>${lab} · ${gs.length} proj.${fin?` · ${fmtEurK(c)} · plan. marža ${c?String(Math.round(m/c*1000)/10).replace('.',','):0}% · naplata ${c?Math.round(n/c*100):0}%`:''}</td></tr>`
       + dashSorted(gs).map(rowHtml).join('');
   };
   const grupe = (fin && MODUL==='sve') ? [
@@ -1308,7 +1313,7 @@ function sitesCards(){
       </div>
       <div class="bd">
         <div class="kv"><span>Klijent</span><b>${cl?cl.naziv:'—'}</b></div>
-        ${canFinance()?`<div class="kv"><span>Cena / marža</span><b>${fmtEurK(g.budzet)} · <span class="${marzaClass(m)}">${String(m).replace('.',',')}%</span></b></div>
+        ${canFinance()?`<div class="kv"><span>Cena / plan. marža</span><b>${fmtEurK(g.budzet)} · <span class="${marzaClass(m)}">${String(m).replace('.',',')}%</span></b></div>
         <div class="kv"><span>Naplaćeno</span><b>${naplataPct(g)}%</b></div>`:''}
         <div class="kv"><span>Rukovodilac</span><b>${ruk?kratkoIme(ruk.ime):'—'}</b></div>
         <div class="kv"><span>Početak</span><b>${fmtDate(g.pocetak)}</b></div>
@@ -2322,6 +2327,7 @@ function openPresek(id){
       ${red('Planirani troškovi', fmtEur(g.troskovi))}
       ${red('Planirana marža', fmtEur(g.budzet-g.troskovi)+' ('+String(m).replace('.',',')+'%)')}
       ${red('Utrošeno do sada', fmtEur(pot)+' — plan za trenutnu fazu '+fmtEur(ocek)+(pot>ocek*1.1?' <b style="color:var(--amber)">⚠ ispred plana</b>':''))}
+      ${red('Ostvarena marža', fmtEur(g.budzet-pot)+' ('+String(ostvMarzaPct(g)).replace('.',',')+'%)'+(pot>g.troskovi?' <b style="color:var(--amber)">⚠ troškovi iznad plana</b>':''))}
       ${red('Naplaćeno', fmtEur(naplSum(g))+' ('+n+'%)')}
       ${nenap?red('Izvedeno, a nenaplaćeno', '<b style="color:var(--amber)">'+fmtEur(nenap)+'</b>'):''}
       ${dosp?red('Dospelo, neplaćeno (situacije)', '<b style="color:var(--red)">'+fmtEur(dosp)+'</b>'):''}
@@ -2476,7 +2482,7 @@ function formTim(grId){
         <div class="chk-list" style="max-height:260px">${DATA.zaposleni.map(z=>`
           <label class="chk"><input type="checkbox" id="t_z_${z.id}" ${(z.grs||[]).includes(grId)?'checked':''}>
             <span style="flex:1">${z.ime} <span style="color:var(--faint);font-size:11px">· ${z.poz}</span></span>
-            ${(z.grs||[]).length>1||((z.grs||[]).length===1&&!(z.grs||[]).includes(grId))?`<span style="color:var(--faint);font-size:10.5px">${(z.grs||[]).filter(x=>x!==grId).length} dr.</span>`:''}
+            ${drugde(z,grId).length?`<span style="color:var(--amber);font-size:10.5px" title="Već angažovan/a na drugom gradilištu">⚠ ${isDirector()?'na: '+drugde(z,grId).map(x=>grById[x]?grById[x].naziv:x).join(', '):'na drugom gradilištu'}</span>`:''}
           </label>`).join('')}</div>
       </div>
       <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 12px">Skidanjem s projekta osoba ide u „prošle projekte“ — istorija se čuva.</div>
@@ -2486,9 +2492,19 @@ function formTim(grId){
       </div>
     </div>`);
 }
+/* Gradilista (osim grId) na kojima je zaposleni trenutno angazovan. */
+function drugde(z,grId){ return (z.grs||[]).filter(x=>x!==grId); }
 function saveTim(grId){
   const g=grById[grId];
   if(!g || !(isDirector()||g.rukovodilac===ROLE)) return;
+  /* Jovanova odluka (2026-09-15): puna lista ostaje, ali dodavanje osobe koja je
+     vec na drugom gradilistu trazi potvrdu. Rukovodiocu se ne otkriva ime tudjeg
+     gradilista — samo da postoji. */
+  const novi=DATA.zaposleni.filter(z=>{ const c=document.getElementById('t_z_'+z.id); return c&&c.checked&&!(z.grs||[]).includes(grId)&&drugde(z,grId).length; });
+  if(novi.length){
+    const lista=novi.map(z=>'\u2022 '+unesc(z.ime)+(isDirector()?' (na: '+drugde(z,grId).map(x=>grById[x]?unesc(grById[x].naziv):x).join(', ')+')':'')).join('\n');
+    if(!confirm('Sledeći zaposleni su već angažovani na drugom gradilištu:\n'+lista+'\n\nDodati ih i na ovo gradilište?')) return;
+  }
   DATA.zaposleni.forEach(z=>{
     const c=document.getElementById('t_z_'+z.id); if(!c) return;
     const ima=(z.grs||[]).includes(grId);
@@ -2865,8 +2881,11 @@ function openSite(id){
         <div class="dr-stat"><div class="l">Rok</div><div class="v" style="font-size:15px">${fmtDate(g.rok)}</div>
           <div style="font-size:12px;margin-top:6px">${rokTekst}</div>
         </div>
-        ${canFinance()?`<div class="dr-stat"><div class="l">Marža</div><div class="v ${marzaClass(m)}" style="font-size:17px">${String(m).replace('.',',')}%</div>
+        ${canFinance()?`<div class="dr-stat"><div class="l">Plan. marža</div><div class="v ${marzaClass(m)}" style="font-size:17px">${String(m).replace('.',',')}%</div>
           <div style="font-size:12px;margin-top:4px;color:var(--muted)" class="num">${fmtEurK(g.budzet-g.troskovi)}</div>
+        </div>
+        <div class="dr-stat"><div class="l">Ostv. marža</div><div class="v ${marzaClass(ostvMarzaPct(g))}" style="font-size:17px">${String(ostvMarzaPct(g)).replace('.',',')}%</div>
+          <div style="font-size:12px;margin-top:4px;color:var(--muted)" class="num">${fmtEurK(g.budzet-pot)}${pot>g.troskovi?' · <span style="color:var(--amber)">iznad plana</span>':''}</div>
         </div>
         <div class="dr-stat"><div class="l">Naplaćeno</div><div class="v" style="font-size:17px">${n}%</div>
           <div class="bar" style="margin-top:8px"><span style="width:${n}%;background:${n>=90?'var(--green)':'var(--blue)'}"></span></div>

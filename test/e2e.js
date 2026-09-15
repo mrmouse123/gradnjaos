@@ -65,6 +65,13 @@ async function boot(opts = {}){
     if (script === before) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
     g.supabase = makeSupabaseMock(opts.seed || {}, opts.faults || {});
     g.__mock = g.supabase;
+  } else {
+    // Bez Supabase: isprazni konstante da app ni ne pokusa mrezu (index.html
+    // od 2026-09-14 nosi prave vrednosti; bez ovoga svaki boot() loguje
+    // "Supabase init: ... createClient" iz stuba i pada na memoriju).
+    script = script
+      .replace(/const SUPABASE_URL = '[^']*';/, "const SUPABASE_URL = '';")
+      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = '';");
   }
   const ctx = vm.createContext(g);
   vm.runInContext(script, ctx, { filename: 'index.html<script>', displayErrors: true });
@@ -135,7 +142,7 @@ const MUTATORS = [
 ];
 
 /* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
-const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed. cena', 'Jedinična cena', 'Budžet'];
+const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostvarena marža', 'Naplaćeno', 'Naplaceno', 'Jed. cena', 'Jedinična cena', 'Budžet'];
 
 (async function main(){
   console.log('GradnjaOS e2e — ' + new Date().toISOString().slice(0, 19).replace('T', ' '));
@@ -433,6 +440,90 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
     app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
     const kol = app.run('DATA.predmer[DATA.predmer.length-1].kol');
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
+  });
+
+
+  /* ---- T17 tri Jovanove odluke (2026-09-15) ---- */
+  section('T17 zdravlje / ostvarena marza / tim');
+
+  await acheck('zdravlje(g) je isto za direktora i rukovodioca (svako gradiliste)', async () => {
+    const r = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    const razlike = app.run(`(()=>{ const out=[]; DATA.gradilista.forEach(g=>{
+      ROLE='all'; const a=zdravlje(g); ROLE=${JSON.stringify(r)}; const b=zdravlje(g); ROLE='all';
+      if(a!==b) out.push(g.id+': '+a+' vs '+b); }); return out; })()`);
+    if (razlike.length) throw new Error('skor zavisi od uloge: ' + razlike.join(', '));
+  });
+
+  await acheck('ostvMarzaPct: budzet 0 -> 0; potroseno > troskovi -> ostvarena < planska', async () => {
+    if (app.run('ostvMarzaPct({budzet:0})') !== 0) throw new Error('budzet 0 nije 0');
+    const g = app.run(`DATA.gradilista.find(g=>potroseno(g)>g.troskovi)`);
+    if (!g) return;   // demo nema takav slucaj
+    const om = app.run(`ostvMarzaPct(grById[${JSON.stringify(g.id)}])`);
+    const pm = app.run(`marzaPct(grById[${JSON.stringify(g.id)}])`);
+    if (!(om < pm)) throw new Error(`ostvarena ${om} nije manja od planske ${pm} iako je potroseno > plan`);
+  });
+
+  await acheck('alarm kad stvarni troskovi premase plan (direktor), a ne za rukovodioca', async () => {
+    const gid = 'g_t17';
+    app.run(`(()=>{ DATA.gradilista.push({id:${JSON.stringify(gid)}, modul:'izvodjenje', tip:'visokogradnja', naziv:'T17 prekoracenje',
+      lok:'x', klijent:DATA.clijenti[0].id, rukovodilac:DATA.zaposleni[0].id, pocetak:'2026-01-01', rok:plusDays(200),
+      napredak:50, status:'u toku', faza:'x', budzet:1000000, troskovi:800000, potroseno:0, naplaceno:500000, adm:{}});
+      DATA.troskovi_st.push({id:'tr_t17', gr:${JSON.stringify(gid)}, datum:todayStr(), opis:'x', kat:'Ostalo', iznos:850000});
+      rebuildMaps(); })()`);
+    const dir = app.run(`(ROLE='all', JSON.stringify(computeAlerts().filter(a=>a.gr===${JSON.stringify(gid)})))`);
+    if (!/premašili plan|Ostvarena marža/.test(dir)) throw new Error('nema alarma za prekoracenje plana: ' + dir);
+    const r = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    app.run(`DATA.gradilista.find(g=>g.id===${JSON.stringify(gid)}).rukovodilac=${JSON.stringify(r)}; rebuildMaps();`);
+    const ruk = app.run(`(ROLE=${JSON.stringify(r)}, (()=>{ const s=JSON.stringify(computeAlerts().filter(a=>a.gr===${JSON.stringify(gid)})); ROLE='all'; return s; })())`);
+    app.run(`DATA.gradilista=DATA.gradilista.filter(g=>g.id!==${JSON.stringify(gid)}); DATA.troskovi_st=DATA.troskovi_st.filter(t=>t.id!=='tr_t17'); rebuildMaps();`);
+    if (/marža/i.test(ruk)) throw new Error('rukovodilac vidi marzu u alarmu: ' + ruk);
+  });
+
+  await acheck('oznake: "Plan. marža" na tabli, "Ostv. marža" u fioci, "Ostvarena marža" u preseku', async () => {
+    app.run("ROLE='all'; MODUL='sve'; current='dash'; render();");
+    const dash = app.g.document.getElementById('view').innerHTML;
+    if (!dash.includes('Plan. mar')) throw new Error('tabla nema "Plan. marža"');
+    const gid = app.run('DATA.gradilista[0].id');
+    app.run(`openSite(${JSON.stringify(gid)});`);
+    const dr = app.g.document.getElementById('drawer').innerHTML;
+    if (!dr.includes('Ostv. marža') || !dr.includes('Plan. marža')) throw new Error('fioka nema Plan./Ostv. marža');
+    app.run(`openPresek(${JSON.stringify(gid)});`);
+    const pr = app.g.document.getElementById('rpt').innerHTML;   // presek/izvestaj idu u #rpt, ne u #drawer
+    if (!pr.includes('Ostvarena marža')) throw new Error('presek nema "Ostvarena marža"');
+    app.run("closeDrawer(); current='dash'; render();");
+  });
+
+  await acheck('formTim: osoba sa drugog gradilista je oznacena; rukovodilac ne vidi ime tudjeg gradilista', async () => {
+    const r = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
+    const moje = app.run(`DATA.gradilista.find(g=>g.rukovodilac===${JSON.stringify(r)}).id`);
+    const drugi = app.run(`DATA.zaposleni.find(z=>(z.grs||[]).length && !(z.grs||[]).includes(${JSON.stringify(moje)}))`);
+    if (!drugi) return;
+    const tudjeNaziv = app.run(`grById[${JSON.stringify(drugi.grs[0])}].naziv`);
+    app.run(`ROLE=${JSON.stringify(r)}; formTim(${JSON.stringify(moje)});`);
+    const htmlR = app.g.document.getElementById('modal').innerHTML;
+    app.run(`ROLE='all'; formTim(${JSON.stringify(moje)});`);
+    const htmlD = app.g.document.getElementById('modal').innerHTML;
+    if (!htmlR.includes('na drugom gradilištu')) throw new Error('rukovodilac: nema oznake');
+    if (htmlR.includes(tudjeNaziv)) throw new Error('rukovodilac vidi ime tudjeg gradilista: ' + tudjeNaziv);
+    if (!htmlD.includes('na: ')) throw new Error('direktor: nema imena gradilista uz oznaku');
+  });
+
+  await acheck('saveTim: odbijena potvrda NE dodaje osobu sa drugog gradilista; prihvacena dodaje', async () => {
+    for (const odgovor of [false, true]) {
+      const a = await boot({ confirmReturns: odgovor });
+      const moje = a.run("DATA.gradilista[0].id");
+      const drugi = a.run(`DATA.zaposleni.find(z=>(z.grs||[]).length && !(z.grs||[]).includes(${JSON.stringify(moje)}))`);
+      if (!drugi) return;
+      a.run(`ROLE='all'; formTim(${JSON.stringify(moje)});`);
+      // sacuvaj postojece stanje checkbox-ova, pa cekiraj "drugog"
+      a.run(`DATA.zaposleni.forEach(z=>{ document.getElementById('t_z_'+z.id).checked=(z.grs||[]).includes(${JSON.stringify(moje)}); });`);
+      a.g.document.getElementById('t_z_' + drugi.id).checked = true;
+      a.run(`saveTim(${JSON.stringify(moje)});`);
+      const dodat = a.run(`(zapById[${JSON.stringify(drugi.id)}].grs||[]).includes(${JSON.stringify(moje)})`);
+      if (a.g._calls.confirm.length !== 1) throw new Error(`confirm pozvan ${a.g._calls.confirm.length}x (ocekivano 1)`);
+      if (odgovor === false && dodat) throw new Error('dodat uprkos odbijenoj potvrdi');
+      if (odgovor === true && !dodat) throw new Error('nije dodat uprkos prihvacenoj potvrdi');
+    }
   });
 
 
@@ -937,9 +1028,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marži', 'Naplaćeno', 'Naplaceno', 'Jed.
 
   await acheck('openIzvestaj ne radi za tudje gradiliste', async () => {
     const pre = app.g._calls.open.length;
+    // openIzvestaj renderuje u #rpt (ranije je test gledao nepostojeci #izvestajWrap i prolazio vakuumski)
+    app.g.document.getElementById('rpt').innerHTML = '';
     kaoRuk(`openIzvestaj(${JSON.stringify(tudjeG)}), 1`);
-    const izv = app.g.document.getElementById('izvestajWrap');
-    const sadrzaj = (izv && izv.innerHTML) || '';
+    const sadrzaj = app.g.document.getElementById('rpt').innerHTML || '';
     if (app.g._calls.open.length > pre || sadrzaj.length > 200)
       throw new Error('izvestaj generisan za tudje gradiliste');
   });

@@ -1,7 +1,7 @@
 # GradnjaOS — v0.5: sređivanje koda + preostale funkcije
 
 Radi se po boris-cherny workflow-u. Mreža za sigurnost: `git` (baseline commit `cda1f50`)
-i `test/e2e.js` (521 asertacija na kraju ove iteracije).
+i `test/e2e.js` (527 asertacija na kraju ove iteracije).
 
 ## Faza 0 — infrastruktura (gotovo)
 - [x] git init + baseline commit
@@ -28,9 +28,9 @@ i `test/e2e.js` (521 asertacija na kraju ove iteracije).
 - [x] **F3 (deo)** Prilog uz stavku troška (PDF/slika fakture) — isti obrazac
       kao `uploadAdmDoc`. .xlsx binarni upload SVESNO preskočen — paste-iz-Excela
       već pokriva potrebu, nova biblioteka nije opravdana za taj dobitak.
-- [ ] **F4** Auth + RLS — BLOKIRANO namerno (CLAUDE.md: "NE povezivati dok Jovan
-      ne kaže"; RLS je sekvenciran POSLE povezivanja). `smemNa()` je već tačka
-      izmene kad taj trenutak dođe.
+- [ ] **F4** Auth + RLS po ulogama — sledeći korak sad kad je Supabase povezan
+      (RLS je i dalje `pilot_full`, svesni kompromis). `smemNa()` je tačka
+      izmene; `zaposleni.grs`/`podizvodjaci.grs` traže join tabele pre RLS-a.
 
 ## Faza 3 — preostali nalazi i sređivanje — GOTOVO
 - [x] N4 (falsy-nula u formama), N7 (dashSorted nepoznat status),
@@ -41,12 +41,30 @@ i `test/e2e.js` (521 asertacija na kraju ove iteracije).
       formTim spisak) — namerno nisam menjao kod za te tri stavke jer
       zahtevaju Jovanovu odluku, ne tehnički ispravan/pogrešan odgovor
 
+## Faza 4 — Supabase + Jovanove odluke (2026-09-14/15) — GOTOVO
+- [x] **Supabase povezan** — nov projekat `gradnjaos` (ref `xqggoxrihitvqaocowlb`,
+      eu-central-1, besplatan plan), schema.sql primenjen, URL/ANON_KEY u
+      index.html, demo zasejan, round-trip proveren, security advisors: 0.
+- [x] **Zdravlje = jedan skor za sve** — `zdravlje(g)` bez `canFinance()` grane;
+      T17 proverava da je skor identičan za direktora i rukovodioca na svakom
+      gradilištu.
+- [x] **Marža planska + ostvarena** — `ostvMarzaPct(g)`, oznake "Plan. marža"
+      svuda, "Ostv. marža" u fioci, "Ostvarena marža" u preseku; alarm crveno
+      (ostvarena < 8%) / žuto (troškovi premašili plan). FIN_TERMS u testu
+      proširen da hvata i nove oznake kod rukovodioca.
+- [x] **Tim uz upozorenje** — `drugde(z,grId)` + `confirm()` u `saveTim`;
+      rukovodilac ne vidi ime tuđeg gradilišta. T17 pokriva oba odgovora
+      na confirm (odbij → nije dodat, prihvati → dodat).
+- [x] Usput: T11b test za `openIzvestaj` je gledao nepostojeći `#izvestajWrap`
+      (prolazio vakuumski) — ispravljen na `#rpt`; `boot()` bez Supabase sad
+      prazni konstante da ne pokušava mrežu.
+
 ## BLOKIRANO — treba mi od Jovana
-- **Supabase URL + anon ključ** — F2/F4 su spremni/testirani, ali ne mogu u
-  produkciju bez ovoga. CLAUDE.md: "ne povezivati dok Jovan ne kaže".
-- **RESEND_API_KEY** (za F2 Edge Function) — kad se Supabase poveže.
+- **GitHub publish** — repo je lokalan; GitHub Desktop → Add local repository
+  (`C:\gradnjaos`) → Publish. Ja ne mogu (nema `gh`, konektor nije autorizovan).
+- **RESEND_API_KEY** + `supabase functions deploy posalji-trebovanje` — kad
+  Jovan hoće pravo slanje mejla umesto mailto.
 - **Materijali za šablone faza** (F1) — ugrađen razuman default.
-- **3 proizvodne odluke** — v. CLAUDE.md "Otvorena pitanja za Jovana".
 
 ## Review
 

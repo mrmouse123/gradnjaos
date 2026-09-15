@@ -109,15 +109,21 @@ fallback lanac. Posle SVAKE izmene: `node test/e2e.js` mora vratiti 0.
       (`SABLONI_FAZA`), sadržaj je standardna praksa; Jovan koriguje kad ima vremena
 - [ ] PDF dokumenta uz šablone (pilot: repo folder; kasnije Storage)
 
-## Otvorena pitanja za Jovana (nisu bagovi, traže odluku)
-- `zdravlje(g)` daje različit skor direktoru i rukovodiocu za isti projekat
-  (finansijski penali su unutar `canFinance()`) — da li je to namerno ili treba
-  jedan objektivan skor + sakriveno finansijsko obrazloženje?
-- "Marža" na kontrolnoj tabli/karticama je uvek PLANSKA (`budzet-troskovi`),
-  nikad ostvarena (`budzet-potroseno(g)`) — samo `openPresek` je eksplicitno
-  označava kao "Planirana marža". Preimenovati svuda ili dodati i ostvarenu?
-- `formTim` nudi SVE zaposlene firme rukovodiocu (ne samo nezauzete) — da li
-  sme da doda na svoje gradilište osobu koja je već na tuđem?
+## Jovanove odluke (2026-09-15) — ne otvarati ponovo bez razloga
+- **Zdravlje projekta = jedan skor za sve uloge.** `zdravlje(g)` uvek
+  uračunava finansijske penale (nema više `canFinance()` grane). Rukovodilac
+  vidi isti broj kao direktor, ali NE i obrazloženje — alerti `fin:true` ostaju
+  filtrirani u `computeAlerts`, iznosi iza `canFinance()`.
+- **Marža: planska + ostvarena.** `marzaPct(g)` = planska (budžet − planirani
+  troškovi), svuda označena "Plan. marža". `ostvMarzaPct(g)` = ostvarena
+  (budžet − `potroseno(g)`), prikazana u fioci ("Ostv. marža") i preseku
+  ("Ostvarena marža"). Alarm: crveno kad ostvarena < 8%, žuto kad
+  `potroseno(g) > g.troskovi` (troškovi premašili plan). Dash tabela i kartice
+  prikazuju samo plansku (namerno, zbog širine).
+- **Tim: puna lista uz upozorenje.** `formTim` nudi sve zaposlene; osoba već
+  na drugom gradilištu je označena (`drugde(z,grId)`), a `saveTim` traži
+  `confirm()` pre dodavanja. Rukovodiocu se NE otkriva ime tuđeg gradilišta
+  ("na drugom gradilištu"), direktoru se prikazuju imena.
 
 ## Deployment
 GitHub Desktop → GitHub Pages. Novi fajl preko starog → commit → push.
