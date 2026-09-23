@@ -63,7 +63,16 @@ async function boot(opts = {}){
       .replace(/const SUPABASE_URL = '[^']*';/, "const SUPABASE_URL = 'https://test.supabase.co';")
       .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = 'test-anon-key';");
     if (script === before) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
-    g.supabase = makeSupabaseMock(opts.seed || {}, opts.faults || {});
+    /* Auth: podrazumevano direktorska sesija (stariji T10/T15 testovi racunaju da je
+       ucitavanje proslo). opts.session === null -> bez sesije (ekran za prijavu). */
+    const seed = Object.assign({}, opts.seed || {});
+    if (!seed.profili) seed.profili = [
+      { user_id: 'u-dir', uloga: 'direktor',    zaposleni_id: null, ime: 'Direktor Test' },
+      { user_id: 'u-ruk', uloga: 'rukovodilac', zaposleni_id: 'z1', ime: 'Petar Kovačević' },
+    ];
+    const session = opts.session === undefined ? { user: { id: 'u-dir', email: 'direktor@test' } } : opts.session;
+    const users = opts.users || { 'direktor@test': { id: 'u-dir', password: 'dir' }, 'petar@test': { id: 'u-ruk', password: 'ruk' } };
+    g.supabase = makeSupabaseMock(seed, opts.faults || {}, { session, users });
     g.__mock = g.supabase;
   } else {
     // Bez Supabase: isprazni konstante da app ni ne pokusa mrezu (index.html
@@ -76,7 +85,7 @@ async function boot(opts = {}){
   const ctx = vm.createContext(g);
   vm.runInContext(script, ctx, { filename: 'index.html<script>', displayErrors: true });
   // pusti async IIFE (loadState -> normalizeData -> render) da se izvrši
-  for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+  for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r));   // auth + profil + 15 tabela
   return {
     ctx,
     g,
@@ -440,6 +449,271 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
     const kol = app.run('DATA.predmer[DATA.predmer.length-1].kol');
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
+  });
+
+
+  /* ---- T18 F4: Auth + RLS na klijentu (Supabase mock sa auth slojem) ---- */
+  section('T18 auth: prijava, uloga iz profila, odjava');
+
+  const RUK_SESIJA = { user: { id: 'u-ruk', email: 'petar@test' } };
+  const DIR_SESIJA = { user: { id: 'u-dir', email: 'direktor@test' } };
+
+  await acheck('bez sesije: ekran za prijavu, NIJEDAN podatak se ne ucitava', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: null });
+    if (!a.g.document.body.classList.contains('login')) throw new Error('body nema klasu login');
+    const v = a.g.document.getElementById('view').innerHTML;
+    if (!v.includes('id="l_email"') || !v.includes('id="l_pw"')) throw new Error('nema forme za prijavu');
+    const citanja = a.g.__mock._log.filter(l => l.op === 'select' && l.table !== 'profili');
+    if (citanja.length) throw new Error('ucitane tabele bez sesije: ' + citanja.map(l => l.table).join(', '));
+    const upisi = a.g.__mock._log.filter(l => l.op === 'upsert');
+    if (upisi.length) throw new Error('upis bez sesije: ' + upisi.map(l => l.table).join(', '));
+  });
+
+  await acheck('prijava: pogresna lozinka -> poruka, bez reload; tacna -> reload', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: null });
+    a.g.document.getElementById('l_email').value = 'petar@test';
+    a.g.document.getElementById('l_pw').value = 'pogresna';
+    await a.run('prijava()');
+    const msg = a.g.document.getElementById('l_msg').innerHTML;
+    if (!/Pogrešan email ili lozinka/.test(msg)) throw new Error('nema poruke o pogresnoj lozinci: ' + msg);
+    if (a.g._calls.reload) throw new Error('reload posle pogresne lozinke');
+    a.g.document.getElementById('l_pw').value = 'ruk';
+    await a.run('prijava()');
+    if (a.g._calls.reload !== 1) throw new Error('reload posle tacne lozinke = ' + a.g._calls.reload);
+  });
+
+  await acheck('sesija bez profila: poruka + odjava, bez ucitavanja', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-nepoznat', email: 'stranac@test' } } });
+    const v = a.g.document.getElementById('view').innerHTML;
+    if (!/nije povezan/.test(v)) throw new Error('nema poruke o nepovezanom nalogu');
+    if (!a.g.__mock._log.some(l => l.op === 'auth.signOut')) throw new Error('nije odjavljen');
+    if (a.g.__mock._log.some(l => l.op === 'select' && l.table === 'gradilista')) throw new Error('ucitao gradilista bez profila');
+  });
+
+  await acheck('rukovodilac: ROLE iz profila, bez menija, setRole ignorisan, bez Klijenti/Naplata', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: RUK_SESIJA });
+    if (a.run('ROLE') !== 'z1') throw new Error('ROLE = ' + a.run('ROLE'));
+    if (a.run('PROFIL.uloga') !== 'rukovodilac') throw new Error('PROFIL.uloga = ' + a.run('PROFIL.uloga'));
+    const box = a.g.document.getElementById('roleBox').innerHTML;
+    if (box.includes('id="roleSel"')) throw new Error('rukovodilac ima meni za promenu uloge');
+    if (!box.includes('Odjavi se')) throw new Error('nema dugmeta za odjavu');
+    a.run("setRole('all')");
+    if (a.run('ROLE') !== 'z1') throw new Error('setRole("all") je prosao za rukovodioca');
+    const tabs = a.run('tabs().map(t=>t.id)');
+    if (tabs.includes('clients') || tabs.includes('pay')) throw new Error('rukovodilac vidi Klijenti/Naplata: ' + tabs.join(','));
+    const foot = a.g.document.getElementById('sideFoot').innerHTML;
+    if (foot.includes('resetDemo')) throw new Error('rukovodilac ima dugme za reset demo podataka');
+  });
+
+  await acheck('direktor: ROLE=all, meni "pogled kao" radi u oba smera', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    if (a.run('ROLE') !== 'all') throw new Error('ROLE = ' + a.run('ROLE'));
+    const box = a.g.document.getElementById('roleBox').innerHTML;
+    if (!box.includes('id="roleSel"')) throw new Error('direktor nema meni "pogled kao"');
+    if (!box.includes('direktor@test')) throw new Error('email nije prikazan');
+    a.run("setRole('z1')");
+    if (a.run('ROLE') !== 'z1') throw new Error('simulacija pogleda ne radi');
+    const tabs = a.run('tabs().map(t=>t.id)');
+    if (tabs.includes('pay')) throw new Error('u simulaciji rukovodioca i dalje vidi Naplatu');
+    a.run("setRole('all')");
+    if (a.run('ROLE') !== 'all') throw new Error('povratak na direktora ne radi');
+  });
+
+  await acheck('odjava: signOut + reload; promena lozinke: kratka odbijena, validna poslata', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA, promptReturns: 'kratka' });
+    await a.run('promeniLozinku()');
+    if (a.g.__mock._log.some(l => l.op === 'auth.updateUser')) throw new Error('kratka lozinka poslata');
+    if (!a.g._calls.alert.some(m => /najmanje 8/.test(m))) throw new Error('nema upozorenja o duzini');
+    const b = await boot({ supabase: true, seed: {}, session: DIR_SESIJA, promptReturns: 'novalozinka123' });
+    await b.run('promeniLozinku()');
+    const up = b.g.__mock._log.find(l => l.op === 'auth.updateUser');
+    if (!up || up.attrs.password !== 'novalozinka123') throw new Error('updateUser nije pozvan sa lozinkom');
+    await b.run('odjava()');
+    if (!b.g.__mock._log.some(l => l.op === 'auth.signOut')) throw new Error('signOut nije pozvan');
+    if (b.g._calls.reload !== 1) throw new Error('reload posle odjave = ' + b.g._calls.reload);
+  });
+
+  section('T18b diff-cuvanje i join tabele');
+
+  await acheck('doSave gura SAMO izmenjene redove (1 zadatak -> 1 upsert, 1 red)', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const n0 = a.g.__mock._log.length;
+    a.run("DATA.zadaci[0].naziv = 'Izmenjen naziv T18'");
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    if (ups.length !== 1) throw new Error('upsert poziva: ' + ups.length + ' (' + ups.map(u => u.table + ':' + u.n).join(', ') + ')');
+    if (ups[0].table !== 'zadaci' || ups[0].n !== 1) throw new Error('pogresan upsert: ' + JSON.stringify(ups[0]));
+    if (a.g.__mock._db.zadaci[0].naziv !== 'Izmenjen naziv T18') throw new Error('baza nema novi naziv');
+  });
+
+  await acheck('nepromenjen DATA -> doSave ne salje nista', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const n0 = a.g.__mock._log.length;
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    if (ups.length) throw new Error('poslato bez izmena: ' + ups.map(u => u.table).join(', '));
+  });
+
+  await acheck('seed: zaposleni u bazi BEZ grs/bivsi; join tabele popunjene; podizvodjaci bez grs', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const z = a.g.__mock._db.zaposleni.find(x => x.id === 'z1');
+    if (!z || 'grs' in z || 'bivsi' in z) throw new Error('zaposleni red u bazi nosi nizove: ' + JSON.stringify(z));
+    const zg = a.g.__mock._db.zaposleni_gradiliste || [];
+    const z1g1 = zg.find(r => r.zaposleni_id === 'z1' && r.gradiliste_id === 'g1');
+    const z1g4 = zg.find(r => r.zaposleni_id === 'z1' && r.gradiliste_id === 'g4');
+    if (!z1g1 || z1g1.aktivan !== true) throw new Error('z1/g1 aktivan nedostaje');
+    if (!z1g4 || z1g4.aktivan !== false) throw new Error('z1/g4 bivsi nedostaje');
+    const p1 = a.g.__mock._db.podizvodjaci.find(x => x.id === 'p1');
+    if (!p1 || 'grs' in p1) throw new Error('podizvodjac red nosi grs');
+    const pg = a.g.__mock._db.podizvodjac_gradiliste || [];
+    if (!pg.some(r => r.podizvodjac_id === 'p1' && r.gradiliste_id === 'g1')) throw new Error('p1/g1 veza nedostaje');
+  });
+
+  await acheck('ucitavanje: grs/bivsi/podizvodjaci.grs se rekonstruisu iz join tabela', async () => {
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });   // zaseje bazu
+    const seed = JSON.parse(JSON.stringify(a0.g.__mock._db));
+    const a = await boot({ supabase: true, seed, session: DIR_SESIJA });        // ucita iz zasejane
+    const z1 = a.run("zapById['z1']");
+    if (JSON.stringify(z1.grs) !== '["g1"]' || JSON.stringify(z1.bivsi) !== '["g4"]')
+      throw new Error('z1 grs/bivsi: ' + JSON.stringify(z1.grs) + ' / ' + JSON.stringify(z1.bivsi));
+    const p1 = a.run("DATA.podizvodjaci.find(x=>x.id==='p1')");
+    if (JSON.stringify([...p1.grs].sort()) !== '["g1","g6"]') throw new Error('p1.grs = ' + JSON.stringify(p1.grs));
+    if (a.run("'zaposleni_gradiliste' in DATA")) throw new Error('join tabela ostala u DATA');
+    const n0 = a.g.__mock._log.length;
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    if (ups.length) throw new Error('posle ucitavanja doSave salje: ' + ups.map(u => u.table + ':' + u.n).join(', '));
+  });
+
+  await acheck('saveTim: dodavanje/skidanje ide u zaposleni_gradiliste, NE u zaposleni', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    // par (zaposleni, gradiliste) koji NIJE u DEMO ni kao grs ni kao bivsi — inace test prolazi trivijalno
+    const par = a.run(`(()=>{ for(const z of DATA.zaposleni){ for(const g of DATA.gradilista){
+      if(!(z.grs||[]).includes(g.id) && !(z.bivsi||[]).includes(g.id)) return {z:z.id, g:g.id}; } } return null; })()`);
+    if (!par) throw new Error('nema slobodnog para u DEMO');
+    const n0 = a.g.__mock._log.length;
+    // skini z1 sa g1 (-> bivsi), dodaj par.z na par.g
+    a.run(`(()=>{ const z1=zapById['z1']; z1.grs=z1.grs.filter(x=>x!=='g1'); z1.bivsi=[...new Set([...z1.bivsi,'g1'])];
+      const z=zapById[${JSON.stringify(par.z)}]; z.grs=[...(z.grs||[]), ${JSON.stringify(par.g)}]; })()`);
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    const tabele = [...new Set(ups.map(u => u.table))];
+    if (tabele.includes('zaposleni')) throw new Error('upsert na zaposleni iako se red nije promenio');
+    if (!tabele.includes('zaposleni_gradiliste')) throw new Error('nema upserta na join tabelu: ' + tabele.join(','));
+    const jt = ups.filter(u => u.table === 'zaposleni_gradiliste');
+    if (jt.reduce((s, u) => s + u.n, 0) !== 2) throw new Error('ocekivana tacno 2 izmenjena reda join tabele, poslato: ' + jt.map(u => u.n).join('+'));
+    const zg = a.g.__mock._db.zaposleni_gradiliste;
+    const r1 = zg.find(r => r.zaposleni_id === 'z1' && r.gradiliste_id === 'g1');
+    const r2 = zg.find(r => r.zaposleni_id === par.z && r.gradiliste_id === par.g);
+    if (!r1 || r1.aktivan !== false) throw new Error('z1/g1 nije prebacen u bivsi');
+    if (!r2 || r2.aktivan !== true) throw new Error(par.z + '/' + par.g + ' nije dodat');
+  });
+
+  await acheck('prazna baza + rukovodilac: NE seje demo', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: RUK_SESIJA });
+    if (a.g.__mock._log.some(l => l.op === 'upsert')) throw new Error('rukovodilac je zasejao bazu');
+    if (a.run('mode') === 'supabase') throw new Error('mode=supabase iako ucitavanje nije uspelo');
+  });
+
+  await acheck('resetDemo kao rukovodilac: odbijen bez ijednog poziva bazi', async () => {
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const seed = JSON.parse(JSON.stringify(a0.g.__mock._db));
+    const a = await boot({ supabase: true, seed, session: RUK_SESIJA });
+    const n0 = a.g.__mock._log.length;
+    await a.run('resetDemo()');
+    const poz = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert' || l.op === 'delete');
+    if (poz.length) throw new Error('reset kao rukovodilac je dirao bazu: ' + poz.map(x => x.op + ':' + x.table).join(', '));
+    if (!a.g._calls.alert.some(m => /samo direktor/.test(m))) throw new Error('nema poruke');
+  });
+
+  await acheck('resetDemo kao direktor: join tabele ponovo upisane i snapshot svez', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const par = a.run(`(()=>{ for(const z of DATA.zaposleni){ for(const g of DATA.gradilista){
+      if(!(z.grs||[]).includes(g.id) && !(z.bivsi||[]).includes(g.id)) return {z:z.id, g:g.id}; } } return null; })()`);
+    a.run(`(()=>{ const z=zapById[${JSON.stringify(par.z)}]; z.grs=[...(z.grs||[]), ${JSON.stringify(par.g)}]; })()`);
+    await a.run('doSave()');
+    if (!a.g.__mock._db.zaposleni_gradiliste.some(r => r.zaposleni_id === par.z && r.gradiliste_id === par.g)) throw new Error('priprema: veza nije upisana');
+    await a.run('resetDemo()');
+    const zg = a.g.__mock._db.zaposleni_gradiliste;
+    if (zg.some(r => r.zaposleni_id === par.z && r.gradiliste_id === par.g)) throw new Error(par.z + '/' + par.g + ' prezivela reset');
+    const n0 = a.g.__mock._log.length;
+    await a.run('doSave()');
+    if (a.g.__mock._log.slice(n0).some(l => l.op === 'upsert')) throw new Error('posle reseta doSave gura podatke (snapshot nije osvezen)');
+  });
+
+  await acheck('demo rezim (bez Supabase): nema prijave, meni uloga radi kao pre', async () => {
+    const a = await boot();
+    if (a.g.document.body.classList.contains('login')) throw new Error('login ekran u demo rezimu');
+    if (a.run('PROFIL') !== null) throw new Error('PROFIL postavljen u demo rezimu');
+    if (!a.g.document.getElementById('roleBox').innerHTML.includes('id="roleSel"')) throw new Error('nema menija uloga');
+    a.run("setRole('z1')"); if (a.run('ROLE') !== 'z1') throw new Error('setRole ne radi u demo rezimu');
+  });
+
+
+  section('T18c parcijalni DATA (kao sto RLS vraca rukovodiocu)');
+
+  /* Server rukovodiocu vraca: SVE zaposlene i SVE veze (ukljucujuci tudja gradilista),
+     ali samo SVOJE gradiliste i njegove redove. Svako `grById[x].naziv` bez zastite
+     puca na id gradilista koje nije ucitano. Ovaj test to lovi u mock-u — u pravom
+     browseru je proslo 2026-09-23, ali mora ostati pokriveno. */
+  await acheck('rukovodilac sa RLS-isecenim podacima: nijedan pogled/kartica/forma ne puca', async () => {
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const full = JSON.parse(JSON.stringify(a0.g.__mock._db));
+    const moje = 'g1';
+    const seed = {
+      profili: full.profili,
+      gradilista: full.gradilista.filter(g => g.id === moje),
+      clijenti: full.clijenti.filter(c => full.gradilista.some(g => g.id === moje && g.klijent === c.id)),
+      zaposleni: full.zaposleni,                          // svi (Jovanova odluka)
+      zaposleni_gradiliste: full.zaposleni_gradiliste,    // sve veze, i tudje
+      podizvodjaci: full.podizvodjaci.filter(p => (full.podizvodjac_gradiliste || []).some(r => r.podizvodjac_id === p.id && r.gradiliste_id === moje)),
+      podizvodjac_gradiliste: full.podizvodjac_gradiliste,
+      resursi: full.resursi.filter(r => !r.gr || r.gr === moje),
+      magacin: full.magacin,
+      mag_promene: full.mag_promene.filter(r => !r.gr || r.gr === moje),
+    };
+    for (const t of ['zadaci', 'dnevnik', 'situacije', 'narudzbe', 'troskovi_st', 'predmer']) seed[t] = (full[t] || []).filter(r => r.gr === moje);
+    const a = await boot({ supabase: true, seed, session: RUK_SESIJA });
+    if (a.run('mode') !== 'supabase' || a.run('ROLE') !== 'z1') throw new Error('boot: mode=' + a.run('mode') + ' ROLE=' + a.run('ROLE'));
+    if (a.run('DATA.gradilista.length') !== 1) throw new Error('ucitano gradilista: ' + a.run('DATA.gradilista.length'));
+    // tudji id u grs mora da PREZIVI ucitavanje (drugde() ga koristi za ⚠ oznaku)
+    const z2 = a.run("zapById['z2'].grs");
+    if (!z2.includes('g2')) throw new Error('tudji id nestao iz z2.grs: ' + JSON.stringify(z2));
+    const greske = a.run(`(()=>{ const out=[]; const p=(l,f)=>{ try{ f(); }catch(e){ out.push(l+': '+e.message); } };
+      for(const v of tabs().map(t=>t.id)) p('view '+v, ()=>{ current=v; render(); });
+      DATA.zaposleni.forEach(z=>p('openEmp '+z.id, ()=>openEmp(z.id)));
+      DATA.gradilista.forEach(g=>{ p('openSite '+g.id, ()=>openSite(g.id)); p('formTim '+g.id, ()=>formTim(g.id)); p('openPredmer '+g.id, ()=>openPredmer(g.id)); });
+      p('formTask', ()=>formTask()); p('formDiary', ()=>formDiary()); p('formNarudzba', ()=>formNarudzba()); p('computeAlerts', ()=>computeAlerts());
+      current='dash'; render(); return out; })()`);
+    if (greske.length) throw new Error(greske.join('\n'));
+    // formTim: oznaka "na drugom gradilistu" bez imena tudjeg gradilista
+    a.run("formTim('g1')");
+    const html = a.g.document.getElementById('modal').innerHTml || a.g.document.getElementById('modal').innerHTML;
+    if (!html.includes('na drugom gradilištu')) throw new Error('nema ⚠ oznake za osobu sa tudjeg gradilista');
+    const tudjiNazivi = full.gradilista.filter(g => g.id !== moje).map(g => g.naziv);
+    const curi = tudjiNazivi.filter(n => html.includes(n));
+    if (curi.length) throw new Error('ime tudjeg gradilista u formi tima: ' + curi.join(', '));
+  });
+
+  await acheck('rukovodilac: saveTim gura samo join redove SVOG gradilista (nista sto RLS odbija)', async () => {
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_SESIJA });
+    const full = JSON.parse(JSON.stringify(a0.g.__mock._db));
+    const seed = { profili: full.profili, gradilista: full.gradilista.filter(g => g.id === 'g1'), zaposleni: full.zaposleni,
+      zaposleni_gradiliste: full.zaposleni_gradiliste, podizvodjaci: [], podizvodjac_gradiliste: full.podizvodjac_gradiliste,
+      clijenti: [], zadaci: [], dnevnik: [], situacije: [], narudzbe: [], troskovi_st: [], predmer: [], resursi: [], magacin: [], mag_promene: [] };
+    const a = await boot({ supabase: true, seed, session: RUK_SESIJA });
+    const slobodan = a.run(`DATA.zaposleni.find(z=>!(z.grs||[]).includes('g1') && !(z.bivsi||[]).includes('g1')).id`);
+    a.run("formTim('g1')");
+    a.run(`DATA.zaposleni.forEach(z=>{ document.getElementById('t_z_'+z.id).checked=(z.grs||[]).includes('g1'); });`);
+    a.g.document.getElementById('t_z_' + slobodan).checked = true;
+    const n0 = a.g.__mock._log.length;
+    a.run("saveTim('g1')");
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    const tabele = [...new Set(ups.map(u => u.table))];
+    if (tabele.some(t => t !== 'zaposleni_gradiliste')) throw new Error('rukovodilac gurao i: ' + tabele.join(','));
+    const keys = ups.flatMap(u => u.keys || []);
+    if (keys.some(k => !k.endsWith('|g1'))) throw new Error('gurnuti redovi van g1: ' + keys.join(','));
   });
 
 

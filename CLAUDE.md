@@ -7,123 +7,149 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 
 ## Arhitektura
 - `index.html`: CSS + HTML ljuska + sav JS u jednom <script> bloku
-- Storage adapter (troslojni): Supabase (konstante SUPABASE_URL/SUPABASE_ANON_KEY
-  u bloku "KONFIGURACIJA ZA DEPLOYMENT" — POVEZANO od 2026-09-14, projekat
-  `gradnjaos` / ref `xqggoxrihitvqaocowlb`, org "jovan.miskovic@think-tech.co's
-  Org", region eu-central-1) → window.storage → memorija. `saveState()` debounce 400ms → `doSave()` (guard
-  protiv preklapanja + `saveErr` vidljiv u footeru), flush na pagehide/
-  visibilitychange. `pushAll` seed-uje demo pri praznoj bazi (proverava SVE
-  tabele, ne samo gradilišta) i ne prekida se na prvoj grešci. Brisanje reda je
-  eksplicitno (`obrisiRed(tabela,id)`), ne diff — `pushAll` i dalje samo upsertuje.
-- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 tabela);
-  `migracija-01..09.sql` samo za postojeće baze.
+- **Supabase** (od 2026-09-14): projekat `gradnjaos`, ref `xqggoxrihitvqaocowlb`,
+  org "jovan.miskovic@think-tech.co's Org", eu-central-1, besplatan plan
+  (PAUZIRA se posle 7 dana bez upotrebe → Restore u dashboardu, v. lessons #10).
+  Konstante SUPABASE_URL/SUPABASE_ANON_KEY u bloku "KONFIGURACIJA ZA DEPLOYMENT".
+  Anon ključ u fajlu je NORMALAN Supabase model — zaštita je RLS, ne tajnost ključa.
+- **Auth + RLS** (od 2026-09-23, F4): bez prijave = nula pristupa (anon nema
+  nijednu polisu). Uloga dolazi iz tabele `profili` (user_id → uloga +
+  zaposleni_id), ne iz menija. `initAuth()` → `PROFIL`/`SESIJA` → `ROLE`.
+  Direktor zadržava meni "Pogled kao" (čisto UI simulacija — server mu ionako
+  daje sve). Rukovodilac nema meni, `setRole()` ga ignoriše. Demo/memorija
+  režim (prazne konstante) radi kao pre: bez prijave, sa menijem.
+  Polise na serveru izražavaju ISTO pravilo kao `smemNa(grId)`: direktor sve,
+  rukovodilac samo redove gradilišta gde je on `rukovodilac`. Helperi
+  (`je_direktor`, `moj_zaposleni`, `moje_gradiliste`…) su `security definer`.
+- **Join tabele**: `zaposleni.grs[]`/`bivsi[]` i `podizvodjaci.grs[]` NE postoje
+  više u bazi (niz se ne može ograničiti RLS-om) — žive kao
+  `zaposleni_gradiliste(zaposleni_id, gradiliste_id, aktivan)` (aktivan=true
+  → grs, false → bivsi) i `podizvodjac_gradiliste`. U JS modelu nizovi
+  OSTAJU (30+ mesta): `spojiJoinTabele()` ih izvodi pri učitavanju,
+  `rowsZa()` ih pretvara nazad pri čuvanju.
+- **Čuvanje = DIFF po redu**: `zapamtiSnapshot(DATA)` posle učitavanja;
+  `pushAll()` šalje samo redove čiji se JSON promenio (`PUSHED[t][kljuc]`).
+  Nikad "cela baza": pod RLS-om rukovodilac ne sme ni da pokuša upsert tuđih
+  redova, a base64 prilozi ne idu na svaki klik. `saveState()` debounce 400ms
+  → `doSave()` (guard protiv preklapanja, `saveErr` u footeru), flush na
+  pagehide/visibilitychange. Brisanje reda je eksplicitno (`obrisiRed`).
+  Seed demo podataka i `resetDemo()` — samo direktor.
+- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, helperi,
+  polise, `povezi_profil`). Postojeća baza: `migracija-01..10.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
-  pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana i dok
-  RESEND_API_KEY nije podešen — do tada `posaljiMejlNabavci()` tiho pada na
-  mailto (isto ponašanje kao danas).
+  pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
+  `posaljiMejlNabavci()` tiho pada na mailto.
 - Render: svaki pogled je `viewX()` funkcija koja vraća HTML string; `render()`
-  ubacuje u #main. Globalno stanje: ROLE (simulacija uloge), MODUL/PODTIP, current (tab).
+  ubacuje u #main. Globalno stanje: ROLE, MODUL/PODTIP, current (tab), PROFIL.
+
+## Nalozi (stanje 2026-09-23)
+- direktor: `miske1431@gmail.com` (profili.uloga=direktor, zaposleni_id null)
+- test-rukovodilac: `petar@gradnjaos.test` → zaposleni `z1` (Petar Kovačević)
+- Lozinke su poslate Jovanu u chatu, NISU u repou. Promena: dugme "Lozinka" u sidebaru.
+- Novi korisnik: Supabase → Authentication → Users → Add user (email+lozinka,
+  auto confirm), pa u SQL editoru `select povezi_profil('mejl','rukovodilac','zNN');`
+  (ili `'direktor'` bez trećeg argumenta). Bez profila nalog vidi nula podataka.
+- Magic link ("Pošalji mi link") radi tek kad se u Auth → URL Configuration
+  postavi Site URL na pravu adresu app-a (posle GitHub Pages deploya).
 
 ## Ključni domeni (redosled u kodu)
 moduli (projektovanje | izvodjenje→visoko/nisko), gradilišta (+adm, nivo, površina, nadzor),
-zaposleni (grs[] više projekata, bivsi[] istorija), zadaci (kanban), dnevnik, situacije (naplata),
-narudzbe (UI: "Trebovanje", mailto/Edge Function na NABAVKA_EMAIL), troskovi_st (izvor za
-potroseno(g); opciono `prilog` = faktura kao PDF/slika, data-URL u pilotu),
+zaposleni (grs[] više projekata, bivsi[] istorija — v. join tabele), zadaci (kanban), dnevnik,
+situacije (naplata), narudzbe (UI: "Trebovanje", mailto/Edge Function na NABAVKA_EMAIL),
+troskovi_st (izvor za potroseno(g); opciono `prilog` = faktura kao PDF/slika, data-URL u pilotu),
 podizvodjaci (UI u Projektovanju: "Spoljni saradnici"), predmer (i "Specifikacija usluga" za
 projektovanje; NIVOI_DOK šablon: IDR/IDP-PGD/PZI auto-popuna; SABLONI_FAZA šablon za
 Izvođenje: 8 faza × zadaci po tipu visoko/niskogradnja, `primeniSablonFaza()`), resursi
 (istek → upozorenja), magacin + mag_promene, izveštaji (openIzvestaj=za investitora bez
-finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine).
+finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine), profili (auth).
 
 ## Pravila koja NE kršiti
 1. Rukovodilac NIKAD ne vidi: marže, cene, jedinične cene, naplatu, kumulativ,
    tabove Klijenti/Naplata. Direktor (ROLE==='all') vidi sve.
 2. SVAKA mutirajuća I čitajuća funkcija koja prima `grId` spolja ima na početku
    `smemNa(grId)` (ili ekvivalentnu proveru) — funkcije su globalne, sakriveno
-   dugme nije zaštita. To je priprema za Supabase Auth + RLS.
+   dugme nije zaštita. Server sprovodi isto pravilo RLS-om; UI guard ostaje
+   zbog lokalnog `DATA` keša i UX-a (bez njega bi red "postojao" do refresh-a,
+   a upis tiho pao).
 3. Svi korisnički unosi kroz `esc()` pre upisa u DATA (escape-on-write, ne
    escape-on-render — 800+ mesta u kodu se oslanja na to da je DATA već čist).
-   Izlazi koji NISU HTML (CSV, telo mejla, ime fajla) moraju ići kroz `unesc()`
-   pre slanja — inače `Petrović & Sinovi` postane `Petrović &amp; Sinovi`.
-4. Brojevi iz korisničkog unosa (posebno paste-iz-Excela i "izvedeno") idu kroz
-   zajednički `broj()` (srpski zapis `1.234,50` i engleski `1234.50`/`12.5`) —
-   ne `+String(x).replace(',','.')` ad-hoc, to je pravilo pre revizije v0.5 lomilo
-   hiljade i decimale naizmenično.
-5. izračunate vrednosti: potroseno(g) iz troskovi_st stavki (fallback g.potroseno),
+   Izlazi koji NISU HTML (CSV, telo mejla, ime fajla) moraju ići kroz `unesc()`.
+4. Brojevi iz korisničkog unosa idu kroz zajednički `broj()` (srpski `1.234,50`
+   i engleski `1234.50`/`12.5`) — ne ad-hoc `+String(x).replace(',','.')`.
+5. Izračunate vrednosti: potroseno(g) iz troskovi_st stavki (fallback g.potroseno),
    naplSum(g) iz situacija — ne uvoditi paralelne izvore istine.
-6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` (npr.
-   zadatak.rok, gradilište.pocetak/rok) NE SME dobiti `null` kao default kad je
-   input prazan — default na smislen datum (isti kao u samoj formi). Jedini
-   legitimno null-safe datum je `resursi.istice` (ima namenski sentinel u
-   `resIstice()`). Prazan string (`''`) ne sme ići u Postgres `date` kolonu ni
-   pod kojim uslovima — Postgres to odbija (22007) i ranije je tiho obarao
-   upis svih tabela iza te u nizu `TABLES`.
+6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` NE SME
+   dobiti `null` kao default — default na smislen datum (isti kao u formi). Jedini
+   null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string
+   `''` ne sme u Postgres `date` kolonu (22007 je ranije tiho obarao upis).
+7. **DATA je PARCIJALAN pogled** (od F4): rukovodilac ima samo svoja gradilišta,
+   ali SVE zaposlene i SVE veze — `z.grs`/`p.grs` sadrže id-jeve gradilišta koja
+   NISU u `grById`. Nikad `grById[x].naziv` bez zaštite: koristi
+   `grById[x]?grById[x].naziv:'—'` ili `.map(x=>grById[x]).filter(Boolean)`.
+   T18c to lovi u mock-u. Rukovodiocu se ne otkriva IME tuđeg gradilišta, samo
+   da postoji ("na drugom gradilištu").
+8. Nikad ne dodavati kod koji gura celu tabelu u bazu — `pushAll` je diff.
+   Nova tabela → dodaj u `TABLES` (id-tabela) ili `JOIN_TABELE` + `rowsZa`/
+   `kljucReda`, i polisu u migraciji. Nova mutacija → prođe kroz `saveState()`.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-9 lekcija u ovom trenutku; najvažnije za svaku izmenu:
-- U fajlu postoje mesta sa LITERALNIM \uXXXX sekvencama u JS stringovima —
-  replace sa pravim karakterima ih ne nalazi. Grep pre svake zamene.
-- Svaki search-replace mora imati assert/proveru da je cilj nađen
-  (`test/patch-lib.js` — `Patcher` klasa, koristi je umesto ručnog sed/replace).
-- Upis fajla: temp fajl pa atomic rename (fajl je jednom truncate-ovan).
-- Bezbednosni nalaz se dokazuje IZVRŠAVANJEM kroz pravi put upisa (formu), ne
-  čitanjem regexa nad izvorom — dva različita "audita" su prijavila lažne
-  nalaze dok test nije zaista pozvao `save*()` kroz popunjenu formu.
-- `esc()` ne escapuje `=` ni `()` — detektor XSS-a u testu traži neescapovan
-  `<`, ne string payload-a doslovno.
+13 lekcija; najvažnije za svaku izmenu:
+- U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
+- Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
+- Upis fajla: temp fajl pa atomic rename.
+- Bezbednosni nalaz se dokazuje IZVRŠAVANJEM kroz pravi put (formu / RLS sa
+  `set local role`), ne čitanjem regexa.
+- Pre nego što test tvrdi "X je dodato", proveri da X nije već u DEMO (T18
+  je prvo trivijalno prolazio sa z2/g1 koji u DEMO već postoji).
+- Preview panel učitava `file://` kao `data:` URL → nema localStorage → sesija
+  ne preživi reload. Auth tok se u browseru testira BEZ reload-a (ručno
+  `initAuth()+loadState()+…`). U pravom browseru na http(s) sesija traje.
 
 ## Testiranje
-`node test/e2e.js` — 500+ asertacija, bez spoljnog test framework-a (namerno).
-Sastavni delovi:
-- `test/dom-stub.js` — minimalan DOM (dovoljan da <script> proradi u Node-u)
-- `test/patch-lib.js` — `Patcher` klasa za bezbedne izmene (replace+assert+atomic write)
-- `test/supabase-mock.js` — mock Supabase klijent (select/upsert/delete +
-  `functions.invoke()`), sa `faults` za simulaciju grešaka
-Pokriva: sintaksu, boot, pogledi × uloge × moduli, th==td simetriju tabela,
-role-guardove, VLASNIŠTVO nad gradilištem (ne samo ulogu — v. pravilo 2), XSS
-kroz stvarne forme (ne direktan upis u DATA), integritet TABLES/DEMO/normalize,
-Supabase sync (prazna/puna baza, greške, reset, brisanje), Edge Function
-fallback lanac. Posle SVAKE izmene: `node test/e2e.js` mora vratiti 0.
+`node test/e2e.js` — 540+ asertacija, bez spoljnog test framework-a (namerno).
+- `test/dom-stub.js` — minimalan DOM (+ brojači reload/prompt/confirm)
+- `test/patch-lib.js` — `Patcher` (replace+assert+atomic write; `assertNoLostDeclarations([dozvoljeno])`)
+- `test/supabase-mock.js` — mock klijent: select/upsert/delete (+ filteri,
+  maybeSingle, kompozitni ključevi join tabela), `functions.invoke()`, `auth.*`
+  (`boot({supabase:true, session, users, seed:{profili}})`; podrazumevano
+  direktorska sesija; `session:null` = ekran za prijavu)
+Pokriva: sintaksu, boot, pogledi × uloge × moduli, th==td, role-guardove,
+vlasništvo, XSS kroz forme, integritet, Supabase sync, edge function fallback,
+auth tok (T18), diff-čuvanje i join tabele (T18b), parcijalni DATA (T18c).
+RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
+`begin; set local role authenticated; set local request.jwt.claims =
+'{"sub":"<uuid>","role":"authenticated"}'; select …` — 2026-09-23: 3 profila
+čitanja + 13 provera upisa, sve po dizajnu. Posle SVAKE izmene: e2e mora vratiti 0.
 
 ## Sledeće (dogovoreno, čeka)
-- [x] Supabase povezivanje — GOTOVO 2026-09-14. Novi projekat `gradnjaos`
-      (ref `xqggoxrihitvqaocowlb`, eu-central-1), schema.sql primenjen (svih 13
-      tabela + RLS `pilot_full`), URL/ANON_KEY upisani u index.html, demo
-      podaci zaseejani, round-trip upis proveren, `get_advisors` security: 0
-      nalaza. RLS i dalje `to anon using(true)` — svesni kompromis za pilot
-      (isto stanje kao pre povezivanja, samo sad na pravoj bazi umesto memorije).
-- [ ] Potom: Supabase Auth + RLS po ulogama (user_id + uloga kolone), zamena ROLE simulacije.
-      `smemNa(grId)` je već izdvojen kao jedina tačka za pravilo vlasništva —
-      RLS policy treba da izrazi isto pravilo na serveru, kod ostaje kao UI guard.
-      NAPOMENA: `zaposleni.grs`/`podizvodjaci.grs` (array kolone) se ne mogu
-      ograničiti RLS-om po gradilištu — trebaće join tabele ako se ide do kraja.
-- [x] Edge Function za pravo slanje mejla trebovanja — kod gotov
-      (`supabase/functions/posalji-trebovanje/`), NIJE deploy-ovana (čeka
-      Jovanovo "da" + RESEND_API_KEY — Supabase projekat sad postoji pa je
-      deploy tehnički moguć u svakom trenutku, `supabase functions deploy`)
-- [ ] .xlsx binarni upload (Supabase Storage) — svesno odloženo, paste-iz-Excela
-      (`savePredmerImport`) već pokriva praktičnu potrebu bez dodatne biblioteke
-- [x] Uvoz faktura kao PDF uz stavke troška — gotovo (`uploadTrosakPrilog`,
-      data-URL u pilotu, 2.5MB limit, isti obrazac kao `uploadAdmDoc`)
-- [x] Šabloni faza/zadataka za Izvođenje (visoko/nisko) — gotovo
-      (`SABLONI_FAZA`), sadržaj je standardna praksa; Jovan koriguje kad ima vremena
-- [ ] PDF dokumenta uz šablone (pilot: repo folder; kasnije Storage)
+- [x] Supabase povezivanje — 2026-09-14
+- [x] **F4 Auth + RLS po ulogama — 2026-09-23** (migracija 10, join tabele,
+      diff-čuvanje, login ekran, profili). Provereno na pravoj bazi kao
+      direktor i kao rukovodilac.
+- [ ] Hardening posle F4: rukovodilac na nivou API-ja može da PROČITA iznose
+      (troskovi_st, situacije, predmer.cena) SVOG gradilišta — UI ih krije
+      (pravilo 1), server ne. Razlog: `zdravlje(g)` je "jedan skor za sve" i
+      treba potroseno/naplaceno. Rešenje: RPC `zdravlje(gid)` na serveru +
+      ukidanje select-a rukovodiocu na finansijske tabele.
+- [ ] Hardening: rukovodilac može da UPDATE-uje svoje gradilište u celini
+      (i budzet/rukovodilac kolone) — UI to ne nudi; server ne razlikuje kolone.
+      Rešenje: RPC `azuriraj_gradiliste(gid, napredak, faza, status)`.
+- [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
+      Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
+- [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
+- [ ] GitHub publish (GitHub Desktop → Add local repository → Publish). Sa RLS-om
+      javni repo je OK — anon ključ bez sesije ne može ništa.
+- [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
 
 ## Jovanove odluke (2026-09-15) — ne otvarati ponovo bez razloga
-- **Zdravlje projekta = jedan skor za sve uloge.** `zdravlje(g)` uvek
-  uračunava finansijske penale (nema više `canFinance()` grane). Rukovodilac
-  vidi isti broj kao direktor, ali NE i obrazloženje — alerti `fin:true` ostaju
-  filtrirani u `computeAlerts`, iznosi iza `canFinance()`.
-- **Marža: planska + ostvarena.** `marzaPct(g)` = planska (budžet − planirani
-  troškovi), svuda označena "Plan. marža". `ostvMarzaPct(g)` = ostvarena
-  (budžet − `potroseno(g)`), prikazana u fioci ("Ostv. marža") i preseku
-  ("Ostvarena marža"). Alarm: crveno kad ostvarena < 8%, žuto kad
-  `potroseno(g) > g.troskovi` (troškovi premašili plan). Dash tabela i kartice
-  prikazuju samo plansku (namerno, zbog širine).
-- **Tim: puna lista uz upozorenje.** `formTim` nudi sve zaposlene; osoba već
-  na drugom gradilištu je označena (`drugde(z,grId)`), a `saveTim` traži
-  `confirm()` pre dodavanja. Rukovodiocu se NE otkriva ime tuđeg gradilišta
-  ("na drugom gradilištu"), direktoru se prikazuju imena.
+- **Zdravlje projekta = jedan skor za sve uloge.** `zdravlje(g)` uvek uračunava
+  finansijske penale. Rukovodilac vidi broj, ne i obrazloženje.
+- **Marža: planska + ostvarena.** `marzaPct(g)` = planska ("Plan. marža"),
+  `ostvMarzaPct(g)` = ostvarena (fioka "Ostv. marža", presek "Ostvarena marža").
+  Alarm: crveno < 8% ostvarene, žuto kad `potroseno(g) > g.troskovi`.
+- **Tim: puna lista uz upozorenje.** `formTim` nudi sve; osoba na drugom
+  gradilištu označena (`drugde()`), `saveTim` traži `confirm()`. Rukovodiocu
+  se NE otkriva ime tuđeg gradilišta.
 
 ## Deployment
 GitHub Desktop → GitHub Pages. Novi fajl preko starog → commit → push.

@@ -59,6 +59,21 @@
   .role-box{margin:0 4px 14px; padding:10px 11px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:10px}
   .role-box label{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#7E93AB; font-weight:600; display:block; margin-bottom:6px}
   .role-box select{width:100%; border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:7px 9px; font-size:12.5px; background:#20395A; color:#EAF1F8; outline:none}
+  .role-box .acc{font-size:12.5px; color:#EAF1F8; line-height:1.35; word-break:break-word}
+  .role-box .acc small{display:block; color:#7E93AB; font-size:11px}
+  .role-box .acc-btns{display:flex; gap:6px; margin-top:8px}
+  .role-box .acc-btns button{flex:1; background:transparent; border:1px solid rgba(255,255,255,.18); color:#D7E3EF; border-radius:7px; padding:5px 0; font-size:11px; cursor:pointer}
+  .role-box .acc-btns button:hover{background:rgba(255,255,255,.08)}
+  body.login .side{display:none} body.login .app{grid-template-columns:1fr} body.login .menu-btn{display:none}
+  .login-wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
+  .login-card{width:100%; max-width:380px; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:26px 24px; box-shadow:0 10px 30px rgba(0,0,0,.06)}
+  .login-card h1{font-size:20px; margin:0 0 4px} .login-card p{color:var(--muted); font-size:13px; margin:0 0 18px}
+  .login-card .f-row{margin-bottom:12px}
+  .login-card label{display:block; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; margin-bottom:5px}
+  .login-card input{width:100%; border:1px solid var(--line); border-radius:9px; padding:10px 11px; font-size:14px; background:var(--paper); color:var(--ink); outline:none}
+  .login-card input:focus{border-color:var(--blue-2)}
+  .login-card .err{color:var(--red); font-size:12.5px; margin:0 0 10px}
+  .login-card .ok{color:var(--green); font-size:12.5px; margin:0 0 10px}
 
   .nav{display:flex; flex-direction:column; gap:2px}
   .nav button{
@@ -409,7 +424,7 @@
       </div>
     </div>
 
-    <div class="role-box">
+    <div class="role-box" id="roleBox">
       <label>Prijavljen kao</label>
       <select id="roleSel" onchange="setRole(this.value)"></select>
     </div>
@@ -648,6 +663,8 @@ const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacij
 let DATA = JSON.parse(JSON.stringify(DEMO));
 let supa=null, mode='memorija', saveTimer=null;
 let saving=false, dirty=false, saveErr=null;
+let SESIJA=null, PROFIL=null;   // Supabase Auth: sesija i red iz tabele profili (null u demo rezimu)
+let PUSHED={};                  // snapshot poslednjeg upisa po tabeli: kljuc reda -> JSON (za diff)
 
 async function initSupa(){
   if(!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
@@ -665,15 +682,54 @@ async function initSupa(){
   }catch(e){ console.error('Supabase init:', e); return false; }
 }
 
-async function pushAll(d){
-  /* Ne prekidamo na prvoj gresci: ranije je jedan los red (npr. prazan datum)
-     zaustavljao upis SVIH tabela iza sebe u TABLES, tiho. */
+/* U JS modelu zaposleni.grs/bivsi i podizvodjaci.grs OSTAJU nizovi (30+ mesta u kodu),
+   ali u bazi zive kao join tabele — RLS ne moze da ogranici niz po gradilistu.
+   zaposleni_gradiliste.aktivan: true = grs (trenutno), false = bivsi (istorija). */
+const JOIN_TABELE=['zaposleni_gradiliste','podizvodjac_gradiliste'];
+const PUSH_TABLES=[...TABLES, ...JOIN_TABELE];
+function rowsZa(t,d){
+  if(t==='zaposleni') return (d.zaposleni||[]).map(z=>{ const r={...z}; delete r.grs; delete r.bivsi; return r; });
+  if(t==='podizvodjaci') return (d.podizvodjaci||[]).map(x=>{ const r={...x}; delete r.grs; return r; });
+  if(t==='zaposleni_gradiliste') return (d.zaposleni||[]).flatMap(z=>{ const g=z.grs||[];
+    return [...g.map(x=>({zaposleni_id:z.id, gradiliste_id:x, aktivan:true})),
+            ...(z.bivsi||[]).filter(x=>!g.includes(x)).map(x=>({zaposleni_id:z.id, gradiliste_id:x, aktivan:false}))]; });
+  if(t==='podizvodjac_gradiliste') return (d.podizvodjaci||[]).flatMap(x=>(x.grs||[]).map(g=>({podizvodjac_id:x.id, gradiliste_id:g})));
+  return d[t]||[];
+}
+function kljucReda(t,r){
+  return t==='zaposleni_gradiliste' ? r.zaposleni_id+'|'+r.gradiliste_id
+       : t==='podizvodjac_gradiliste' ? r.podizvodjac_id+'|'+r.gradiliste_id : r.id;
+}
+/* Iz redova join tabela rekonstruise nizove u JS modelu, pa ih uklanja iz out. */
+function spojiJoinTabele(out){
+  const zg=out.zaposleni_gradiliste||[], pg=out.podizvodjac_gradiliste||[];
+  (out.zaposleni||[]).forEach(z=>{
+    z.grs=zg.filter(r=>r.zaposleni_id===z.id&&r.aktivan).map(r=>r.gradiliste_id);
+    z.bivsi=zg.filter(r=>r.zaposleni_id===z.id&&!r.aktivan).map(r=>r.gradiliste_id);
+  });
+  (out.podizvodjaci||[]).forEach(x=>{ x.grs=pg.filter(r=>r.podizvodjac_id===x.id).map(r=>r.gradiliste_id); });
+  delete out.zaposleni_gradiliste; delete out.podizvodjac_gradiliste;
+}
+function zapamtiSnapshot(d){
+  PUSHED={};
+  for(const t of PUSH_TABLES){ const m={}; rowsZa(t,d).forEach(r=>m[kljucReda(t,r)]=JSON.stringify(r)); PUSHED[t]=m; }
+}
+async function pushAll(d, opt){
+  opt=opt||{};
+  /* DIFF po redu: ide samo ono sto se promenilo od poslednjeg upisa. Pod RLS-om
+     rukovodilac ne sme ni da pokusa upsert tudjih/direktorskih redova (greska),
+     a usput nestaje "cela baza + base64 prilozi na svaki klik".
+     Ne prekidamo na prvoj gresci — jedan los red ne sme da zaustavi ostale tabele. */
   const greske=[];
-  for(const t of TABLES){
-    const rows=d[t]||[];
-    if(!rows.length) continue;
-    try{ const {error}=await supa.from(t).upsert(rows); if(error) throw new Error(error.message||String(error)); }
-    catch(e){ greske.push(t+': '+(e.message||e)); }
+  for(const t of (opt.samo||PUSH_TABLES)){
+    const rows=rowsZa(t,d), prev=PUSHED[t]||{};
+    const izmenjeni = opt.sve ? rows : rows.filter(r=>prev[kljucReda(t,r)]!==JSON.stringify(r));
+    if(!izmenjeni.length) continue;
+    try{
+      const {error}=await supa.from(t).upsert(izmenjeni);
+      if(error) throw new Error(error.message||String(error));
+      const nx={...prev}; izmenjeni.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); PUSHED[t]=nx;
+    }catch(e){ greske.push(t+': '+(e.message||e)); }
   }
   if(greske.length) throw new Error(greske.join(' | '));
 }
@@ -684,6 +740,7 @@ async function obrisiRed(tabela, id){
   const list=DATA[tabela]; if(!Array.isArray(list)) return false;
   const i=list.findIndex(r=>r.id===id); if(i<0) return false;
   list.splice(i,1);
+  if(PUSHED[tabela]) delete PUSHED[tabela][id];
   if(mode==='supabase'){
     try{ const {error}=await supa.from(tabela).delete().eq('id',id); if(error) throw new Error(error.message); }
     catch(e){ saveErr='brisanje: '+(e.message||e); console.error('Supabase delete:', e); }
@@ -693,19 +750,21 @@ async function obrisiRed(tabela, id){
 }
 
 async function loadState(){
-  if(await initSupa()){
+  if(supa){
     try{
       const out={};
-      for(const t of TABLES){
-        const {data,error}=await supa.from(t).select('*').order('id');
+      for(const t of PUSH_TABLES){
+        const q=supa.from(t).select('*');
+        const {data,error}=await (JOIN_TABELE.includes(t) ? q : q.order('id'));
         if(error) throw error;
         out[t]=data||[];
       }
-      /* Ranije se gledala samo tabela gradilista: baza sa stvarnim klijentima
-         i zaposlenima, a bez projekata, bila bi pregazena demo podacima. */
+      /* "Prazna baza" se gleda po SVIM tabelama, ne samo po gradilistima. */
       const praznaBaza = TABLES.every(t=>!(out[t]||[]).length);
-      if(praznaBaza){ normalizeData(); await pushAll(DATA); } // prvi start: zasej demo
-      else DATA=out;
+      if(praznaBaza){
+        if(PROFIL && PROFIL.uloga!=='direktor') throw new Error('Baza je prazna — demo podatke moze da zaseje samo direktor.');
+        normalizeData(); await pushAll(DATA, {sve:true});   // prvi start: zasej demo
+      } else { spojiJoinTabele(out); DATA=out; }
       mode='supabase'; updateFoot(); return;
     }catch(e){
       console.error('Supabase load:', e);
@@ -749,14 +808,15 @@ if(typeof window!=='undefined' && window.addEventListener){
 }
 
 async function resetDemo(){
+  if(mode==='supabase' && PROFIL && PROFIL.uloga!=='direktor'){ alert('Demo podatke moze da vrati samo direktor.'); return; }
   if(!confirm('Vratiti sve podatke na pocetni demo? Tvoje izmene ce biti obrisane.')) return;
   if(mode==='supabase'){
     /* Prvo upisi demo, pa tek onda pobrisi visak. Raniji redosled (obrisi sve ->
        upisi) je pri padu upisa ostavljao praznu bazu bez ikakvog povratka. */
     const novi=JSON.parse(JSON.stringify(DEMO));
     try{
-      const stari=DATA; DATA=novi; normalizeData();
-      await pushAll(DATA);
+      DATA=novi; normalizeData();
+      await pushAll(DATA, {sve:true});
       const zadrzi={}; TABLES.forEach(t=>zadrzi[t]=new Set((DATA[t]||[]).map(r=>r.id)));
       for(const t of TABLES){
         const ids=[...zadrzi[t]];
@@ -764,6 +824,13 @@ async function resetDemo(){
         const {error} = ids.length ? await q.not('id','in','("'+ids.join('","')+'")') : await q.neq('id','');
         if(error) throw new Error(error.message||String(error));
       }
+      /* Join tabele nemaju id: obrisi sve pa upisi demo veze (jeftino za rekonstrukciju). */
+      for(const t of JOIN_TABELE){
+        const col = t==='zaposleni_gradiliste' ? 'zaposleni_id' : 'podizvodjac_id';
+        const {error}=await supa.from(t).delete().neq(col,''); if(error) throw new Error(error.message||String(error));
+      }
+      await pushAll(DATA, {sve:true, samo:JOIN_TABELE});
+      zapamtiSnapshot(DATA);
       saveErr=null;
     }catch(e){ console.error('Supabase reset:', e); saveErr='reset: '+(e.message||e); alert('Reset nije uspeo u potpunosti — proveri podnozje i konzolu.'); }
   } else {
@@ -787,7 +854,8 @@ function updateFoot(){
     skladiste:'<span class="dot"></span> Cuvanje: <b>aktivno</b> — izmene ostaju',
     memorija:'<span class="dot mem"></span> Cuvanje: <b>u memoriji</b><br><span style="opacity:.7">Za trajno cuvanje poveži Supabase (README)</span>'
   }[mode];
-  el.innerHTML=msg+'<br><button class="reset" onclick="resetDemo()">↺ Vrati demo podatke</button>';
+  const smeReset = !PROFIL || PROFIL.uloga==='direktor';
+  el.innerHTML=msg+(smeReset?'<br><button class="reset" onclick="resetDemo()">↺ Vrati demo podatke</button>':'');
 }
 
 /* mape (rebuild posle svake izmene) */
@@ -827,7 +895,7 @@ function modulSeg(){
   }
   return '<div class="modul-wrap">'+h+'</div>';
 }
-function setRole(r){ ROLE=r; renderNav(); render(); closeDrawer(); }
+function setRole(r){ if(PROFIL && PROFIL.uloga!=='direktor') return; ROLE=r; renderNav(); render(); closeDrawer(); }
 function roleOptions(){
   const vodji=new Set(DATA.gradilista.map(g=>g.rukovodilac));
   const ruks = DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||vodji.has(z.id));
@@ -2959,6 +3027,76 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDrawer(); cl
 /* ============================================================
    START
    ============================================================ */
+/* ============================================================
+   AUTH (Supabase). U demo/memorija rezimu (bez SUPABASE_URL) se ne koristi.
+   Uloga dolazi iz tabele profili, ne iz menija; RLS na serveru sprovodi isto
+   pravilo kao smemNa() ovde.
+   ============================================================ */
+async function initAuth(){
+  try{
+    const {data}=await supa.auth.getSession();
+    SESIJA=(data&&data.session)||null;
+    if(!SESIJA){ prikaziLogin(); return false; }
+    const {data:prof,error}=await supa.from('profili').select('*').eq('user_id',SESIJA.user.id).maybeSingle();
+    if(error) throw error;
+    if(!prof){
+      prikaziLogin('Nalog '+esc(SESIJA.user.email||'')+' postoji, ali nije povezan ni sa jednom ulogom. Javi direktoru da pokrene povezi_profil().');
+      try{ await supa.auth.signOut(); }catch(e){}
+      return false;
+    }
+    PROFIL=prof;
+    ROLE = prof.uloga==='direktor' ? 'all' : prof.zaposleni_id;
+    return true;
+  }catch(e){
+    console.error('Auth:', e);
+    prikaziLogin('Greška pri proveri prijave: '+esc(e.message||e));
+    return false;
+  }
+}
+function prikaziLogin(poruka){
+  document.body.classList.add('login');
+  document.getElementById('view').innerHTML=`<div class="login-wrap"><div class="login-card">
+    <h1>GradnjaOS</h1><p>Prijavi se nalogom koji ti je dodelio direktor.</p>
+    ${poruka?`<div class="err">${poruka}</div>`:''}
+    <div class="f-row"><label>Email</label><input id="l_email" type="email" autocomplete="username" placeholder="ime@firma.rs"></div>
+    <div class="f-row"><label>Lozinka</label><input id="l_pw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')prijava()"></div>
+    <div id="l_msg"></div>
+    <button class="btn" style="width:100%" onclick="prijava()">Prijavi se</button>
+    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="prijavaLink()">Pošalji mi link za prijavu na email</button>
+  </div></div>`;
+}
+function loginPoruka(html){ const m=document.getElementById('l_msg'); if(m) m.innerHTML=html; }
+async function prijava(){
+  const email=((document.getElementById('l_email')||{}).value||'').trim(), pw=(document.getElementById('l_pw')||{}).value||'';
+  if(!email||!pw){ loginPoruka('<div class="err">Unesi email i lozinku.</div>'); return; }
+  const {error}=await supa.auth.signInWithPassword({email, password:pw});
+  if(error){ loginPoruka('<div class="err">'+esc(/invalid/i.test(error.message||'')?'Pogrešan email ili lozinka.':(error.message||error))+'</div>'); return; }
+  location.reload();
+}
+async function prijavaLink(){
+  const email=((document.getElementById('l_email')||{}).value||'').trim();
+  if(!email){ loginPoruka('<div class="err">Unesi email, pa klikni na link.</div>'); return; }
+  const {error}=await supa.auth.signInWithOtp({email, options:{shouldCreateUser:false}});
+  loginPoruka(error ? '<div class="err">'+esc(error.message||error)+'</div>'
+                    : '<div class="ok">Link je poslat na '+esc(email)+'. Otvori ga na ovom uređaju.</div>');
+}
+async function odjava(){ flushSave(); try{ await supa.auth.signOut(); }catch(e){} location.reload(); }
+async function promeniLozinku(){
+  const p=prompt('Nova lozinka (najmanje 8 znakova):'); if(p===null) return;
+  if(String(p).length<8){ alert('Lozinka mora imati najmanje 8 znakova.'); return; }
+  const {error}=await supa.auth.updateUser({password:String(p)});
+  alert(error ? 'Nije uspelo: '+(error.message||error) : 'Lozinka je promenjena.');
+}
+/* Kutija u sidebaru: demo rezim = meni uloga; prijavljen = nalog (+ meni "pogled kao" za direktora). */
+function renderNalog(){
+  const box=document.getElementById('roleBox'); if(!box) return;
+  if(!PROFIL){ box.innerHTML='<label>Prijavljen kao</label><select id="roleSel" onchange="setRole(this.value)"></select>'; return; }
+  const dir=PROFIL.uloga==='direktor';
+  box.innerHTML='<label>Nalog</label><div class="acc"><b>'+esc(PROFIL.ime||'')+'</b><small>'+esc((SESIJA&&SESIJA.user&&SESIJA.user.email)||'')+' · '+(dir?'direktor':'rukovodilac')+'</small></div>'
+    +(dir?'<label style="margin-top:10px">Pogled kao</label><select id="roleSel" onchange="setRole(this.value)"></select>':'')
+    +'<div class="acc-btns"><button onclick="promeniLozinku()">Lozinka</button><button onclick="odjava()">Odjavi se</button></div>';
+}
+
 function normalizeData(){
   (DATA.zaposleni||[]).forEach(z=>{ if(!Array.isArray(z.grs)) z.grs = z.gr?[z.gr]:[]; delete z.gr; if(!Array.isArray(z.bivsi)) z.bivsi=[]; });
   (DATA.gradilista||[]).forEach(g=>{ if(!g.modul) g.modul='izvodjenje'; if(g.modul==='izvodjenje'&&!g.tip) g.tip='visokogradnja'; });
@@ -2982,9 +3120,13 @@ function normalizeData(){
   });
 }
 (async ()=>{
+  await initSupa();
+  if(supa && !(await initAuth())) return;   // ekran za prijavu — podaci se ne ucitavaju bez sesije
   await loadState();
   normalizeData();
+  if(mode==='supabase') zapamtiSnapshot(DATA);   // posle normalize, da prvi diff ne gura sve
   rebuildMaps();
+  renderNalog();
   renderNav();
   render();
 })();

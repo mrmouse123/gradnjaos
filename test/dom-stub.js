@@ -83,16 +83,16 @@ function makeDocument(){
 /** Napravi svež set globalnih stubova za jedan vm kontekst. */
 function makeGlobals(opts = {}){
   const document = makeDocument();
-  const calls = { alert: [], confirm: [], print: 0, open: [], scrollTo: 0 };
+  const calls = { alert: [], confirm: [], print: 0, open: [], scrollTo: 0, reload: 0, prompt: [] };
 
   const win = {
     document,
-    location: { href: 'http://localhost/index.html', hash: '', search: '', reload(){} },
+    location: { href: 'http://localhost/index.html', hash: '', search: '', reload(){ calls.reload++; } },
     navigator: { userAgent: 'node-e2e', clipboard: { writeText: async()=>{} } },
     // window.storage se NE definiše — app tada ostaje u režimu 'memorija'
     alert: (m)=>{ calls.alert.push(String(m)); },
     confirm: (m)=>{ calls.confirm.push(String(m)); return opts.confirmReturns !== undefined ? opts.confirmReturns : true; },
-    prompt: ()=>null,
+    prompt: (m)=>{ calls.prompt.push(String(m)); return opts.promptReturns !== undefined ? opts.promptReturns : null; },
     print: ()=>{ calls.print++; },
     open: (u)=>{ calls.open.push(String(u)); return { document, focus(){}, close(){}, print(){} }; },
     scrollTo: ()=>{ calls.scrollTo++; },

@@ -1,117 +1,80 @@
-# GradnjaOS — v0.5: sređivanje koda + preostale funkcije
+# GradnjaOS — F4: Supabase Auth + RLS (2026-09-23) — GOTOVO
 
-Radi se po boris-cherny workflow-u. Mreža za sigurnost: `git` (baseline commit `cda1f50`)
-i `test/e2e.js` (527 asertacija na kraju ove iteracije).
+Prethodna iteracija (v0.5 + Supabase + tri odluke) je u git istoriji
+(c165744, 7038610, 8d89037). Testovi: 527 → 544 asertacija.
 
-## Faza 0 — infrastruktura (gotovo)
-- [x] git init + baseline commit
-- [x] `test/e2e.js` + `test/dom-stub.js` + `test/patch-lib.js` + `test/supabase-mock.js`
+## Cilj (ispunjen)
+1. ~~anon ključ + `pilot_full` = svako sa fajlom može sve~~ → anon nema nijednu
+   polisu; provereno na bazi: `set local role anon` → 0 redova svuda
+2. ~~ROLE je meni~~ → uloga iz tabele `profili`; `setRole` ignorisan za rukovodioca;
+   samounapređenje u direktora odbijeno na serveru (upis u profili nema polisu)
+3. ~~`grs[]` nizovi se ne mogu ograničiti RLS-om~~ → join tabele
+   `zaposleni_gradiliste(aktivan)` / `podizvodjac_gradiliste`, nizovi obrisani
 
-## Faza 1 — bezbednost i ispravnost ("sredi kod") — GOTOVO
-- [x] **B1** Pravilo 3 (esc() na upisu) — proveren kroz sve forme
-- [x] **B2** `unesc()` na CSV izvozu, telu mejla trebovanja i imenu fajla
-- [x] **B3** Sloj čuvanja: 6 bugova (pushAll staje na prvoj grešci, prazan datum
-      u Postgres, "prvi start" pogrešna detekcija, doSave bez guarda, resetDemo
-      redosled, nema flush na zatvaranje) + `obrisiRed()` eksplicitna operacija
-- [x] **B4** Pravilo 2 (vlasništvo): 4 rupe visokog rizika + 6 curenja tuđih
-      gradilišta. Uveden `smemNa(grId)`.
-- [x] **B5** Logička ispravnost (12 nalaza): marzaPct/fmtEurK, rušenje prikaza,
-      parsiranje brojeva (uveden `broj()`), setIzv, jutarnji brif, magacin
-      string, ID kolizije, TODAY zamrznut, renderNav, mrtav kod
+## Plan
+- [x] 1. `migracija-10-auth-rls.sql` + novi `schema.sql` (profili, 6 helpera,
+      join tabele + backfill + drop nizova, 61 polisa za `authenticated`, `povezi_profil`)
+- [x] 2. Primenjeno na živu bazu; backfill: 29 aktivnih + 4 bivša + 5 podizvođačkih
+- [x] 3. RLS na serveru (`set local role` + jwt claim): rukovodilac z1 vidi samo g1
+      (4 zadatka, 1 klijent, 1 podizvođač, 0 tuđih troškova/situacija/resursa);
+      direktor sve; anon 0. Upisi: 13 slučajeva — tuđe gradilište, tuđe ime u
+      dnevniku, trošak, novo gradilište, ulaz u magacin, samounapređenje →
+      odbijeno; svoje → prošlo. Probni redovi obrisani.
+- [x] 4. Klijent: `initAuth`, login ekran (email+lozinka / magic link), odjava,
+      promena lozinke, `renderNalog` (meni "Pogled kao" samo direktor), guardovi
+- [x] 5. Klijent: `spojiJoinTabele`/`rowsZa`, `pushAll` = diff po redu (snapshot),
+      seed i reset samo direktor, reset rekonstruiše join tabele
+- [x] 6. Mock: `auth.*`, filteri na select, `maybeSingle`, kompozitni ključevi;
+      `boot({session, users, seed.profili})`, brojači reload/prompt
+- [x] 7. T18 (6) + T18b (7) + T18c (2): 15 novih asertacija
+- [x] 8. Pravi login u browseru protiv prave baze — rukovodilac (samo g1, 0 grešaka
+      kroz sve poglede/kartice/forme) i direktor (sve, simulacija, diff-upis
+      jednog reda potvrđen čitanjem iz baze)
+- [x] 9. CLAUDE.md (pravila 7-8, nalozi, hardening lista), README (korisnici,
+      tabela prava, deployment), lessons 11-14
 
-## Faza 2 — preostale funkcije iz CLAUDE.md — GOTOVO (osim F4, namerno blokiran)
-- [x] **F1** Šabloni faza/zadataka za Izvođenje (visoko/nisko) — `SABLONI_FAZA`,
-      sejanje pri kreiranju i naknadno iz fioke
-- [x] **F2** Edge Function za pravo slanje mejla trebovanja
-      (`supabase/functions/posalji-trebovanje/`) — kod gotov i testiran (mock),
-      pada na mailto u svakom stanju dok nije deploy-ovana
-- [x] **F3 (deo)** Prilog uz stavku troška (PDF/slika fakture) — isti obrazac
-      kao `uploadAdmDoc`. .xlsx binarni upload SVESNO preskočen — paste-iz-Excela
-      već pokriva potrebu, nova biblioteka nije opravdana za taj dobitak.
-- [ ] **F4** Auth + RLS po ulogama — sledeći korak sad kad je Supabase povezan
-      (RLS je i dalje `pilot_full`, svesni kompromis). `smemNa()` je tačka
-      izmene; `zaposleni.grs`/`podizvodjaci.grs` traže join tabele pre RLS-a.
+## Nalozi
+- `miske1431@gmail.com` — direktor; `petar@gradnjaos.test` — rukovodilac (z1)
+- Lozinke poslate Jovanu u chatu (privremene, promeniti dugmetom "Lozinka")
 
-## Faza 3 — preostali nalazi i sređivanje — GOTOVO
-- [x] N4 (falsy-nula u formama), N7 (dashSorted nepoznat status),
-      regresija sopstvene izmene (zadatak.rok null → default, v. lessons.md)
-- [x] CLAUDE.md ažuriran: nova arhitektura, pravila 5-6, `test/` opis,
-      "Otvorena pitanja za Jovana" sekcija za preostale nalaze koji NISU
-      bagovi nego proizvodne odluke (zdravlje po ulozi, "Marža" naziv,
-      formTim spisak) — namerno nisam menjao kod za te tri stavke jer
-      zahtevaju Jovanovu odluku, ne tehnički ispravan/pogrešan odgovor
-
-## Faza 4 — Supabase + Jovanove odluke (2026-09-14/15) — GOTOVO
-- [x] **Supabase povezan** — nov projekat `gradnjaos` (ref `xqggoxrihitvqaocowlb`,
-      eu-central-1, besplatan plan), schema.sql primenjen, URL/ANON_KEY u
-      index.html, demo zasejan, round-trip proveren, security advisors: 0.
-- [x] **Zdravlje = jedan skor za sve** — `zdravlje(g)` bez `canFinance()` grane;
-      T17 proverava da je skor identičan za direktora i rukovodioca na svakom
-      gradilištu.
-- [x] **Marža planska + ostvarena** — `ostvMarzaPct(g)`, oznake "Plan. marža"
-      svuda, "Ostv. marža" u fioci, "Ostvarena marža" u preseku; alarm crveno
-      (ostvarena < 8%) / žuto (troškovi premašili plan). FIN_TERMS u testu
-      proširen da hvata i nove oznake kod rukovodioca.
-- [x] **Tim uz upozorenje** — `drugde(z,grId)` + `confirm()` u `saveTim`;
-      rukovodilac ne vidi ime tuđeg gradilišta. T17 pokriva oba odgovora
-      na confirm (odbij → nije dodat, prihvati → dodat).
-- [x] Usput: T11b test za `openIzvestaj` je gledao nepostojeći `#izvestajWrap`
-      (prolazio vakuumski) — ispravljen na `#rpt`; `boot()` bez Supabase sad
-      prazni konstante da ne pokušava mrežu.
-
-## BLOKIRANO — treba mi od Jovana
-- **GitHub publish** — repo je lokalan; GitHub Desktop → Add local repository
-  (`C:\gradnjaos`) → Publish. Ja ne mogu (nema `gh`, konektor nije autorizovan).
-- **RESEND_API_KEY** + `supabase functions deploy posalji-trebovanje` — kad
-  Jovan hoće pravo slanje mejla umesto mailto.
-- **Materijali za šablone faza** (F1) — ugrađen razuman default.
+## BLOKIRANO / na Jovanu
+- GitHub publish (GitHub Desktop → Add local repository → Publish); sa RLS-om
+  javni repo je OK
+- Supabase dashboard: Auth → Providers → Email → "Allow new users to sign up" OFF;
+  Site URL kad bude Pages adresa (zbog magic linka)
+- RESEND_API_KEY + deploy edge funkcije (kad hoće pravo slanje mejla)
+- Odluka o Pro planu (25 $/mes) ako pauziranje posle 7 dana smeta
 
 ## Review
 
-**Šta je urađeno:** cela v0.4 kodna baza je prošla kroz tri nezavisne dubinske
-revizije (logika/računi, sloj čuvanja, sistem uloga) plus sopstvenu proveru
-pravila 3 (esc/XSS). Od ukupno ~40 prijavljenih nalaza, popravljeno je 27 —
-sve visoke i srednje ozbiljnosti, plus nekoliko niskih koje su bile jeftine i
-nedvosmislene. Tri niska nalaza su namerno ostavljena kao "pitanje za Jovana"
-jer traže proizvodnu odluku, ne tehnički ispravku (v. CLAUDE.md). Jedan nalaz
-(dvostruko escapovanje pri izmeni resursa) je proveren i odbačen kao lažan —
-u pravom browseru HTML parser dekodira entitete iz `value="..."` atributa pri
-učitavanju forme, pa round-trip ne duplira escapovanje; agentov test je to
-propustio jer je pozivao `esc(esc(x))` direktno umesto kroz stvarni DOM.
+**Šta je urađeno.** Tri rupe koje su postojale otkad je baza prava su zatvorene
+na serveru, ne samo u UI-ju. Bez prijave nema pristupa; uloga se ne bira nego
+dolazi iz `profili`; rukovodilac na serveru dobija samo redove svojih
+gradilišta. Usput je čuvanje prešlo sa "gurni celu bazu" na diff po redu — što je
+bilo nužno (RLS bi odbio rukovodiočev upsert tuđih redova) i usput je uklonilo
+rizik "base64 prilozi na svaki klik" zabeležen u prethodnom Review-u.
 
-Uz popravke, implementirane su i tri funkcije iz CLAUDE.md "Sledeće": šabloni
-faza za Izvođenje, Edge Function za trebovanje (neaktivna dok se ne deploy-uje),
-i prilog fakture uz trošak.
+**Šta me je iznenadilo.**
+- RLS je uveo novu klasu rizika koje ranije nije bilo: `DATA` je sad *parcijalan*
+  (rukovodilac ima sve zaposlene i sve veze, ali samo svoje gradilište), pa svako
+  `grById[x].naziv` bez zaštite puca na id koji nije učitan. Kod je već bio
+  disciplinovan (`.filter(Boolean)` svuda) — u pravom browseru 0 grešaka — ali
+  to sad mora biti pravilo (CLAUDE.md #7) i test (T18c), ne sreća.
+- Preview panel učitava fajl kao `data:` URL → nema localStorage → sesija ne
+  preživi reload. Pola sata sam mislio da je to bug app-a. Nije (lessons #13).
+- Sopstveni test je trivijalno prolazio jer je birao z2/g1 "napamet", a z2 u
+  DEMO već radi na g1 (lessons #12). Ispravka: par se bira dinamički.
+- Kreiranje auth korisnika direktno SQL-om (auth.users + auth.identities) RADI
+  sa lozinkom — prijava kroz pravi supabase-js prošla iz prve.
 
-**Šta me je iznenadilo:**
-- Prva verzija sopstvenog XSS testa (T7) je lažno prijavila 2 pada — `esc()`
-  ne escapuje `=` ni `()`, pa je moj prvobitni detektor tražio string
-  `onerror=xss()` doslovno, što preživi i ispravno escapovan payload.
-- Prva iteracija "logičkog" audita (grubi regex nad izvorom) je pogrešno
-  tvrdila da ~10 funkcija ne escapuje unos — tačan odgovor je zahtevao
-  izvršavanje kroz stvarnu formu, ne čitanje regexa. Ispravljeno pre nego
-  što je ta lažna tvrdnja ušla u kod.
-- Sopstvena greška: kad sam prvi put popravljao prazan `<input type=date>`
-  (K2 iz sloja čuvanja), za `zadatak.rok` sam stavio `||null` — ali `t.rok`
-  se u kodu čita na 10+ mesta kao obavezan datum (`dParse`/`daysBetween` bez
-  null-provere), za razliku od `resursi.istice` koje ima namenski sentinel.
-  Uhvaćeno i ispravljeno u istoj iteraciji — v. lessons.md lekcija koja to
-  generalizuje u pravilo (CLAUDE.md pravilo 6).
-- Tri nezavisna agenta su nezavisno potvrdila iste probleme sa različitih
-  uglova (npr. "prvi start" detekcija u sloju čuvanja i vlasništvo nad
-  gradilištem) — dobar znak da su nalazi realni, ne artefakt jednog ugla gledanja.
-
-**Šta je i dalje rizično / za pratiti:**
-- Fajl je sad ~199KB (bio 189KB). CLAUDE.md već upozorava da se prati rast —
-  i dalje udobno za jedan-fajl pristup, ali blizu granice gde bi razdvajanje
-  na module postalo vredno razmatranja ako F4 (Auth+RLS) doda još.
-- `pushAll` i dalje šalje CELU izmenjenu tabelu pri svakom čuvanju — uključujući
-  base64 PDF-ove u `gradilista.adm` i sad `troskovi_st.prilog`. Sa dovoljno
-  gradilišta i priloga (limit 2.5MB po fajlu), to postaje veliki payload na
-  svaki upis. Rešenje je pravi Supabase Storage — CLAUDE.md to već predviđa,
-  ali vredi eksplicitno naglasiti Jovanu pre nego što tim počne da kači
-  fakture u većem obimu.
-- Auth+RLS prelaz (F4) će zahtevati shemu (join tabele za `zaposleni.grs[]` i
-  `podizvodjaci.grs[]`) pored samog RLS-a — array kolone se ne mogu ograničiti
-  row-level policy-jem. Ovo je zabeleženo u CLAUDE.md "Sledeće" da se ne
-  zaboravi kad taj trenutak dođe.
+**Svesne rupe koje ostaju (zabeleženo u CLAUDE.md "Sledeće").**
+- Rukovodilac na nivou API-ja može da PROČITA iznose svog gradilišta
+  (troskovi_st, situacije, predmer.cena). UI ih krije; server ne — jer
+  `zdravlje(g)` je "jedan skor za sve" i traži potroseno/naplaceno na klijentu.
+  Rešenje je RPC `zdravlje(gid)` na serveru; nisam ga radio u istoj iteraciji
+  da ne mešam dva velika rezanja odjednom.
+- Rukovodilac može da UPDATE-uje ceo red svog gradilišta (server ne razlikuje
+  kolone) — UI nudi samo napredak/fazu/status. RPC bi to zatvorio.
+- Self-signup je i dalje uključen u Supabase Auth (dashboard podešavanje, nemam
+  pristup odavde); ublaženo time što nalog bez profila vidi nula podataka i
+  `signInWithOtp` ima `shouldCreateUser:false`.

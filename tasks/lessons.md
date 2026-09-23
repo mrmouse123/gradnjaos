@@ -56,3 +56,29 @@ INACTIVE). App tada pada u demo rezim uz alert. Podaci ostaju, treba samo
 Restore (dashboard ili MCP restore_project). Pre svake sesije rada na bazi:
 proveri get_project status, ne pretpostavljaj da je ziva. Poruka greske u app-u
 sad to eksplicitno kaze.
+
+## Lekcija 11 (2026-09-23, F4)
+`language sql` funkcija se validira PRI KREIRANJU: telo koje pominje tabelu koja
+jos ne postoji pada. U migraciji tabele idu pre helpera koji ih koriste (ili
+plpgsql / check_function_bodies=off). Uhvaceno citanjem pre primene, ne padom.
+
+## Lekcija 12 (2026-09-23, F4)
+Pre nego sto test tvrdi "X je dodato pa mora nestati posle reseta", proveri da X
+nije VEC u DEMO podacima. T18 je birao z2/g1 rucno — z2 u DEMO vec radi na g1,
+pa je "z2/g1 prezivela reset" bio lazan pad. Pravilo: par za test birati
+DINAMICKI iz podataka (prvi koji nije u grs ni bivsi), ne napamet.
+
+## Lekcija 13 (2026-09-23, F4)
+Preview panel ucitava file:// kao data: URL (opaque origin) -> nema localStorage
+-> supabase-js ne moze da sacuva sesiju -> posle reload-a si odjavljen. To NIJE
+bug app-a (u pravom browseru na file:// i http(s) sesija traje). Auth tok se u
+panelu testira bez reload-a: signIn -> initAuth() -> loadState() -> ... rucno.
+Sonda koja zove setRole()/render() na login ekranu puca jer rebuildMaps() jos
+nije pozvan — globali su tada poluinicijalizovani, to je ocekivano.
+
+## Lekcija 14 (2026-09-23, F4)
+RLS na serveru se testira DIREKTNO: `begin; set local role authenticated;
+set local request.jwt.claims='{"sub":"<uuid>","role":"authenticated"}'; ...`
+iz execute_sql (postgres sme set role). Za upise: DO blok sa BEGIN/EXCEPTION po
+slucaju + temp tabela on commit drop. Jedini nacin da se polise dokazu bez
+ugadjanja. Probne redove obrisati posle (transakcija se mozda komituje).
