@@ -38,8 +38,9 @@ Prethodna iteracija (v0.5 + Supabase + tri odluke) je u git istoriji
 - Lozinke poslate Jovanu u chatu (privremene, promeniti dugmetom "Lozinka")
 
 ## BLOKIRANO / na Jovanu
-- GitHub publish (GitHub Desktop → Add local repository → Publish); sa RLS-om
-  javni repo je OK
+- ~~GitHub publish~~ — 2026-09-24: repo mrmouse123/gradnjaos, Pages živ na
+  https://mrmouse123.github.io/gradnjaos/, prijava kao Petar kroz formu + reload
+  proverena na live URL-u
 - Supabase dashboard: Auth → Providers → Email → "Allow new users to sign up" OFF;
   Site URL kad bude Pages adresa (zbog magic linka)
 - RESEND_API_KEY + deploy edge funkcije (kad hoće pravo slanje mejla)

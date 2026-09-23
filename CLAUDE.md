@@ -158,8 +158,7 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 - [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
       Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
-- [ ] GitHub publish (GitHub Desktop → Add local repository → Publish). Sa RLS-om
-      javni repo je OK — anon ključ bez sesije ne može ništa.
+- [x] GitHub publish + Pages — 2026-09-24, https://mrmouse123.github.io/gradnjaos/
 - [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
 
 ## Jovanove odluke (2026-09-15) — ne otvarati ponovo bez razloga
@@ -172,6 +171,17 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
   gradilištu označena (`drugde()`), `saveTim` traži `confirm()`. Rukovodiocu
   se NE otkriva ime tuđeg gradilišta.
 
-## Deployment
-GitHub Desktop → GitHub Pages. Novi fajl preko starog → commit → push.
-Na iPhone testirati preko live URL-a (uz ?v=N protiv keša), NE kroz Files preview.
+## Deployment (živo od 2026-09-24)
+- **URL:** https://mrmouse123.github.io/gradnjaos/ — GitHub Pages, repo
+  `github.com/mrmouse123/gradnjaos`, grana `main`, root. Javni repo je OK
+  (RLS + column grant; lozinki u repou nema — `git grep` pre svakog commita).
+- Izmena = commit + `git push` (remote `origin` je podešen, Git Credential
+  Manager pamti prijavu) ili GitHub Desktop. Pages se sam osveži za ~1 min.
+- Na telefonu uz `?v=N` protiv keša. NE testirati kroz Files preview.
+- Prava proba prijave ide na live URL-u: forma → reload → sesija preživljava
+  (u preview panelu ne, v. lessons #13). Provereno 2026-09-24 kao Petar.
+- Supabase Auth → URL Configuration → Site URL i Redirect URLs =
+  `https://mrmouse123.github.io/gradnjaos/` — Jovan u dashboardu (nemam alat);
+  bez toga magic link / reset lozinke vode na localhost:3000.
+- Domen kasnije: `CNAME` fajl u repou + CNAME zapis kod registrara
+  (`gradnjaos.think-tech.co` → `mrmouse123.github.io`), HTTPS automatski.

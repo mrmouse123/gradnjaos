@@ -48,13 +48,11 @@ Nova baza od nule: **SQL Editor → New query** → nalepi ceo `supabase/schema.
 
 Postojeća baza sa starijom šemom: pokreni `supabase/migracija-NN-*.sql` redom, samo one koje nedostaju (svaka je idempotentna).
 
-### 2. GitHub + GitHub Pages (hosting)
+### 2. GitHub Pages (hosting) — živo
 
-1. GitHub Desktop → **Add local repository** → ovaj folder → **Publish repository**. (Cela git istorija ide sa tim.)
-2. **Settings → Pages → Source: Deploy from a branch → main / root → Save.**
-3. Za ~1 minut app je na `https://TVOJ-NALOG.github.io/gradnjaos/`. Tu adresu upiši i u Supabase → Authentication → URL Configuration → Site URL (zbog magic linka).
+**https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root). Svaka sledeća izmena = commit + push (Pages se sam osveži za ~1 min). Na iPhone testiraj preko live URL-a (uz `?v=N` protiv keša).
 
-Svaka sledeća izmena = commit + push (Pages se sam osveži). Na iPhone testiraj preko live URL-a (uz `?v=N` protiv keša).
+Tu adresu upiši i u Supabase → Authentication → URL Configuration → **Site URL** i **Redirect URLs** (zbog magic linka i reseta lozinke). Sopstveni domen kasnije: `CNAME` fajl u repou + CNAME zapis kod registrara.
 
 ### 3. Pravo slanje mejla trebovanja (opciono)
 
