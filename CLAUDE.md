@@ -34,8 +34,21 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   → `doSave()` (guard protiv preklapanja, `saveErr` u footeru), flush na
   pagehide/visibilitychange. Brisanje reda je eksplicitno (`obrisiRed`).
   Seed demo podataka i `resetDemo()` — samo direktor.
-- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, helperi,
-  polise, `povezi_profil`). Postojeća baza: `migracija-01..10.sql` redom.
+- **Finansije van dometa rukovodioca i na nivou API-ja** (od 2026-09-23, F4b,
+  migracija 11): `troskovi_st`/`situacije` čita samo direktor; finansijske
+  KOLONE (`gradilista.budzet/troskovi/potroseno/naplaceno`, `predmer.cena`,
+  `podizvodjaci.cena`) nemaju SELECT grant ni za koga preko API-ja — klijent
+  ČITA kroz `gradilista_v`/`predmer_v`/`podizvodjaci_v` (`CITAJ_IZ`; view kao
+  vlasnik, isti filter redova kao RLS, finansije `CASE je_direktor()`), a PIŠE
+  u tabele. Zdravlje: rukovodilac ga dobija sa servera (`zdravlja_mojih()` RPC
+  → `ZDR_SRV`, ista formula kao `zdravlje(g)`; osvežava se posle svakog
+  čuvanja), direktor računa lokalno. Trigeri: ne-direktor menja samo
+  napredak/status/faza, `predmer.izv`, `magacin.stanje` — šta god pošalje.
+  `pushAll`: POSTOJEĆI red → `update().eq(id)`, NOV → `insert`; upsert samo za
+  seed/reset (`opt.sve`). Razlog: upsert = INSERT…ON CONFLICT, a INSERT WITH
+  CHECK `je_direktor()` obara rukovodiočev upsert i kad je red njegov.
+- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..11.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -91,9 +104,17 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
 8. Nikad ne dodavati kod koji gura celu tabelu u bazu — `pushAll` je diff.
    Nova tabela → dodaj u `TABLES` (id-tabela) ili `JOIN_TABELE` + `rowsZa`/
    `kljucReda`, i polisu u migraciji. Nova mutacija → prođe kroz `saveState()`.
+   Nova finansijska kolona → i u view, i u `FIN_KOLONE`, i u trigger, i u
+   column grant (4 mesta — inače curi ili se gazi NULL-om).
+9. Rukovodiočev `DATA` nema finansije NI KAO KOLONE (null) — `g.budzet`,
+   `x.cena`, `potroseno(g)`, `naplSum(g)` su 0/null za njega. Sve što ih
+   koristi mora biti iza `canFinance()` ili tolerantno na null; `zdravlje(g)`
+   za njega vraća `ZDR_SRV[g.id]` sa servera. RLS-polisa NE MOŽE da sakrije
+   kolonu; ukidanje SELECT polise obara i UPDATE (Postgres proverava SELECT
+   polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-13 lekcija; najvažnije za svaku izmenu:
+17 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.
@@ -115,7 +136,10 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
   direktorska sesija; `session:null` = ekran za prijavu)
 Pokriva: sintaksu, boot, pogledi × uloge × moduli, th==td, role-guardove,
 vlasništvo, XSS kroz forme, integritet, Supabase sync, edge function fallback,
-auth tok (T18), diff-čuvanje i join tabele (T18b), parcijalni DATA (T18c).
+auth tok (T18), diff-čuvanje i join tabele (T18b), parcijalni DATA (T18c),
+finansije van dometa rukovodioca + update/insert put + skor sa servera (T19).
+Mock: view aliasi NULL-uju finansijske kolone ne-direktoru, `rpc('zdravlja_mojih')`
+(`faults.zdravlja`), `update()` se loguje kao upsert sa `via:'update'`.
 RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 `begin; set local role authenticated; set local request.jwt.claims =
 '{"sub":"<uuid>","role":"authenticated"}'; select …` — 2026-09-23: 3 profila
@@ -126,14 +150,11 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 - [x] **F4 Auth + RLS po ulogama — 2026-09-23** (migracija 10, join tabele,
       diff-čuvanje, login ekran, profili). Provereno na pravoj bazi kao
       direktor i kao rukovodilac.
-- [ ] Hardening posle F4: rukovodilac na nivou API-ja može da PROČITA iznose
-      (troskovi_st, situacije, predmer.cena) SVOG gradilišta — UI ih krije
-      (pravilo 1), server ne. Razlog: `zdravlje(g)` je "jedan skor za sve" i
-      treba potroseno/naplaceno. Rešenje: RPC `zdravlje(gid)` na serveru +
-      ukidanje select-a rukovodiocu na finansijske tabele.
-- [ ] Hardening: rukovodilac može da UPDATE-uje svoje gradilište u celini
-      (i budzet/rukovodilac kolone) — UI to ne nudi; server ne razlikuje kolone.
-      Rešenje: RPC `azuriraj_gradiliste(gid, napredak, faza, status)`.
+- [x] **F4b hardening — 2026-09-23** (migracija 11): zdravlje RPC, column-level
+      grant + view-ovi, trigeri za kolone, troskovi_st/situacije samo direktor.
+      Provereno na pravoj bazi kao rukovodilac: iznosi = null, tabela → permission
+      denied, UPDATE svog g1 uz pokušaj budzet/rukovodilac → vrednosti netaknute,
+      zdravlje 85 == direktorovo; server skor == klijent za svih 9 gradilišta.
 - [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
       Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)

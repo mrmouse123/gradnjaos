@@ -82,3 +82,24 @@ set local request.jwt.claims='{"sub":"<uuid>","role":"authenticated"}'; ...`
 iz execute_sql (postgres sme set role). Za upise: DO blok sa BEGIN/EXCEPTION po
 slucaju + temp tabela on commit drop. Jedini nacin da se polise dokazu bez
 ugadjanja. Probne redove obrisati posle (transakcija se mozda komituje).
+
+## Lekcija 15 (2026-09-23, F4b)
+RLS polisa NE MOZE da sakrije kolonu. Ukidanje SELECT polise ulozi obara i
+njen UPDATE (Postgres proverava SELECT polisu na redu koji se azurira preko
+WHERE) — provereno: update predmer ... where gr='g1' -> 0 redova. Kolone se
+kriju column-level GRANT-om: table-level select se mora UKINUTI pa vratiti
+dozvoljene kolone (kolonski revoke uz table-level grant nema efekta), a citanje
+ide kroz view koji radi kao vlasnik (ne security_invoker) sa eksplicitnim
+filterom redova istim kao RLS.
+
+## Lekcija 16 (2026-09-23, F4b)
+Upsert = INSERT ... ON CONFLICT DO UPDATE: Postgres proverava INSERT WITH CHECK
+na predlozenom redu i kad ce doci do UPDATE putanje. Ako je INSERT polisa
+je_direktor(), rukovodiocev upsert SVOG reda pada sa "new row violates RLS".
+Postojeci redovi -> UPDATE, novi -> INSERT; upsert samo za seed/reset. F4 je to
+imao kao latentan bug jer je testiran plain UPDATE, ne upsert kroz PostgREST.
+
+## Lekcija 17 (2026-09-24, F4b)
+Scratchpad fajlovi napisani Write alatom mogu da nestanu izmedju poteza (p13.js,
+t19.js). Test blokove ubacivati DIREKTNO u test/e2e.js (Edit na sidro sekcije),
+patch skripte pisati neposredno pre pokretanja. Pre pokretanja: `ls` scratchpad.

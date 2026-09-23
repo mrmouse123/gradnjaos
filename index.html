@@ -665,6 +665,7 @@ let supa=null, mode='memorija', saveTimer=null;
 let saving=false, dirty=false, saveErr=null;
 let SESIJA=null, PROFIL=null;   // Supabase Auth: sesija i red iz tabele profili (null u demo rezimu)
 let PUSHED={};                  // snapshot poslednjeg upisa po tabeli: kljuc reda -> JSON (za diff)
+let ZDR_SRV=null;               // rukovodilac: zdravlje po gradilistu sa servera (RPC), direktor: null = lokalna formula
 
 async function initSupa(){
   if(!SUPABASE_URL || !SUPABASE_ANON_KEY) return false;
@@ -687,9 +688,17 @@ async function initSupa(){
    zaposleni_gradiliste.aktivan: true = grs (trenutno), false = bivsi (istorija). */
 const JOIN_TABELE=['zaposleni_gradiliste','podizvodjac_gradiliste'];
 const PUSH_TABLES=[...TABLES, ...JOIN_TABELE];
+/* Rukovodilac cita iz view-ova (finansijske kolone su NULL), pa ih ne sme ni slati
+   nazad — server ih svakako drzi trigerom, ovo je da diff ne salje NULL. */
+const FIN_KOLONE={gradilista:['budzet','troskovi','potroseno','naplaceno'], predmer:['cena'], podizvodjaci:['cena']};
+function jeRukovodilacNalog(){ return !!(PROFIL && PROFIL.uloga!=='direktor'); }
+function bezKolona(r,keys){ const o={...r}; keys.forEach(k=>delete o[k]); return o; }
 function rowsZa(t,d){
+  const ruk=jeRukovodilacNalog();
+  if(t==='gradilista' && ruk) return (d.gradilista||[]).map(g=>bezKolona(g,FIN_KOLONE.gradilista));
+  if(t==='predmer' && ruk) return (d.predmer||[]).map(x=>bezKolona(x,FIN_KOLONE.predmer));
   if(t==='zaposleni') return (d.zaposleni||[]).map(z=>{ const r={...z}; delete r.grs; delete r.bivsi; return r; });
-  if(t==='podizvodjaci') return (d.podizvodjaci||[]).map(x=>{ const r={...x}; delete r.grs; return r; });
+  if(t==='podizvodjaci') return (d.podizvodjaci||[]).map(x=>{ const r={...x}; delete r.grs; return ruk?bezKolona(r,FIN_KOLONE.podizvodjaci):r; });
   if(t==='zaposleni_gradiliste') return (d.zaposleni||[]).flatMap(z=>{ const g=z.grs||[];
     return [...g.map(x=>({zaposleni_id:z.id, gradiliste_id:x, aktivan:true})),
             ...(z.bivsi||[]).filter(x=>!g.includes(x)).map(x=>({zaposleni_id:z.id, gradiliste_id:x, aktivan:false}))]; });
@@ -714,6 +723,24 @@ function zapamtiSnapshot(d){
   PUSHED={};
   for(const t of PUSH_TABLES){ const m={}; rowsZa(t,d).forEach(r=>m[kljucReda(t,r)]=JSON.stringify(r)); PUSHED[t]=m; }
 }
+/* Citanje ide iz view-ova: isti redovi kao tabela (isto pravilo kao RLS), ali finansijske
+   kolone su NULL osim direktoru — na samim tabelama te kolone NEMAJU select grant.
+   Pisanje ide u tabele. */
+const CITAJ_IZ={gradilista:'gradilista_v', predmer:'predmer_v', podizvodjaci:'podizvodjaci_v'};
+const FIN_TABELE=['troskovi_st','situacije'];   // rukovodiocu server ne daje ni jedan red — ne trazimo ih
+/* Rukovodilac nema finansijske redove, pa zdravlje(g) ne moze da racuna lokalno —
+   skor dolazi sa servera (zdravlje_gradilista = ista formula). Jedan poziv za sva gradilista. */
+async function osveziZdravlje(rerender){
+  if(!supa || !jeRukovodilacNalog()) return;
+  try{
+    const {data,error}=await supa.rpc('zdravlja_mojih');
+    if(error) throw new Error(error.message||String(error));
+    const novi={}; (data||[]).forEach(r=>{ if(r&&r.id!=null) novi[r.id]=r.zdravlje; });
+    const promena=JSON.stringify(novi)!==JSON.stringify(ZDR_SRV||{});
+    ZDR_SRV=novi;
+    if(rerender && promena) render();
+  }catch(e){ console.error('zdravlja_mojih:', e); }
+}
 async function pushAll(d, opt){
   opt=opt||{};
   /* DIFF po redu: ide samo ono sto se promenilo od poslednjeg upisa. Pod RLS-om
@@ -726,8 +753,21 @@ async function pushAll(d, opt){
     const izmenjeni = opt.sve ? rows : rows.filter(r=>prev[kljucReda(t,r)]!==JSON.stringify(r));
     if(!izmenjeni.length) continue;
     try{
-      const {error}=await supa.from(t).upsert(izmenjeni);
-      if(error) throw new Error(error.message||String(error));
+      if(opt.sve){
+        const {error}=await supa.from(t).upsert(izmenjeni);
+        if(error) throw new Error(error.message||String(error));
+      } else {
+        /* postojeci -> UPDATE (upsert bi pao na INSERT WITH CHECK za rukovodioca), novi -> INSERT */
+        const novi=izmenjeni.filter(r=>!(kljucReda(t,r) in prev)), stari=izmenjeni.filter(r=>kljucReda(t,r) in prev);
+        if(novi.length){ const {error}=await supa.from(t).insert(novi); if(error) throw new Error(error.message||String(error)); }
+        for(const r of stari){
+          let q=supa.from(t).update(r);
+          if(t==='zaposleni_gradiliste') q=q.eq('zaposleni_id',r.zaposleni_id).eq('gradiliste_id',r.gradiliste_id);
+          else if(t==='podizvodjac_gradiliste') q=q.eq('podizvodjac_id',r.podizvodjac_id).eq('gradiliste_id',r.gradiliste_id);
+          else q=q.eq('id',r.id);
+          const {error}=await q; if(error) throw new Error(error.message||String(error));
+        }
+      }
       const nx={...prev}; izmenjeni.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); PUSHED[t]=nx;
     }catch(e){ greske.push(t+': '+(e.message||e)); }
   }
@@ -753,12 +793,15 @@ async function loadState(){
   if(supa){
     try{
       const out={};
+      const ruk=jeRukovodilacNalog();
       for(const t of PUSH_TABLES){
-        const q=supa.from(t).select('*');
+        if(ruk && FIN_TABELE.includes(t)){ out[t]=[]; continue; }
+        const q=supa.from(CITAJ_IZ[t]||t).select('*');
         const {data,error}=await (JOIN_TABELE.includes(t) ? q : q.order('id'));
         if(error) throw error;
         out[t]=data||[];
       }
+      if(ruk) await osveziZdravlje(false);
       /* "Prazna baza" se gleda po SVIM tabelama, ne samo po gradilistima. */
       const praznaBaza = TABLES.every(t=>!(out[t]||[]).length);
       if(praznaBaza){
@@ -790,7 +833,7 @@ async function doSave(){
   if(saving){ dirty=true; return; }
   saving=true;
   try{
-    if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; }
+    if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; await osveziZdravlje(true); }
     else if(mode==='skladiste'){ await window.storage.set(SKEY, JSON.stringify(DATA)); saveErr=null; }
   }catch(e){
     saveErr=e.message||String(e);
@@ -1052,6 +1095,7 @@ function head(title, sub){
 
 /* ---------- ZDRAVLJE PROJEKTA (0-100) ---------- */
 function zdravlje(g){
+  if(ZDR_SRV && Object.prototype.hasOwnProperty.call(ZDR_SRV, g.id) && ZDR_SRV[g.id]!=null) return ZDR_SRV[g.id];   // rukovodilac: server (nema finansijske redove)
   if(g.status==='zavrseno') return Math.min(100, 90 + (marzaPct(g)>=10?10:5));
   let sc=100;
   const diff=daysBetween(TODAY,dParse(g.rok));

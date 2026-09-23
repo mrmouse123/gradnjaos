@@ -83,19 +83,46 @@ rizik "base64 prilozi na svaki klik" zabeležen u prethodnom Review-u.
 
 Trazeno: "RPC zdravlje na serveru". Sam RPC ne zatvara rupu — budzet/troskovi su
 kolone na gradilista redu, cena na predmer redu, a te redove rukovodilac MORA
-da cita. Zato ceo paket iz CLAUDE.md "Hardening posle F4", jedna migracija (11):
-- [ ] 1. SQL: zdravlje_gradilista(gid) + zdravlja_mojih() (ista formula kao
-      klijent, "danas" po Europe/Belgrade); view-ovi gradilista_v/predmer_v/
-      podizvodjaci_v (security_invoker; finansijske kolone NULL osim direktoru);
-      trigeri: rukovodilac na gradilista menja samo napredak/faza/status, na
-      predmer samo izv, na magacin samo stanje; troskovi_st/situacije select
-      samo direktor
-- [ ] 2. Primena na zivu bazu + provera sa set local role (view NULL, trigger
-      drzi budzet, troskovi_st = 0 redova, zdravlja_mojih samo g1)
-- [ ] 3. Server score == klijent score za svih 9 gradilista (direktor u browseru)
-- [ ] 4. Klijent: citanje iz view-ova, rukovodilac preskace troskovi_st/situacije,
-      ZDR_SRV iz RPC-a, zdravlje(g) koristi server skor kad je rukovodilac,
-      osvezavanje posle cuvanja, rowsZa skida finansijske kolone rukovodiocu
-- [ ] 5. Mock: rpc(), view aliasi sa NULL kolonama za ne-direktora; T19
-- [ ] 6. Browser: rukovodilac vidi zdravlje == direktorovo, bez ijednog iznosa u DATA
-- [ ] 7. Docs + commit
+da cita. Zato ceo paket iz CLAUDE.md "Hardening posle F4", jedna migracija (11).
+Testovi: 544 → 550.
+- [x] 1. SQL: zdravlje_gradilista(gid) + zdravlja_mojih() (ista formula, "danas"
+      po Europe/Belgrade, floor(x+0.5)=Math.round); troskovi_st/situacije samo
+      direktor; column-level grant (table-level select ukinut, dozvoljene kolone
+      vracene) + view-ovi kao vlasnik sa filterom redova; trigeri za kolone
+- [x] 2. Primenjeno na zivu bazu (dve migracije: prva verzija + ispravka).
+      set local role kao rukovodilac, 17 provera: select budzet iz tabele →
+      permission denied; view → NULL/62; UPDATE svog g1 uz budzet/rukovodilac →
+      1 red, netaknuto; tudje g2 → 0; upsert svog g1 → odbijen (INSERT WITH
+      CHECK); troskovi/situacije 0; zdravlja_mojih g1=85; magacin naziv netaknut
+- [x] 3. Server == klijent za svih 9: g1=85,g2=50,g3=25,g4=100,g5=95,g6=75,
+      g7=90,g8=75,g9=45 (direktor u browseru vs zdravlja_mojih)
+- [x] 4. Klijent: CITAJ_IZ view-ovi, FIN_TABELE preskocene, ZDR_SRV/osveziZdravlje,
+      rowsZa bez finansijskih kolona, pushAll update/insert (upsert samo seed/reset)
+- [x] 5. Mock: rpc(), view aliasi, update(); T19 (6 asertacija)
+- [x] 6. Browser (prava baza, Petar): iznosi null, cene null, 0 finansijskih
+      redova, zdravlje 85 == direktorovo; napredak 62→63→62 kroz update bez greske
+- [x] 7. Docs + commit
+
+## Review F4b
+
+**Dva nalaza koja su promenila plan** (oba uhvacena testom na serveru PRE
+nego sto je klijent diran):
+- Prvobitna ideja "rukovodiocu ukinuti SELECT polisu na gradilista/predmer,
+  neka cita samo view" ne radi: Postgres proverava SELECT polisu i na redu koji
+  se UPDATE-uje (WHERE id=...), pa rukovodilac vise ne moze da azurira napredak
+  (0 redova). RLS polisa ne moze da sakrije kolonu — column-level GRANT moze.
+  Ali kolonski revoke uz table-level grant nema efekta: mora se ukinuti
+  table-level select pa vratiti dozvoljene kolone. View onda mora raditi kao
+  vlasnik (ne security_invoker) sa eksplicitnim filterom redova.
+- Upsert (INSERT ... ON CONFLICT DO UPDATE) pada na INSERT WITH CHECK
+  je_direktor() i kad je red rukovodiocev — sto znaci da rukovodiocevo cuvanje
+  gradilista/predmer/magacin u F4 NIJE radilo (latentan bug: u F4 sam ga
+  testirao plain UPDATE-om i direktorskim upsertom, ne rukovodiocevim
+  upsertom). Sad postojeci redovi idu kao UPDATE, novi kao INSERT.
+
+**Sta ostaje svesno:** rukovodilac i dalje vidi `g.budzet` kao kolonu u JS
+modelu — ali kao null. Kod koji sabira/deli po njoj mora biti iza canFinance()
+ili tolerantan na null (pravilo 9). Direktor i dalje racuna zdravlje lokalno
+(ima sve podatke); server i klijent formula su identicne i to je provereno na
+9 gradilista — ako se formula menja, menja se na OBA mesta (zdravlje() u
+index.html i zdravlje_gradilista() u SQL-u).

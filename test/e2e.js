@@ -452,6 +452,90 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T19 F4b: finansije ne stizu rukovodiocu; zdravlje sa servera ---- */
+  section('T19 finansije van dometa rukovodioca');
+
+  const RUK_S = { user: { id: 'u-ruk', email: 'petar@test' } };
+  const DIR_S = { user: { id: 'u-dir', email: 'direktor@test' } };
+  /* seed = baza koju je direktor zasejao (pun sadrzaj); mock view-ovi NULL-uju kolone ne-direktoru */
+  async function punSeed(){
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_S });
+    return JSON.parse(JSON.stringify(a0.g.__mock._db));
+  }
+
+  await acheck('rukovodilac: cita iz view-ova, ne trazi troskovi_st/situacije, bez ijednog iznosa u DATA', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: RUK_S, faults: { zdravlja: { g1: 61 } } });
+    const sel = a.g.__mock._log.filter(l => l.op === 'select').map(l => l.table);
+    for (const t of ['gradilista_v', 'predmer_v', 'podizvodjaci_v']) if (!sel.includes(t)) throw new Error('nije citao ' + t + ' (citao: ' + [...new Set(sel)].join(',') + ')');
+    for (const t of ['gradilista', 'predmer', 'podizvodjaci', 'troskovi_st', 'situacije']) if (sel.includes(t)) throw new Error('rukovodilac citao tabelu ' + t);
+    const g = a.run("DATA.gradilista.find(g=>g.id==='g1')");
+    if (!g) throw new Error('g1 nije ucitan');
+    for (const k of ['budzet', 'troskovi', 'potroseno', 'naplaceno']) if (g[k] != null) throw new Error('gradiliste nosi ' + k + '=' + g[k]);
+    if (a.run("DATA.predmer.some(x=>x.cena!=null)")) throw new Error('predmer nosi cenu');
+    if (a.run("DATA.podizvodjaci.some(x=>x.cena!=null)")) throw new Error('podizvodjac nosi cenu');
+    if (a.run('DATA.troskovi_st.length') || a.run('DATA.situacije.length')) throw new Error('finansijske tabele nisu prazne');
+    if (a.run("zdravlje(grById['g1'])") !== 61) throw new Error('zdravlje(g1) = ' + a.run("zdravlje(grById['g1'])") + ', ocekivano 61 sa servera');
+    if (a.run("JSON.stringify(ZDR_SRV)") !== '{"g1":61}') throw new Error('ZDR_SRV = ' + a.run('JSON.stringify(ZDR_SRV)'));
+    const greske = a.run(`(()=>{ const out=[]; const p=(l,f)=>{ try{ f(); }catch(e){ out.push(l+': '+e.message); } };
+      for(const v of tabs().map(t=>t.id)) p('view '+v, ()=>{ current=v; render(); });
+      p('openSite g1', ()=>openSite('g1')); p('openPredmer g1', ()=>openPredmer('g1')); p('computeAlerts', ()=>computeAlerts());
+      current='dash'; render(); return out; })()`);
+    if (greske.length) throw new Error(greske.join('\n'));
+    if (!a.g.document.getElementById('view').innerHTML.includes('61')) throw new Error('kontrolna tabla ne prikazuje serverski skor 61');
+  });
+
+  await acheck('rukovodilac: UPDATE (ne upsert) bez finansijskih kolona; skor se osvezava posle cuvanja', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: RUK_S, faults: { zdravlja: { g1: 61 } } });
+    const rpc0 = a.g.__mock._log.filter(l => l.op === 'rpc').length;
+    a.g.__mock._faults.zdravlja = { g1: 48 };
+    a.run("(()=>{ const g=grById['g1']; g.napredak=Math.min(100,(g.napredak||0)+1); const x=DATA.predmer.find(r=>r.gr==='g1'); if(x) x.izv=(x.izv||0)+0.5; })()");
+    const n0 = a.g.__mock._log.length;
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    const gUp = ups.find(u => u.table === 'gradilista'), pUp = ups.find(u => u.table === 'predmer');
+    if (!gUp) throw new Error('nema upisa u gradilista');
+    if (gUp.via !== 'update') throw new Error('postojeci red gradilista poslat kao ' + (gUp.via || 'upsert') + ' umesto update');
+    for (const k of ['budzet', 'troskovi', 'potroseno', 'naplaceno']) if (gUp.cols.includes(k)) throw new Error('upis gradilista nosi ' + k);
+    if (pUp && pUp.cols.includes('cena')) throw new Error('upis predmer nosi cenu');
+    if (a.g.__mock._db.gradilista.find(g => g.id === 'g1').budzet == null) throw new Error('budzet u bazi pregazen sa null');
+    if (a.g.__mock._log.filter(l => l.op === 'rpc').length !== rpc0 + 1) throw new Error('rpc posle cuvanja nije pozvan tacno jednom');
+    if (a.run("zdravlje(grById['g1'])") !== 48) throw new Error('skor nije osvezen posle cuvanja: ' + a.run("zdravlje(grById['g1'])"));
+    if (a.run('saveErr') !== null) throw new Error('saveErr: ' + a.run('saveErr'));
+  });
+
+  await acheck('novi red ide kao INSERT, postojeci kao UPDATE (direktor)', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    const n0 = a.g.__mock._log.length;
+    a.run("DATA.zadaci.push({id:'t_t19', naziv:'Nov', gr:'g1', zad:'z1', prio:'mid', kol:'todo', rok:todayStr()}); grById['g1'].napredak=(grById['g1'].napredak||0)+1;");
+    await a.run('doSave()');
+    const ups = a.g.__mock._log.slice(n0).filter(l => l.op === 'upsert');
+    const z = ups.find(u => u.table === 'zadaci'), g = ups.find(u => u.table === 'gradilista');
+    if (!z || z.via === 'update') throw new Error('novi zadatak nije poslat kao insert');
+    if (!g || g.via !== 'update') throw new Error('postojece gradiliste nije poslato kao update');
+    if (!g.cols.includes('budzet')) throw new Error('direktorov update ne nosi budzet (mora, da ga moze menjati)');
+  });
+
+  await acheck('direktor: view-ovi sa punim kolonama, bez rpc-a, lokalna formula', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    if (a.g.__mock._log.some(l => l.op === 'rpc')) throw new Error('direktor zove rpc');
+    if (a.run('ZDR_SRV') !== null) throw new Error('ZDR_SRV postavljen direktoru');
+    if (a.run("DATA.gradilista.find(g=>g.id==='g1').budzet") == null) throw new Error('direktor nema budzet iz view-a');
+    if (a.run("DATA.predmer[0].cena") == null) throw new Error('direktor nema cenu iz view-a');
+  });
+
+  await acheck('rpc pukne: zdravlje pada na lokalnu formulu bez rusenja', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: RUK_S, faults: { rpcFail: 'mreza' } });
+    if (a.run('mode') !== 'supabase') throw new Error('rpc greska je oborila ucitavanje');
+    const s = a.run("zdravlje(grById['g1'])");
+    if (!Number.isFinite(s) || s < 5 || s > 100) throw new Error('skor nije validan: ' + s);
+  });
+
+  await acheck('seed/reset (opt.sve) i dalje idu kao upsert', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_S });
+    const ups = a.g.__mock._log.filter(l => l.op === 'upsert' && l.table === 'gradilista');
+    if (!ups.length || ups.some(u => u.via === 'update')) throw new Error('seed nije isao kao upsert');
+  });
+
   /* ---- T18 F4: Auth + RLS na klijentu (Supabase mock sa auth slojem) ---- */
   section('T18 auth: prijava, uloga iz profila, odjava');
 
