@@ -114,7 +114,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-17 lekcija; najvažnije za svaku izmenu:
+20 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.
@@ -170,6 +170,28 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 - **Tim: puna lista uz upozorenje.** `formTim` nudi sve; osoba na drugom
   gradilištu označena (`drugde()`), `saveTim` traži `confirm()`. Rukovodiocu
   se NE otkriva ime tuđeg gradilišta.
+
+## Responsive (od 2026-09-24, izmereno na live URL-u)
+Breakpointi: **1100** (Kanban 4→2), **1050** (`.row2` 2→1), **900** (tablet:
+sidebar off-canvas + hamburger `toggleSide()` + zajednički scrim, KPI 4→2, touch
+mete 38px, `input` 16px protiv iOS zuma, fioka/modal puna širina), **560**
+(telefon: segment modula i topbar se prelamaju, gustina kartica/tabela, Gantt
+150px labela / 700px min, modal na ceo ekran, Kanban 1 kolona), **400** (mali
+telefon: sve u 1 koloni), `max-height:500` (landscape), `hover:none` (bez
+zalepljenih hover efekata). Nosive ispravke: `.main{min-width:0}` (grid ćelija
+inače raste na min-content Gantta/tabela i širi CEO layout), `.kanban`
+`minmax(0,1fr)`, `.sites-grid minmax(min(310px,100%),1fr)`, `.side` 100dvh +
+skrol + safe-area, fioka `width:100%` (100vw uključuje skrol-traku).
+Pravila: široka tabela UVEK u `<div style="overflow-x:auto">`; nikad `1fr`
+grid bez `minmax(0,…)` ako sadržaj može biti širok; nikad `white-space:nowrap`
+na tekstu koji može premašiti 300px; hamburger nikad ne sme biti jedini način
+da se sidebar zatvori (scrim).
+Merenje: u browseru na live URL-u, iframe-ovi fiksnih širina (isti origin,
+sesija se deli, media query-ji reaguju na širinu iframe-a) — `window.__meri(w)`
+recept u lessons #19. Kriterijum: `documentElement.scrollWidth <= clientWidth`
+za svaki pogled + fioka/modal/izveštaj unutar `clientWidth`. Preview panel
+sa emuliranim viewportom je NEPOUZDAN (innerWidth ≠ clientWidth, tranzicije
+zamrznute u pozadinskom tabu).
 
 ## Deployment (živo od 2026-09-24)
 - **URL:** https://mrmouse123.github.io/gradnjaos/ — GitHub Pages, repo

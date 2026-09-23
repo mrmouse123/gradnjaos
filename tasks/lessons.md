@@ -103,3 +103,28 @@ imao kao latentan bug jer je testiran plain UPDATE, ne upsert kroz PostgREST.
 Scratchpad fajlovi napisani Write alatom mogu da nestanu izmedju poteza (p13.js,
 t19.js). Test blokove ubacivati DIREKTNO u test/e2e.js (Edit na sidro sekcije),
 patch skripte pisati neposredno pre pokretanja. Pre pokretanja: `ls` scratchpad.
+
+## Lekcija 18 (2026-09-24, responsive)
+Top-level `let`/`const` iz <script> NISU na window: u iframe-u `cw.current = v`
+pravi novu osobinu na window-u, a `render()` i dalje cita leksicko `current`.
+Za stanje iz iframe-a koristiti FUNKCIJE aplikacije (`cw.go(v)`), ne dodelu
+promenljivih. Isto vazi za `cw.mode`/`cw.PROFIL` — proveravati kroz DOM
+(footer tekst, klasa `login`), ne kroz promenljive.
+
+## Lekcija 19 (2026-09-24, responsive)
+Responsive se meri u iframe-ovima fiksne sirine na live URL-u (isti origin:
+sesija se deli, media query-ji reaguju na sirinu iframe-a, tranzicije se gase
+injektovanim `*{transition:none!important}`). Preview panel sa emuliranim
+viewportom je NEPOUZDAN: innerWidth != clientWidth (skaliranje), tranzicije
+zamrznute u pozadinskom tabu, screenshot kasni kadar. Kriterijum:
+documentElement.scrollWidth <= clientWidth po pogledu; elementi u
+overflow-x:auto omotacu se NE broje kao prelaz. Pazi: pogled bez vertikalne
+skrol-trake ima clientWidth veci za 15px od pogleda sa njom — meri W po pogledu,
+ne jednom.
+
+## Lekcija 20 (2026-09-24, responsive)
+Tri CSS uzroka koja su "sve" sirila preko ekrana: grid celija bez min-width:0
+(auto = min-content, pa Gantt od 820px siri .main), `1fr` kolone bez minmax(0,1fr)
+(isti razlog, Kanban), i `white-space:nowrap` na tekstu koji moze biti dug
+(.today). Pre svakog novog grida: minmax(0,1fr); pre svakog nowrap-a: da li
+tekst moze biti duzi od 300px?

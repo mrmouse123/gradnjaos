@@ -80,6 +80,21 @@ rizik "base64 prilozi na svaki klik" zabeležen u prethodnom Review-u.
   pristup odavde); ublaženo time što nalog bez profila vidi nula podataka i
   `signInWithOtp` ima `shouldCreateUser:false`.
 
+# Responsive — kompletno (2026-09-24) — GOTOVO
+
+Trazeno: "popravi sav CSS da se adaptira na ekrane — kompletno". Izmereno na
+live URL-u u iframe-ovima 320/390/768/1024/1366 (recept u lessons #19).
+- [x] Nalaz pre: SVAKI pogled je na 360px prelazio ekran (380-995px) — .main
+      bez min-width:0 (Gantt 820px sirio ceo layout), segment modula i datum
+      bez prelamanja; hamburger ispod otvorenog sidebara (nema zatvaranja)
+- [x] Patch 14-17: min-width:0, breakpointi 1100/1050/900/560/400 + landscape +
+      hover:none + safe-area, toggleSide()+scrim, fioka 100%, Kanban minmax(0,1fr)
+- [x] Posle: documentElement.scrollWidth <= clientWidth u SVIH 12 pogleda na
+      svih 5 sirina; fioka/modal/izvestaj/predmer unutar ekrana; KPI 1/2/4
+      kolone; sidebar+scrim; Kanban 1/2/4 kolone. T20 (scrim). 551/551.
+- [x] CLAUDE.md sekcija "Responsive" (breakpointi, pravila, kako se meri);
+      lessons 18-20
+
 # F4b: hardening — finansije ne stizu rukovodiocu ni na nivou API-ja (2026-09-23)
 
 Trazeno: "RPC zdravlje na serveru". Sam RPC ne zatvara rupu — budzet/troskovi su
