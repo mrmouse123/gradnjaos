@@ -96,7 +96,7 @@
   .side-foot .reset{margin-top:8px; font-size:11px; color:#A9BCD1; background:none; border:1px solid rgba(255,255,255,.16); border-radius:7px; padding:4px 9px; transition:.14s}
   .side-foot .reset:hover{background:rgba(255,255,255,.08); color:#fff}
 
-  .main{padding:26px 30px 60px; max-width:1320px}
+  .main{padding:26px 30px 60px; max-width:1320px; min-width:0}   /* grid celija: bez ovoga Gantt/tabele sire ceo layout na telefonu */
   .topbar{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap}
   .topbar h1{font-size:24px; margin:0 0 3px; letter-spacing:-.4px}
   .topbar p{margin:0; color:var(--muted); font-size:13px}
@@ -386,6 +386,12 @@
     .rpt-stats{grid-template-columns:1fr 1fr}
     .dr-stats{grid-template-columns:1fr 1fr}
     .card-h{flex-wrap:wrap; gap:8px}
+    .modul-seg{display:flex; flex-wrap:wrap; border-radius:16px}
+    .modul-seg button{padding:7px 12px; font-size:12px}
+    .topbar{gap:10px}
+    .topbar>div:first-child{min-width:0; max-width:100%}
+    .top-right{flex-wrap:wrap}
+    .today{white-space:normal}
     h1{font-size:20px}
   }
   .menu-btn{display:none; width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);place-items:center;margin-bottom:14px}
