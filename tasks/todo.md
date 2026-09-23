@@ -78,3 +78,24 @@ rizik "base64 prilozi na svaki klik" zabeležen u prethodnom Review-u.
 - Self-signup je i dalje uključen u Supabase Auth (dashboard podešavanje, nemam
   pristup odavde); ublaženo time što nalog bez profila vidi nula podataka i
   `signInWithOtp` ima `shouldCreateUser:false`.
+
+# F4b: hardening — finansije ne stizu rukovodiocu ni na nivou API-ja (2026-09-23)
+
+Trazeno: "RPC zdravlje na serveru". Sam RPC ne zatvara rupu — budzet/troskovi su
+kolone na gradilista redu, cena na predmer redu, a te redove rukovodilac MORA
+da cita. Zato ceo paket iz CLAUDE.md "Hardening posle F4", jedna migracija (11):
+- [ ] 1. SQL: zdravlje_gradilista(gid) + zdravlja_mojih() (ista formula kao
+      klijent, "danas" po Europe/Belgrade); view-ovi gradilista_v/predmer_v/
+      podizvodjaci_v (security_invoker; finansijske kolone NULL osim direktoru);
+      trigeri: rukovodilac na gradilista menja samo napredak/faza/status, na
+      predmer samo izv, na magacin samo stanje; troskovi_st/situacije select
+      samo direktor
+- [ ] 2. Primena na zivu bazu + provera sa set local role (view NULL, trigger
+      drzi budzet, troskovi_st = 0 redova, zdravlja_mojih samo g1)
+- [ ] 3. Server score == klijent score za svih 9 gradilista (direktor u browseru)
+- [ ] 4. Klijent: citanje iz view-ova, rukovodilac preskace troskovi_st/situacije,
+      ZDR_SRV iz RPC-a, zdravlje(g) koristi server skor kad je rukovodilac,
+      osvezavanje posle cuvanja, rowsZa skida finansijske kolone rukovodiocu
+- [ ] 5. Mock: rpc(), view aliasi sa NULL kolonama za ne-direktora; T19
+- [ ] 6. Browser: rukovodilac vidi zdravlje == direktorovo, bez ijednog iznosa u DATA
+- [ ] 7. Docs + commit
