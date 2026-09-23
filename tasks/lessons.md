@@ -49,3 +49,10 @@ Kombinovanje vise razlicitih akcija u JEDAN Bash poziv (heredoc upis fajla +
 git add + git commit + node test) blokirao je auto-mode klasifikator. Kad
 komanda kombinuje pisanje/commit/test u nizu, deliti je na odvojene pozive —
 brze prolazi i lakse je videti koji korak je stvarno pao.
+
+## Lekcija 10 (2026-09-23, Supabase pauza)
+Besplatni Supabase plan PAUZIRA projekat posle 7 dana bez aktivnosti (status
+INACTIVE). App tada pada u demo rezim uz alert. Podaci ostaju, treba samo
+Restore (dashboard ili MCP restore_project). Pre svake sesije rada na bazi:
+proveri get_project status, ne pretpostavljaj da je ziva. Poruka greske u app-u
+sad to eksplicitno kaze.

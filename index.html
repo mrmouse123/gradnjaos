@@ -709,7 +709,7 @@ async function loadState(){
       mode='supabase'; updateFoot(); return;
     }catch(e){
       console.error('Supabase load:', e);
-      alert('Ne mogu da ucitam podatke iz Supabase (proveri URL, kljuc i da li je schema.sql pokrenut). Radim u demo rezimu.');
+      alert('Ne mogu da ucitam podatke iz Supabase — radim u demo rezimu (izmene se NE cuvaju).\n\nNajcesci uzrok: besplatni plan pauzira projekat posle 7 dana bez koriscenja. Otvori supabase.com -> projekat "gradnjaos" -> Restore, sacekaj minut i osvezi stranicu.\n\nAko to nije, proveri URL/kljuc i da li je schema.sql pokrenut.');
     }
   }
   try{
