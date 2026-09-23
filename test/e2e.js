@@ -452,6 +452,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T20 responsive: sidebar na telefonu (scrim) ---- */
+  section('T20 sidebar/scrim');
+  await acheck('toggleSide otvara sidebar + scrim; tap na scrim (closeDrawer) zatvara oba; go() gasi scrim', async () => {
+    const a = await boot();
+    const side = a.g.document.getElementById('side'), scrim = a.g.document.getElementById('scrim');
+    a.run('toggleSide()');
+    if (!side.classList.contains('open') || !scrim.classList.contains('on')) throw new Error('toggleSide nije otvorio sidebar+scrim');
+    a.run('closeDrawer()');
+    if (side.classList.contains('open') || scrim.classList.contains('on')) throw new Error('closeDrawer nije zatvorio sidebar/scrim');
+    a.run('toggleSide()'); a.run("go('sites')");
+    if (side.classList.contains('open') || scrim.classList.contains('on')) throw new Error('go() nije ugasio sidebar/scrim');
+    a.run('toggleSide(); toggleSide();');
+    if (side.classList.contains('open') || scrim.classList.contains('on')) throw new Error('dupli toggle nije vratio u zatvoreno');
+  });
+
   /* ---- T19 F4b: finansije ne stizu rukovodiocu; zdravlje sa servera ---- */
   section('T19 finansije van dometa rukovodioca');
 

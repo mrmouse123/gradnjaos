@@ -42,7 +42,8 @@
   .side{height:100dvh; 
     background:linear-gradient(178deg, #142638 0%, #1A3550 58%, #1F4066 100%);
     border-right:1px solid #0F1D2B;
-    padding:20px 14px; position:sticky; top:0; height:100vh; display:flex; flex-direction:column;
+    padding:20px 14px; position:sticky; top:0; height:100vh; height:100dvh; overflow-y:auto; display:flex; flex-direction:column;
+    padding-top:max(20px, env(safe-area-inset-top)); padding-bottom:max(20px, env(safe-area-inset-bottom));
     background-image:
       linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
@@ -197,7 +198,7 @@
   .btn.ghost{background:var(--surface); color:var(--slate); border:1px solid var(--line)}
 
   /* ---------- Sites cards ---------- */
-  .sites-grid{grid-template-columns:repeat(auto-fill,minmax(310px,1fr)); gap:16px}
+  .sites-grid{grid-template-columns:repeat(auto-fill,minmax(min(310px,100%),1fr)); gap:16px}
   .site-card{padding:0; overflow:hidden; cursor:pointer; transition:.14s}
   .site-card:hover{box-shadow:var(--shadow-lg); transform:translateY(-2px)}
   .site-card .hd{padding:15px 17px 13px; border-bottom:1px solid var(--line)}
@@ -374,6 +375,10 @@
     input,select,textarea{font-size:16px !important} /* sprecava iOS auto-zoom pri fokusu */
     .drawer{width:100vw; max-width:100vw}
     .modal{width:100%}
+    .btn,.chip,.print-btn{min-height:38px}
+    .dr-h{padding-top:max(20px, env(safe-area-inset-top))}
+    .rpt{padding:16px 10px; padding-top:max(16px, env(safe-area-inset-top))}
+    .g-lab{padding:10px 12px}
   }
   .modul-wrap{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; margin-bottom:16px}
   .modul-wrap .modul-seg{margin-bottom:0}
@@ -393,13 +398,48 @@
     .top-right{flex-wrap:wrap}
     .today{white-space:normal}
     h1{font-size:20px}
+    .kpi{padding:14px} .kpi .val{font-size:26px}
+    .card-h{padding:13px 14px} .card-b{padding:8px 14px 14px}
+    thead th{padding:9px 12px} tbody td{padding:10px 12px; font-size:13px}
+    .dl{padding:10px 14px} .entry{padding:12px 14px}
+    .brief{padding:14px 16px} .brief h2{font-size:16px}
+    .search{max-width:none; min-width:0; width:100%}
+    .legend{gap:8px 14px}
+    .g-head,.g-row{grid-template-columns:150px 1fr} .gantt-inner{min-width:700px}
+    .dr-h{padding:16px 16px 12px} .dr-h h2{font-size:17px} .dr-b{padding:14px 16px 32px}
+    .dr-b .btn{white-space:normal; text-align:center; line-height:1.25}
+    .modal-wrap{padding:10px}
+    .modal{max-height:calc(100dvh - 20px); border-radius:12px}
+    .modal .m-h{padding:14px 16px 12px} .modal .m-b{padding:14px 16px 18px}
+    .m-foot{flex-wrap:wrap} .m-foot .btn{flex:1 1 auto; justify-content:center}
+    .rpt-page{padding:18px 14px}
+  }
+  /* mali telefon (<=400): jedna kolona svuda */
+  @media(max-width:400px){
+    .kpis,.dr-stats,.rpt-stats,.sites-grid{grid-template-columns:1fr}
+    .modul-seg button{padding:6px 10px; font-size:11.5px}
+    .main{padding-left:max(10px, env(safe-area-inset-left)); padding-right:max(10px, env(safe-area-inset-right))}
+    .kpi .val{font-size:28px}
+  }
+  /* telefon u landscape-u: malo visine */
+  @media(max-height:500px) and (max-width:900px){
+    .side{padding-top:10px} .brand{padding-bottom:8px}
+    .modal{max-height:calc(100dvh - 16px)}
+    .login-wrap{min-height:100dvh; padding:12px}
+  }
+  /* touch ekrani: bez "zalepljenih" hover efekata */
+  @media(hover:none){
+    .site-card:hover{transform:none; box-shadow:var(--shadow)}
+    .task:hover{border-color:var(--line); box-shadow:0 1px 2px rgba(20,25,30,.03)}
+    tbody tr.clk:hover{background:transparent}
   }
   .menu-btn{display:none; width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);place-items:center;margin-bottom:14px}
 
   /* ---------- Izvestaj ---------- */
   .rpt{position:fixed; inset:0; background:rgba(20,25,30,.5); z-index:70; display:none; overflow-y:auto; padding:30px 16px}
   .rpt.on{display:block}
-  .rpt-page{background:#fff; max-width:720px; margin:0 auto; border-radius:14px; padding:34px 40px; box-shadow:var(--shadow-lg)}
+  .rpt-page{background:#fff; max-width:720px; margin:0 auto; border-radius:14px; padding:34px 40px; box-shadow:var(--shadow-lg); overflow-x:auto}
+  .rpt-actions{flex-wrap:wrap}
 
   /* ---------- Print / PDF ---------- */
   @media print{
@@ -445,7 +485,7 @@
 
   <!-- ===== Main ===== -->
   <main class="main">
-    <button class="menu-btn" onclick="document.getElementById('side').classList.toggle('open')">
+    <button class="menu-btn" onclick="toggleSide()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
     </button>
     <div id="view"></div>
@@ -1071,7 +1111,7 @@ function renderNav(){
     </button>`).join('');
   const rs=document.getElementById('roleSel'); if(rs) rs.innerHTML=roleOptions();
 }
-function go(id){ current=id; renderNav(); render(); window.scrollTo(0,0); document.getElementById('side').classList.remove('open'); }
+function go(id){ current=id; renderNav(); render(); window.scrollTo(0,0); document.getElementById('side').classList.remove('open'); document.getElementById('scrim').classList.remove('on'); }
 
 /* ============================================================
    POGLEDI
@@ -3071,6 +3111,13 @@ function openSite(id){
 function closeDrawer(){
   document.getElementById('drawer').classList.remove('on');
   document.getElementById('scrim').classList.remove('on');
+  document.getElementById('side').classList.remove('open');   // scrim je zajednicki: tap van sidebara ga zatvara
+}
+/* Hamburger na telefonu: sidebar (z 50) + scrim (z 40) — hamburger ostaje ISPOD otvorenog
+   sidebara, pa je tap na scrim jedini nacin da se zatvori bez izbora stavke. */
+function toggleSide(){
+  const s=document.getElementById('side'); const on=s.classList.toggle('open');
+  document.getElementById('scrim').classList.toggle('on', on);
 }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDrawer(); closeModal(); closeIzvestaj(); } });
 
