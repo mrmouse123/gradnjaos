@@ -199,6 +199,10 @@ zamrznute u pozadinskom tabu).
   (RLS + column grant; lozinki u repou nema — `git grep` pre svakog commita).
 - Izmena = commit + `git push` (remote `origin` je podešen, Git Credential
   Manager pamti prijavu) ili GitHub Desktop. Pages se sam osveži za ~1 min.
+  `.nojekyll` u korenu: čist statički sajt, bez Jekyll obrade. Ako build padne
+  na koraku "Deploy to GitHub Pages" (desilo se 2026-09-24, GitHub-ova strana),
+  prazan/novi commit ga ponovo pokreće; status: api.github.com/repos/
+  mrmouse123/gradnjaos/actions/runs (javno, bez tokena).
 - Keš: `proveriNovuVerziju()` na startu radi HEAD na sopstveni URL i poredi
   `Last-Modified` sa `document.lastModified`; ako je server noviji →
   `location.replace(?v=timestamp)` (jednom po sesiji, `sessionStorage`).
