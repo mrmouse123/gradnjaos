@@ -5,8 +5,13 @@
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GradnjaOS — kontrolna tabla</title>
+<link rel="preconnect" href="https://xqggoxrihitvqaocowlb.supabase.co">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
   :root{
     --paper:#F7F6F2; --surface:#FFFFFF;
@@ -841,14 +846,16 @@ async function loadState(){
     try{
       const out={};
       const ruk=jeRukovodilacNalog();
-      for(const t of PUSH_TABLES){
-        if(ruk && FIN_TABELE.includes(t)){ out[t]=[]; continue; }
+      /* Sve tabele odjednom (HTTP/2): serijski je bilo ~200 ms x 16 = 3 s po prijavi. */
+      const poslovi = PUSH_TABLES.map(async t=>{
+        if(ruk && FIN_TABELE.includes(t)){ out[t]=[]; return; }
         const q=supa.from(CITAJ_IZ[t]||t).select('*');
         const {data,error}=await (JOIN_TABELE.includes(t) ? q : q.order('id'));
-        if(error) throw error;
+        if(error) throw new Error(t+': '+(error.message||error));
         out[t]=data||[];
-      }
-      if(ruk) await osveziZdravlje(false);
+      });
+      if(ruk) poslovi.push(osveziZdravlje(false));
+      await Promise.all(poslovi);
       /* "Prazna baza" se gleda po SVIM tabelama, ne samo po gradilistima. */
       const praznaBaza = TABLES.every(t=>!(out[t]||[]).length);
       if(praznaBaza){
@@ -3239,8 +3246,10 @@ function normalizeData(){
   });
 }
 (async ()=>{
-  await proveriNovuVerziju();
+  const v=document.getElementById('view'); if(v) v.innerHTML='<div class="empty" id="ucitavam">Učitavam…</div>';
+  const pVerzija=proveriNovuVerziju();   // HEAD zahtev — ne ceka se pre biblioteke
   await initSupa();
+  await pVerzija;
   if(supa && !(await initAuth())) return;   // ekran za prijavu — podaci se ne ucitavaju bez sesije
   await loadState();
   normalizeData();
