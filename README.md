@@ -50,7 +50,7 @@ Postojeća baza sa starijom šemom: pokreni `supabase/migracija-NN-*.sql` redom,
 
 ### 2. GitHub Pages (hosting) — živo
 
-**https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root). Svaka sledeća izmena = commit + push (Pages se sam osveži za ~1 min). Na iPhone testiraj preko live URL-a (uz `?v=N` protiv keša).
+**https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root) — jedan link za telefon, tablet i računar; raspored se sam prilagođava širini ekrana. Svaka sledeća izmena = commit + push (Pages objavi za ~1 min). Aplikacija pri svakom otvaranju proveri da li na serveru postoji novija verzija i sama se osveži — nema potrebe za `?v=N`; u podnožju sidebara piše „verzija od <datum vreme>".
 
 Tu adresu upiši i u Supabase → Authentication → URL Configuration → **Site URL** i **Redirect URLs** (zbog magic linka i reseta lozinke). Sopstveni domen kasnije: `CNAME` fajl u repou + CNAME zapis kod registrara.
 

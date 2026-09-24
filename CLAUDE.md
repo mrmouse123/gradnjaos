@@ -199,7 +199,12 @@ zamrznute u pozadinskom tabu).
   (RLS + column grant; lozinki u repou nema — `git grep` pre svakog commita).
 - Izmena = commit + `git push` (remote `origin` je podešen, Git Credential
   Manager pamti prijavu) ili GitHub Desktop. Pages se sam osveži za ~1 min.
-- Na telefonu uz `?v=N` protiv keša. NE testirati kroz Files preview.
+- Keš: `proveriNovuVerziju()` na startu radi HEAD na sopstveni URL i poredi
+  `Last-Modified` sa `document.lastModified`; ako je server noviji →
+  `location.replace(?v=timestamp)` (jednom po sesiji, `sessionStorage`).
+  Nema više ručnog `?v=N`. Podnožje sidebara prikazuje „verzija od …"
+  (`verzijaTekst()`), pa se uvek vidi šta korisnik gleda. NE testirati kroz
+  Files preview.
 - Prava proba prijave ide na live URL-u: forma → reload → sesija preživljava
   (u preview panelu ne, v. lessons #13). Provereno 2026-09-24 kao Petar.
 - Supabase Auth → URL Configuration → Site URL i Redirect URLs =
