@@ -113,6 +113,11 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `kljucReda`, i polisu u migraciji. Nova mutacija → prođe kroz `saveState()`.
    Nova finansijska kolona → i u view, i u `FIN_KOLONE`, i u trigger, i u
    column grant (4 mesta — inače curi ili se gazi NULL-om).
+10. **Datum je ŽIV**: `TODAY` je `let` koji `osveziDanas()` osvežava u `render()`, na
+    povratak taba (`visibilitychange`/`focus`) i tajmerom u ponoć. Nikad ne
+    keširati `new Date()` u konstantu — tab na telefonu živi danima, a
+    `todayStr()` je datum NOVIH unosa. Server (`danas_bg()`) računa po
+    Europe/Belgrade; klijent po satu uređaja. T21.
 9. Rukovodiočev `DATA` nema finansije NI KAO KOLONE (null) — `g.budzet`,
    `x.cena`, `potroseno(g)`, `naplSum(g)` su 0/null za njega. Sve što ih
    koristi mora biti iza `canFinance()` ili tolerantno na null; `zdravlje(g)`
