@@ -128,3 +128,9 @@ Tri CSS uzroka koja su "sve" sirila preko ekrana: grid celija bez min-width:0
 (isti razlog, Kanban), i `white-space:nowrap` na tekstu koji moze biti dug
 (.today). Pre svakog novog grida: minmax(0,1fr); pre svakog nowrap-a: da li
 tekst moze biti duzi od 300px?
+
+## Lekcija 21 (2026-09-24, brzina)
+"Sporo se ucitava" se meri, ne nagadja: performance.getEntriesByType('resource')
+filtrirano na supabase.co + performance.now() oko initAuth/loadState. Nalaz: 16
+zahteva SERIJSKI (for...await), ~200 ms svaki = 2,7 s. Promise.all -> 204 ms.
+Svaki `await` unutar petlje preko nezavisnih zahteva je sumnjiv.

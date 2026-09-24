@@ -52,6 +52,13 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
+- **Brzina učitavanja** (2026-09-24): `loadState` učitava svih 16 tabela
+  PARALELNO (`Promise.all`) — serijski je bilo ~200 ms × 16 = 2,7 s po prijavi,
+  sad ~200 ms. Provera verzije (HEAD) ide paralelno sa Supabase bibliotekom;
+  `<link rel=preconnect/preload>` za CDN, bazu i fontove; fontovi asinhrono
+  (`media=print onload`); `#view` odmah dobija „Učitavam…". Nikad ne dodavati
+  `await` u petlju preko tabela — merenje: `performance.getEntriesByType('resource')`
+  filtrirano na supabase.co.
 - Render: svaki pogled je `viewX()` funkcija koja vraća HTML string; `render()`
   ubacuje u #main. Globalno stanje: ROLE, MODUL/PODTIP, current (tab), PROFIL.
 
