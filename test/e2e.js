@@ -452,6 +452,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T21 ziv datum: TODAY se osvezava, ne zamrzava pri ucitavanju ---- */
+  section('T21 ziv datum');
+  await acheck('TODAY zastareo (tab preko noci) -> render() ga vrati na danas; todayStr prati', async () => {
+    const a = await boot();
+    const danas = a.run('todayStr()');
+    a.run("TODAY=new Date(TODAY.getTime()-86400000);");          // simuliraj: ucitano juce
+    if (a.run('todayStr()') === danas) throw new Error('priprema: TODAY nije pomeren');
+    a.run("current='dash'; render();");
+    if (a.run('todayStr()') !== danas) throw new Error('render() nije osvezio TODAY: ' + a.run('todayStr()') + ' != ' + danas);
+    if (a.run('osveziDanas()') !== false) throw new Error('osveziDanas vraca true bez promene datuma');
+    const h = a.g.document.getElementById('view').innerHTML;
+    const d = new Date(); const ocek = d.getDate() + '. ';
+    if (!h.includes(ocek)) throw new Error('zaglavlje ne prikazuje danasnji dan (' + ocek + ')');
+  });
+
   /* ---- T20 responsive: sidebar na telefonu (scrim) ---- */
   section('T20 sidebar/scrim');
   await acheck('toggleSide otvara sidebar + scrim; tap na scrim (closeDrawer) zatvara oba; go() gasi scrim', async () => {

@@ -964,7 +964,23 @@ function rebuildMaps(){
   grById  = Object.fromEntries(DATA.gradilista.map(g=>[g.id,g]));
 }
 
-const TODAY=(()=>{const d=new Date(); d.setHours(0,0,0,0); return d;})();
+/* "Danas" je ZIV: tab otvoren preko noci (telefon) je ranije zauvek pokazivao datum
+   ucitavanja — u zaglavlju, u Rokovima ("danas" linija), u "kasni X dana" i, najgore,
+   u todayStr() koji je datum NOVIH unosa. Osvezava se pri svakom render(), kad se
+   tab vrati u prvi plan i tacno u ponoc. Identifikator TODAY ostaje (30 mesta). */
+function danasDatum(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+let TODAY=danasDatum();
+function osveziDanas(){ const d=danasDatum(); if(d.getTime()!==TODAY.getTime()){ TODAY=d; return true; } return false; }
+function zakaziPonoc(){
+  const sad=new Date(), ponoc=new Date(sad); ponoc.setHours(24,0,5,0);   // 5 s posle ponoci
+  setTimeout(()=>{ if(osveziDanas() && typeof render==='function'){ try{ renderNav(); render(); }catch(e){} } zakaziPonoc(); }, Math.max(1000, ponoc-sad));
+}
+if(typeof window!=='undefined' && window.addEventListener){
+  zakaziPonoc();
+  const naPovratak=()=>{ if(!document.hidden && osveziDanas()){ try{ renderNav(); render(); }catch(e){} } };
+  document.addEventListener('visibilitychange', naPovratak);
+  window.addEventListener('focus', naPovratak);
+}
 const _iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const todayStr=()=>_iso(TODAY);
 const plusDays=n=>{const d=new Date(TODAY); d.setDate(d.getDate()+n); return _iso(d);};
@@ -1126,6 +1142,7 @@ function go(id){ current=id; renderNav(); render(); window.scrollTo(0,0); docume
    POGLEDI
    ============================================================ */
 function render(){
+  osveziDanas();
   /* Alat stoji otvoren danima; bez ovoga bi sutradan upisivao jucerasnji datum. */
   const _n=new Date(); _n.setHours(0,0,0,0); if(_n.getTime()!==TODAY.getTime()) TODAY.setTime(_n.getTime());
   const v = document.getElementById('view');
