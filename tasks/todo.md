@@ -1,3 +1,75 @@
+# Revizija koda po novom setapu agenata (2026-10-03)
+
+Trazeno: "pregledaj kod po novom setapu agenata (explorer/worker/researcher/advisor)
+i ispravi sta ne valja". Baseline: 552/552, commit bdf7d34.
+
+## Plan
+- [x] 1. Advisor: pristup (uradjeno - particija po klasterima pravila iz CLAUDE.md)
+- [x] 2. 5 explorer-a paralelno: (1+9 finansije) (2+7 smemNa/grById) (3+4+6 esc/broj/datum)
+      (8+10+sema: pushAll/TODAY/FIN_KOLONE 4 mesta/TABLES vs schema) (responsive+head)
+      Format nalaza: path:line, pravilo, scenario, "procitan put" vs "samo pattern"
+- [x] 3. Trijaza: licno procitati svaki "pattern" nalaz, izbaciti lazne; advisor pre popravki
+- [x] 4. Worker(i) SERIJSKI na index.html: Edit alat, grep literalnih unicode escape-ova,
+      e2e pre/posle, T22+ test po defektu
+- [x] 5. Researcher samo ako iskrsne spoljno pitanje
+- [x] 6. e2e 0 palo, git grep lozinki, commit, advisor pre "gotovo"; Review sa laznim pozitivima
+
+
+## Review (2026-10-03) — 552 → 566 asertacija, 0 palo
+
+**Custom agenti (explorer/worker/researcher) se ucitavaju pri startu sesije** — u
+ovoj su koristeni ekvivalenti (Explore/general-purpose na Sonnetu, medium) sa
+istom podelom uloga; advisor (Fable) pozvan 3x (pristup, pre popravki, pre kraja).
+
+**Ispravljeno (potvrdjeno citanjem puta + testom koji pada na starom kodu):**
+- Reset demo / seed na praznu bazu PADA na pravoj bazi od migracije 11 (upsert
+  cita excluded.<fin kolona> → 42501 i za direktora). Potvrdjeno `set local role`
+  na zivoj bazi. Fix: tabele sa FIN_KOLONE idu insert/update i u sve-rezimu;
+  mock sad odbija takav upsert (18 testova je odmah palo = dokaz).
+- PUSHED se belezio po tabeli: insert prodje + update padne → dupli insert (23505)
+  do refresha. Sad po uspelom zahtevu (`finally{PUSHED[t]=nx}`).
+- `delete t.prilog` → PATCH bez kljuca → faktura ostaje u bazi i "vraca se". → null.
+- `odjava()` nije cekala upis (signOut+reload ubijaju zahtev) → `sacuvajSve()`.
+- CDN nedostupan sa podesenom bazom → app tiho u DEMO rezimu bez prijave.
+  → zatvoreno: ekran greske + "Pokusaj ponovo". Boot IIFE je sad `pokreni()`.
+- `zdravlje()` za pravog rukovodioca bez servera → lokalna formula nad NULL
+  finansijama (do 25 nizi skor, tiho). → null/"—" (+ najrizicniji filtrira null).
+- `broj()` nad `type=number` (predmer kolicina): "1.250" → 1250. → `+v`.
+- Pretraga (gradilista/klijenti/zaposleni) poredila sirov upit sa escapovanim
+  podacima: "Petrovic & Sinovi" nenalazivo. → `unesc` haystack.
+- Prazan "Napredak" u formi azuriranja resetovao na 0% → zadrzava staru vrednost.
+- `dashSort` po ceni/marzi/naplati prezivljavao "Pogled kao" rukovodilac → reset.
+- `formUpdate` bez vlasnickog guarda (demo rezim, konzola); `openPredmer` bez smemNa.
+- CSS: predmer KPI bez `grid` klase (kartice naslagane); Naplata/predmer inline
+  3 kolone gazile media query (telefon); `.site-line` nedefinisana (bedz ispod
+  imena); 8× `'Space Grotesk'` bez fallbacka (Times kad font ne stigne).
+- supabase-js pinovan `2.117.2/dist/umd/supabase.js` + SRI (hash nezavisno
+  izracunat lokalno) + crossorigin na oba mesta; HEAD provera verzije 4 s timeout
+  i cuva `#hash` (magic link); upozorenje resursa firme vodilo na `openSite('null')`.
+- CSV ime fajla gubilo c/s/z/dj (`\w` ASCII) → `\p{L}\p{N}`; podnaslov predmera
+  "sa cenama" za rukovodioca.
+
+**Lazni pozitivi / svesno NE menjano (zabelezeno, nije "ne valja"):**
+- `.slice()`/`initials()` nad escapovanim stringovima (entitet se broji kao 5-6
+  znakova, moguce odsecanje `&am…`) — kozmetika; `ukloniAdmDoc` koristi delete
+  ali salje ceo jsonb objekat, pa je ispravno.
+- Datumi NULL iz baze (red ubacen SQL-om) → `dParse(null)`; app putanje uvek
+  default-uju — hardening, ne bug. 5-6-cifrena godina u date inputu — isto.
+- `update(r)` salje ceo red: zastareli tab vrati tudji noviji status; magacin
+  `stanje` apsolutno (dva korisnika gaze jedan drugog); `resetDemo` brise join
+  tabele pre upisa — multi-user dizajn, odluka za F5.
+- Serijski per-row update u redovnom cuvanju (saveTim N zahteva) — perf, kasnije.
+- a11y: 0 aria/role, labeli bez `for`, modal bez focus-trap, 17 klik-divova;
+  scrim ostaje posle rotacije tableta; Escape zatvara sve slojeve — posebna tema.
+- Mrtvo: `obrisiRed` nema pozivaoca; `saveTimer` se ne nulira (guard bez efekta).
+
+**Sta me je iznenadilo:** najozbiljnija greska (reset/seed pada od migracije 11)
+je bila nevidljiva jer mock nije oponasao grant-ove — i to je pronasao
+"schema" explorer kao PATTERN ONLY nalaz, a potvrdio jedan `set local role`
+upit. Advisor je sprecio dva pogresna poteza: `!isDirector()` umesto
+`jeRukovodilacNalog()` u zdravlju (simulacija bi izgubila skor) i paralelizaciju
+update-a u redovnom cuvanju (promena semantike gresaka).
+
 # GradnjaOS — F4: Supabase Auth + RLS (2026-09-23) — GOTOVO
 
 Prethodna iteracija (v0.5 + Supabase + tri odluke) je u git istoriji

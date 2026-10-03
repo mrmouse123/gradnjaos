@@ -9,7 +9,10 @@
    (po seed.profili + auth sesiji) — isto što radi pravi view.
 
    Ubacivanje kvarova (faults):
-     faults.upsertFail = {tabela: 'poruka'}   -> upsert na toj tabeli vraća {error}
+     faults.upsertFail = {tabela: 'poruka'}   -> upsert/insert/update na toj tabeli vraća {error}
+     faults.updateFail = {tabela: 'poruka'}   -> samo update na toj tabeli vraća {error}
+     (ugrađeno, bez faults): upsert na gradilista/predmer/podizvodjaci sa finansijskom
+     kolonom u payload-u → "permission denied" (42501), kao prava baza posle migracije 11
      faults.selectFail = {tabela: 'poruka'}
      faults.maxRows    = broj
      faults.functionsDeployed / functionsFail -> edge function
@@ -106,6 +109,14 @@ class Query {
       if (this.view) return { data: null, error: { message: `cannot insert into view "${this.requested}"` } };
       if (this.faults.upsertFail && this.faults.upsertFail[t])
         return { data: null, error: { message: this.faults.upsertFail[t] } };
+      /* Kao prava baza (migracija 11, provereno 2026-10-03 set local role): UPSERT =
+         INSERT ... ON CONFLICT DO UPDATE SET col=excluded.col, a citanje excluded.<fin>
+         trazi SELECT na toj koloni, koji je ukinut za authenticated → 42501 za SVE uloge.
+         Plain INSERT i UPDATE prolaze. */
+      if (this.op === 'upsert' && FIN_COLS[t]) {
+        const fin = FIN_COLS[t].find(c => this._rows.some(r => c in r));
+        if (fin) return { data: null, error: { message: `permission denied for table ${t} (upsert cita excluded.${fin}; 42501)` } };
+      }
       for (const r of this._rows) {
         for (const [k, v] of Object.entries(r)) {
           if (DATE_COLS.has(k) && v === '')
@@ -125,6 +136,8 @@ class Query {
       if (this.view) return { data: null, error: { message: `cannot update view "${this.requested}"` } };
       if (this.faults.upsertFail && this.faults.upsertFail[t])
         return { data: null, error: { message: this.faults.upsertFail[t] } };
+      if (this.faults.updateFail && this.faults.updateFail[t])
+        return { data: null, error: { message: this.faults.updateFail[t] } };
       for (const [k, v] of Object.entries(this._patch)) {
         if (DATE_COLS.has(k) && v === '')
           return { data: null, error: { message: `invalid input syntax for type date: "" (${t}.${k})` } };

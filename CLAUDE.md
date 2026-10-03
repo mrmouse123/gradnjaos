@@ -59,6 +59,15 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (`media=print onload`); `#view` odmah dobija „Učitavam…". Nikad ne dodavati
   `await` u petlju preko tabela — merenje: `performance.getEntriesByType('resource')`
   filtrirano na supabase.co.
+- **supabase-js je PINOVAN + SRI** (od 2026-10-03): `@2.117.2/dist/umd/supabase.js`
+  sa `integrity=sha384-…` i `crossorigin=anonymous` na OBA mesta (`<link preload>`
+  u head-u i `sc.src` u `initSupa`) — razlika = preload se ne iskoristi. Bump:
+  promeni verziju na oba mesta, `curl -s <url> | openssl dgst -sha384 -binary |
+  openssl base64 -A` za novi hash. Ne koristiti goli `@2` URL (jsDelivr tu
+  servira generisan fajl i sam upozorava „ne SRI"). Ako biblioteka ne može da
+  se učita, a baza je podešena, app je **zatvoren** (`prikaziGreskuUcitavanja`,
+  dugme „Pokušaj ponovo") — ne pada u demo režim. `proveriNovuVerziju` ima
+  4 s timeout i čuva `location.hash` (magic link).
 - Render: svaki pogled je `viewX()` funkcija koja vraća HTML string; `render()`
   ubacuje u #main. Globalno stanje: ROLE, MODUL/PODTIP, current (tab), PROFIL.
 
@@ -96,6 +105,9 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    Izlazi koji NISU HTML (CSV, telo mejla, ime fajla) moraju ići kroz `unesc()`.
 4. Brojevi iz korisničkog unosa idu kroz zajednički `broj()` (srpski `1.234,50`
    i engleski `1234.50`/`12.5`) — ne ad-hoc `+String(x).replace(',','.')`.
+   IZUZETAK: `<input type="number">` daje već kanoničnu vrednost (`.` decimala) —
+   tu je `broj()` POGREŠAN (`"1.250"` bi postalo 1250); koristi `+v` uz proveru
+   praznog/`Number.isFinite`. `broj()` je za tekstualna polja i paste iz Excela.
 5. Izračunate vrednosti: potroseno(g) iz troskovi_st stavki (fallback g.potroseno),
    naplSum(g) iz situacija — ne uvoditi paralelne izvore istine.
 6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` NE SME
@@ -113,6 +125,14 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `kljucReda`, i polisu u migraciji. Nova mutacija → prođe kroz `saveState()`.
    Nova finansijska kolona → i u view, i u `FIN_KOLONE`, i u trigger, i u
    column grant (4 mesta — inače curi ili se gazi NULL-om).
+   Uklanjanje polja = `x.polje=null`, NIKAD `delete x.polje`: PATCH postavlja
+   samo ključeve koje nosi, pa obrisan ključ ostavlja staru vrednost u bazi
+   (prilog fakture se „vraćao" posle refresha). Tabele sa `FIN_KOLONE` NIKAD
+   upsert, ni za seed/reset: `INSERT…ON CONFLICT DO UPDATE SET col=excluded.col`
+   čita `excluded.budzet`, što traži SELECT na koloni koji je ukinut → 42501 i
+   za direktora (provereno na bazi 2026-10-03; mock to oponaša). `PUSHED` se
+   beleži po USPELOM zahtevu, ne po tabeli (inače insert-pa-pad → 23505).
+   Odjava ide kroz `sacuvajSve()` (čeka upis u letu + debounce), ne `flushSave()`.
 10. **Datum je ŽIV**: `TODAY` je `let` koji `osveziDanas()` osvežava u `render()`, na
     povratak taba (`visibilitychange`/`focus`) i tajmerom u ponoć. Nikad ne
     keširati `new Date()` u konstantu — tab na telefonu živi danima, a
@@ -121,12 +141,15 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
 9. Rukovodiočev `DATA` nema finansije NI KAO KOLONE (null) — `g.budzet`,
    `x.cena`, `potroseno(g)`, `naplSum(g)` su 0/null za njega. Sve što ih
    koristi mora biti iza `canFinance()` ili tolerantno na null; `zdravlje(g)`
-   za njega vraća `ZDR_SRV[g.id]` sa servera. RLS-polisa NE MOŽE da sakrije
+   za njega vraća `ZDR_SRV[g.id]` sa servera, a bez servera `null` → „—"
+   (`zdrTekst`/`zdrBoja(null)`), NIKAD lokalnu formulu (nad null finansijama
+   daje do 25 niži skor, tiho). Direktor u „Pogled kao" računa lokalno (pune
+   kolone, jedan skor za sve). RLS-polisa NE MOŽE da sakrije
    kolonu; ukidanje SELECT polise obara i UPDATE (Postgres proverava SELECT
    polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-20 lekcija; najvažnije za svaku izmenu:
+25 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.

@@ -452,6 +452,103 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T22 revizija 2026-10-03: CSS, guardovi, pretraga, brojevi ---- */
+  section('T22 revizija 2026-10-03');
+  check('CSS: .kpis3 (jedna klasa), jedini repeat(3,1fr), .site-line, Space Grotesk ima fallback', () => {
+    if (!HTML.includes('.kpis3{')) throw new Error('nema .kpis3{');
+    if (HTML.includes('.kpis.kpis3')) throw new Error('.kpis.kpis3 (mora jedna klasa)');
+    const n3 = HTML.split('grid-template-columns:repeat(3,1fr)').length - 1;
+    if (n3 !== 1) throw new Error('repeat(3,1fr) pojavljivanja: ' + n3 + ' (ocekivano 1 — CSS pravilo)');
+    if ((HTML.match(/class="grid kpis kpis3"/g) || []).length !== 2) throw new Error('ocekivana 2 upotrebe class="grid kpis kpis3"');
+    if (HTML.indexOf('.kpis3{') > HTML.indexOf('.kpis{grid-template-columns:1fr 1fr}')) throw new Error('.kpis3 mora biti pre media query-ja');
+    if (!HTML.includes('.site-line{')) throw new Error('nema .site-line{');
+    if (/Space Grotesk'[;"}]/.test(HTML)) throw new Error('Space Grotesk bez generic fallback-a');
+  });
+  await acheck('formUpdate kao rukovodilac na TUDJEM gradilistu ne otvara modal', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.rukovodilac!=='z1').id");
+    const modal = a.g.document.getElementById('modal');
+    const pre = modal.innerHTML;
+    a.run(`ROLE='z1'; formUpdate(${JSON.stringify(gid)});`);
+    if (modal.innerHTML !== pre) throw new Error('modal popunjen za tudje gradiliste ' + gid);
+    if (a.g.document.getElementById('modalWrap').classList.contains('on')) throw new Error('modalWrap otvoren');
+    const own = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id");
+    a.run(`formUpdate(${JSON.stringify(own)});`);
+    if (modal.innerHTML === pre) throw new Error('modal se ne otvara ni za SVOJE gradiliste (preterani guard)');
+  });
+  await acheck('openPredmer kao rukovodilac na TUDJEM gradilistu ne menja current', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.rukovodilac!=='z1').id");
+    const preP = a.run('PRED_ID');
+    a.run(`ROLE='z1'; current='dash'; openPredmer(${JSON.stringify(gid)});`);
+    if (a.run('PRED_ID') === gid) throw new Error('PRED_ID postavljen na tudje gradiliste ' + gid);
+    if (a.run('PRED_ID') !== preP) throw new Error('PRED_ID promenjen: ' + a.run('PRED_ID'));
+    if (a.run('current') !== 'dash') throw new Error('current = ' + a.run('current'));
+    const own = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id");
+    a.run(`openPredmer(${JSON.stringify(own)});`);
+    if (a.run('current') !== 'predmer') throw new Error('openPredmer ne radi za SVOJE gradiliste: ' + a.run('current'));
+  });
+  await acheck('setRole(rukovodilac) vraca dashSort sa finansijske kolone na smart', async () => {
+    const a = await boot();
+    const k = a.run("ROLE='all'; dashSort={key:'cena',dir:-1}; setRole('z1'); dashSort.key");
+    if (k !== 'smart') throw new Error('dashSort.key = ' + k);
+    const k2 = a.run("setRole('all'); dashSort={key:'cena',dir:-1}; setRole('all'); dashSort.key");
+    if (k2 !== 'cena') throw new Error('direktor je izgubio svoj sort: ' + k2);
+  });
+  await acheck('pretraga gradilista nalazi "Petrović & Sinovi" (escapovan podatak, sirov upit)', async () => {
+    const a = await boot();
+    const r = a.run(`(()=>{ ROLE='all'; const c=JSON.parse(JSON.stringify(DATA.gradilista[0]));
+      c.id='g_t22'; c.naziv=esc('Petrović & Sinovi'); DATA.gradilista.push(c); rebuildMaps();
+      siteQuery='ović & s'; const h=sitesCards(); siteQuery=''; return h.includes('Petrović &amp; Sinovi'); })()`);
+    if (r !== true) throw new Error('sitesCards ne nalazi gradiliste po "ović & s"');
+  });
+  await acheck('savePredmerRed: kol iz number inputa ("1.250" -> 1.25, "0" -> 0, "" -> 1)', async () => {
+    const a = await boot();
+    const d = a.g.document; const gid = a.run('DATA.gradilista[0].id');
+    const unesi = kol => {
+      d.getElementById('f_pm_poz').value = 'T22'; d.getElementById('f_pm_jm').value = 'm³';
+      d.getElementById('f_pm_cena').value = '10'; d.getElementById('f_pm_kol').value = kol;
+      a.run(`ROLE='all'; savePredmerRed(${JSON.stringify(gid)});`);
+      return a.run('DATA.predmer[DATA.predmer.length-1].kol');
+    };
+    const k1 = unesi('1.250'); if (k1 !== 1.25) throw new Error('"1.250" -> ' + k1);
+    const k2 = unesi('0'); if (k2 !== 0) throw new Error('"0" -> ' + k2);
+    const k3 = unesi(''); if (k3 !== 1) throw new Error('"" -> ' + k3);
+  });
+  await acheck('saveUpdate: prazan napredak ne resetuje na 0', async () => {
+    const a = await boot();
+    const d = a.g.document; const gid = a.run('DATA.gradilista[0].id');
+    const st = a.run('DATA.gradilista[0].status'), fz = a.run('DATA.gradilista[0].faza');
+    a.run('DATA.gradilista[0].napredak=37;');
+    d.getElementById('u_nap').value = ''; d.getElementById('u_st').value = st; d.getElementById('u_faza').value = fz;
+    a.run(`ROLE='all'; saveUpdate(${JSON.stringify(gid)});`);
+    const n = a.run('DATA.gradilista[0].napredak');
+    if (n !== 37) throw new Error('napredak = ' + n + ', ocekivano 37');
+    d.getElementById('u_nap').value = '55'; d.getElementById('u_st').value = st;
+    a.run(`saveUpdate(${JSON.stringify(gid)});`);
+    if (a.run('DATA.gradilista[0].napredak') !== 55) throw new Error('upis 55 ne radi');
+  });
+  await acheck('izvozPredmer: ime fajla cuva dijakritike (Vračar-Šabac)', async () => {
+    const a = await boot();
+    const gid = a.run('DATA.gradilista[0].id');
+    a.run("DATA.gradilista[0].naziv=esc('Vračar Šabac');");
+    const preN = a.g.document._created.length;
+    a.run(`ROLE='all'; izvozPredmer(${JSON.stringify(gid)});`);
+    const l = a.g.document._created.slice(preN).find(c => c.tagName === 'A');
+    if (!l) throw new Error('link nije napravljen');
+    if (!String(l.download).includes('Vračar-Šabac')) throw new Error('download = ' + l.download);
+  });
+  await acheck('viewPredmer: podnaslov projektovanja bez "sa cenama" za rukovodioca, sa njima za direktora', async () => {
+    const a = await boot();
+    const g = a.run("(()=>{const g=DATA.gradilista.find(g=>g.modul==='projektovanje'); return {id:g.id, r:g.rukovodilac};})()");
+    a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE=${JSON.stringify(g.r)};`);
+    const hr = a.run('viewPredmer()');
+    if (hr.includes('sa cenama')) throw new Error('rukovodilac vidi "sa cenama"');
+    if (!hr.includes('Usluge sa zaduženima i realizacijom.')) throw new Error('nema rukovodiocevog podnaslova');
+    a.run("ROLE='all';");
+    if (!a.run('viewPredmer()').includes('Usluge sa cenama, zaduženima i realizacijom.')) throw new Error('direktor ne vidi pun podnaslov');
+  });
+
   /* ---- T21 ziv datum: TODAY se osvezava, ne zamrzava pri ucitavanju ---- */
   section('T21 ziv datum');
   await acheck('TODAY zastareo (tab preko noci) -> render() ga vrati na danas; todayStr prati', async () => {
@@ -553,17 +650,104 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run("DATA.predmer[0].cena") == null) throw new Error('direktor nema cenu iz view-a');
   });
 
-  await acheck('rpc pukne: zdravlje pada na lokalnu formulu bez rusenja', async () => {
+  await acheck('rpc pukne: rukovodilac dobija "—" (null), NE lokalnu formulu nad null finansijama', async () => {
     const a = await boot({ supabase: true, seed: await punSeed(), session: RUK_S, faults: { rpcFail: 'mreza' } });
     if (a.run('mode') !== 'supabase') throw new Error('rpc greska je oborila ucitavanje');
     const s = a.run("zdravlje(grById['g1'])");
-    if (!Number.isFinite(s) || s < 5 || s > 100) throw new Error('skor nije validan: ' + s);
+    if (s !== null) throw new Error('skor bez servera mora biti null, dobijeno: ' + s);
+    const cell = a.run("zdrCell(grById['g1'])");
+    if (!cell.includes('—') || cell.includes('null')) throw new Error('zdrCell bez servera: ' + cell);
+    a.run("current='dash'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (/\bnull\b/.test(h) || /NaN/.test(h)) throw new Error('kontrolna tabla prikazuje null/NaN bez skora sa servera');
+    const b = await boot({ supabase: true, seed: await punSeed(), session: DIR_S, faults: { rpcFail: 'mreza' } });
+    const sd = b.run("zdravlje(grById['g1'])");
+    if (!Number.isFinite(sd)) throw new Error('direktor mora racunati lokalno i bez rpc-a: ' + sd);
   });
 
-  await acheck('seed/reset (opt.sve) i dalje idu kao upsert', async () => {
+  await acheck('seed (opt.sve): upsert samo za tabele BEZ finansijskih kolona; gradilista/predmer/podizvodjaci insert/update', async () => {
     const a = await boot({ supabase: true, seed: {}, session: DIR_S });
-    const ups = a.g.__mock._log.filter(l => l.op === 'upsert' && l.table === 'gradilista');
-    if (!ups.length || ups.some(u => u.via === 'update')) throw new Error('seed nije isao kao upsert');
+    if (a.run('mode') !== 'supabase') throw new Error('seed na praznu bazu nije prosao (mode=' + a.run('mode') + ')');
+    const log = a.g.__mock._log;
+    const upsFin = log.filter(l => l.op === 'upsert' && !l.via && ['gradilista', 'predmer', 'podizvodjaci'].includes(l.table) && l.cols.some(c => ['budzet', 'cena'].includes(c)));
+    /* mock odbija upsert sa finansijskom kolonom (42501) — da je poslat, seed bi pao; proveri i da redovi postoje */
+    if (!a.g.__mock._count('gradilista')) throw new Error('gradilista nisu zasejana');
+    if (!a.g.__mock._count('predmer')) throw new Error('predmer nije zasejan');
+    const upsCl = log.filter(l => l.op === 'upsert' && !l.via && l.table === 'clijenti');
+    if (!upsCl.length) throw new Error('clijenti (bez fin kolona) treba i dalje jednim upsertom');
+    if (upsFin.length && a.run('saveErr')) throw new Error('upsert finansijske tabele je poslat i pao: ' + a.run('saveErr'));
+  });
+
+  /* ---- T23 revizija 2026-10-03: cuvanje — reset, PUSHED po zahtevu, prilog NULL, odjava ceka, fail-closed boot ---- */
+  section('T23 revizija: cuvanje');
+
+  await acheck('resetDemo kao direktor prolazi na bazi bez SELECT-a na fin kolonama (nema upsert-a fin tabela)', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    a.g.__mock._log.length = 0;
+    await a.run('resetDemo()');
+    for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    const err = a.run('saveErr');
+    if (err) throw new Error('reset pao: ' + err);
+    const bad = a.g.__mock._log.filter(l => l.op === 'upsert' && !l.via && ['gradilista', 'predmer', 'podizvodjaci'].includes(l.table));
+    if (bad.length) throw new Error('reset i dalje salje upsert fin tabela: ' + bad.map(b => b.table).join(','));
+    const n = a.run('DEMO.gradilista.length');
+    if (a.g.__mock._count('gradilista') !== n) throw new Error('posle reseta gradilista u bazi: ' + a.g.__mock._count('gradilista') + ' != ' + n);
+  });
+
+  await acheck('insert prodje, update padne -> ubaceni red je u PUSHED, sledeci upis ga NE ubacuje ponovo', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    a.g.__mock._faults.updateFail = { zadaci: 'pukao update' };
+    const stari = a.run('DATA.zadaci[0].id');
+    a.run(`ROLE='all'; DATA.zadaci.push({id:'t_t23', gr:'g1', naziv:'T23', kol:'todo', prio:'mid', rok:todayStr(), zad:null}); DATA.zadaci[0].naziv='T23 izmena';`);
+    await a.run('doSave()');
+    if (!a.run('saveErr')) throw new Error('priprema: update nije pao');
+    delete a.g.__mock._faults.updateFail;
+    a.g.__mock._log.length = 0;
+    await a.run('doSave()');
+    if (a.run('saveErr')) throw new Error('drugi upis pao: ' + a.run('saveErr'));
+    const ins = a.g.__mock._log.filter(l => l.op === 'upsert' && !l.via && l.table === 'zadaci' && l.keys.includes('t_t23'));
+    if (ins.length) throw new Error('t_t23 je ponovo poslat kao INSERT (dupli kljuc 23505 na pravoj bazi)');
+    const upd = a.g.__mock._log.find(l => l.via === 'update' && l.table === 'zadaci' && l.keys.includes(stari));
+    if (!upd) throw new Error('izmenjeni stari zadatak nije poslat u drugom pokusaju');
+  });
+
+  await acheck('uklanjanje priloga salje prilog:null (PATCH bez kljuca bi ostavio fakturu u bazi)', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    a.run(`ROLE='all'; DATA.troskovi_st.push({id:'tr_t23', gr:'g1', datum:todayStr(), opis:'T23', kat:'materijal', iznos:5, dobavljac:'', fakt:'', prilog:{name:'f.pdf', tip:'application/pdf', data:'data:,x'}});`);
+    await a.run('doSave()');
+    const pre = (a.g.__mock._db.troskovi_st || []).find(x => x.id === 'tr_t23');
+    if (!pre || !pre.prilog) throw new Error('priprema: prilog nije u bazi');
+    a.run("ukloniTrosakPrilog('tr_t23')");
+    await a.run('doSave()');
+    const post = (a.g.__mock._db.troskovi_st || []).find(x => x.id === 'tr_t23');
+    if (post.prilog !== null) throw new Error('prilog posle uklanjanja u bazi: ' + JSON.stringify(post.prilog));
+  });
+
+  await acheck('odjava ceka upis: izmena iz debounce prozora stize u bazu PRE signOut-a', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    a.g.__mock._log.length = 0;
+    a.run("ROLE='all'; DATA.zadaci[0].naziv='T23 pre odjave'; saveState();");
+    await a.run('odjava()');
+    const log = a.g.__mock._log;
+    const iUp = log.findIndex(l => l.op === 'upsert' && l.table === 'zadaci');
+    const iOut = log.findIndex(l => l.op === 'auth.signOut');
+    if (iUp < 0) throw new Error('izmena nije upisana pre odjave');
+    if (iOut < 0) throw new Error('signOut nije pozvan');
+    if (iUp > iOut) throw new Error('signOut pre upisa (upis bi bio ubijen reload-om)');
+    if (a.g._calls.reload !== 1) throw new Error('reload = ' + a.g._calls.reload);
+    const db = (a.g.__mock._db.zadaci || []).find(z => z.naziv === 'T23 pre odjave');
+    if (!db) throw new Error('izmena nije u bazi posle odjave');
+  });
+
+  await acheck('baza podesena, biblioteka ne moze da se ucita -> ekran greske sa "Pokušaj ponovo", NE demo rezim', async () => {
+    const a = await boot({ supabase: true, seed: await punSeed(), session: DIR_S });
+    a.run("window.supabase={createClient(){ throw new Error('CDN blokiran'); }}; supa=null; mode='memorija'; DATA={};");
+    await a.run('pokreni()');
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Pokušaj ponovo')) throw new Error('nema ekrana greske: ' + h.slice(0, 120));
+    if (h.includes('Učitavam')) throw new Error('ostao "Učitavam…"');
+    if (!a.g.document.body.classList.contains('login')) throw new Error('ekran greske nije centriran (body.login)');
+    if (a.run('DATA && DATA.gradilista && DATA.gradilista.length')) throw new Error('demo podaci ucitani uprkos gresci');
   });
 
   /* ---- T18 F4: Auth + RLS na klijentu (Supabase mock sa auth slojem) ---- */

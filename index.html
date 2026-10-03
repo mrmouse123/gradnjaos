@@ -7,7 +7,7 @@
 <title>GradnjaOS — kontrolna tabla</title>
 <link rel="preconnect" href="https://xqggoxrihitvqaocowlb.supabase.co">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
-<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
+<link rel="preload" as="script" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
@@ -59,7 +59,7 @@
   .mark{width:34px; height:34px; border-radius:8px; background:linear-gradient(135deg,#F2B145,#DF8E1C); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px -4px rgba(223,142,28,.55)}
   .mark svg{width:20px; height:20px}
   .mark svg *{stroke:#16283C !important}
-  .brand b{font-family:'Space Grotesk'; font-size:16px; letter-spacing:-.2px; color:#fff}
+  .brand b{font-family:'Space Grotesk',sans-serif; font-size:16px; letter-spacing:-.2px; color:#fff}
   .brand small{display:block; color:#7E93AB; font-size:11px; letter-spacing:.04em; text-transform:uppercase}
 
   .role-box{margin:0 4px 14px; padding:10px 11px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:10px}
@@ -118,10 +118,11 @@
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
   .grid{display:grid; gap:16px}
   .kpis{grid-template-columns:repeat(4,1fr); margin-bottom:18px}
+  .kpis3{grid-template-columns:repeat(3,1fr)}
   .kpi{padding:16px 18px; position:relative; overflow:hidden}
   .kpi .lab{font-size:12px; color:var(--muted); font-weight:500; display:flex; align-items:center; gap:7px}
   .kpi .lab svg{width:15px;height:15px}
-  .kpi .val{font-family:'Space Grotesk'; font-size:30px; font-weight:700; letter-spacing:-1px; margin-top:9px; line-height:1}
+  .kpi .val{font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; letter-spacing:-1px; margin-top:9px; line-height:1}
   .kpi .val small{font-size:14px; color:var(--faint); font-weight:600; letter-spacing:0}
   .kpi .sub{font-size:12px; margin-top:7px; color:var(--muted)}
   .kpi .sub .up{color:var(--green); font-weight:600}
@@ -142,7 +143,7 @@
   .dl{display:flex; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); align-items:flex-start}
   .dl:last-child{border-bottom:0}
   .dl .when{width:52px; flex:none; text-align:center; background:var(--paper); border:1px solid var(--line); border-radius:9px; padding:6px 2px}
-  .dl .when .d{font-family:'Space Grotesk'; font-size:17px; font-weight:700; line-height:1}
+  .dl .when .d{font-family:'Space Grotesk',sans-serif; font-size:17px; font-weight:700; line-height:1}
   .dl .when .m{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-top:2px}
   .dl .nm{font-weight:600; font-size:13px}
   .dl .meta{font-size:12px; color:var(--muted); margin-top:2px}
@@ -173,7 +174,7 @@
   tbody tr.clk:hover{background:var(--paper)}
   td .strong{font-weight:600}
   td .sub{font-size:12px; color:var(--muted); margin-top:2px}
-  .av{width:30px;height:30px;border-radius:8px;background:var(--blue-soft);color:var(--blue);display:inline-grid;place-items:center;font-weight:700;font-size:12px;font-family:'Space Grotesk';flex:none}
+  .av{width:30px;height:30px;border-radius:8px;background:var(--blue-soft);color:var(--blue);display:inline-grid;place-items:center;font-weight:700;font-size:12px;font-family:'Space Grotesk',sans-serif;flex:none}
   .who{display:flex; align-items:center; gap:10px}
   .num-cell{font-variant-numeric:tabular-nums}
   .marza{font-weight:700; font-variant-numeric:tabular-nums}
@@ -216,6 +217,8 @@
   .site-card .kv{display:flex; justify-content:space-between; font-size:12.5px; padding:3px 0; color:var(--muted)}
   .site-card .kv b{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums}
   .site-card .foot{display:flex; align-items:center; gap:10px; margin-top:12px}
+  .site-line{display:grid; align-items:center; cursor:pointer; border-bottom:1px solid var(--line)}
+  .site-line:hover{background:var(--paper)}
   .site-card .foot .bar{flex:1}
 
   /* ---------- Gantt ---------- */
@@ -288,7 +291,7 @@
   .dr-stats{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px}
   .dr-stat{background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 13px}
   .dr-stat .l{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
-  .dr-stat .v{font-family:'Space Grotesk'; font-size:19px; font-weight:700; margin-top:5px; letter-spacing:-.4px}
+  .dr-stat .v{font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:700; margin-top:5px; letter-spacing:-.4px}
   .dr-sec{margin-bottom:22px}
   .dr-sec h4{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--faint); margin:0 0 11px}
   .dr-kv{display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line); font-size:13px; gap:12px}
@@ -725,7 +728,12 @@ async function initSupa(){
     if(!window.supabase){
       await new Promise((res,rej)=>{
         const sc=document.createElement('script');
-        sc.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+        /* Pinovana verzija + SRI (isti URL/integrity/crossorigin kao <link rel=preload> u <head>,
+           inace se preload ne iskoristi). Bump: promeni verziju NA OBA mesta i preracunaj hash:
+           curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A */
+        sc.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';
+        sc.integrity='sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok';
+        sc.crossOrigin='anonymous';
         sc.onload=res; sc.onerror=()=>rej(new Error('CDN nedostupan'));
         document.head.appendChild(sc);
       });
@@ -804,24 +812,28 @@ async function pushAll(d, opt){
     const rows=rowsZa(t,d), prev=PUSHED[t]||{};
     const izmenjeni = opt.sve ? rows : rows.filter(r=>prev[kljucReda(t,r)]!==JSON.stringify(r));
     if(!izmenjeni.length) continue;
+    /* PUSHED se belezi PO USPELOM ZAHTEVU, ne po tabeli: ako insert prodje a kasniji
+       update padne, ubaceni redovi ne smeju sledeci put ponovo kao INSERT (23505). */
+    const nx={...prev};
+    const posalji=async(q, poslati)=>{ const {error}=await q; if(error) throw new Error(error.message||String(error)); poslati.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); };
+    const filtriraj=(q,r)=> t==='zaposleni_gradiliste' ? q.eq('zaposleni_id',r.zaposleni_id).eq('gradiliste_id',r.gradiliste_id)
+                        : t==='podizvodjac_gradiliste' ? q.eq('podizvodjac_id',r.podizvodjac_id).eq('gradiliste_id',r.gradiliste_id)
+                        : q.eq('id',r.id);
     try{
-      if(opt.sve){
-        const {error}=await supa.from(t).upsert(izmenjeni);
-        if(error) throw new Error(error.message||String(error));
-      } else {
+      /* Upsert = INSERT…ON CONFLICT DO UPDATE SET col=excluded.col; citanje excluded.<fin>
+         trazi SELECT na finansijskoj koloni, koji je ukinut (migracija 11) → 42501 i za
+         direktora (provereno na bazi 2026-10-03). Zato tabele sa FIN_KOLONE NIKAD upsert. */
+      if(opt.sve && !FIN_KOLONE[t]){ await posalji(supa.from(t).upsert(izmenjeni), izmenjeni); }
+      else {
         /* postojeci -> UPDATE (upsert bi pao na INSERT WITH CHECK za rukovodioca), novi -> INSERT */
         const novi=izmenjeni.filter(r=>!(kljucReda(t,r) in prev)), stari=izmenjeni.filter(r=>kljucReda(t,r) in prev);
-        if(novi.length){ const {error}=await supa.from(t).insert(novi); if(error) throw new Error(error.message||String(error)); }
-        for(const r of stari){
-          let q=supa.from(t).update(r);
-          if(t==='zaposleni_gradiliste') q=q.eq('zaposleni_id',r.zaposleni_id).eq('gradiliste_id',r.gradiliste_id);
-          else if(t==='podizvodjac_gradiliste') q=q.eq('podizvodjac_id',r.podizvodjac_id).eq('gradiliste_id',r.gradiliste_id);
-          else q=q.eq('id',r.id);
-          const {error}=await q; if(error) throw new Error(error.message||String(error));
-        }
+        if(novi.length) await posalji(supa.from(t).insert(novi), novi);
+        const azuriraj=r=>posalji(filtriraj(supa.from(t).update(r),r), [r]);
+        if(opt.sve) await Promise.all(stari.map(azuriraj));      // seed/reset: nezavisni redovi, paralelno
+        else for(const r of stari) await azuriraj(r);            // redovno cuvanje: redom, prva greska staje
       }
-      const nx={...prev}; izmenjeni.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); PUSHED[t]=nx;
     }catch(e){ greske.push(t+': '+(e.message||e)); }
+    finally{ PUSHED[t]=nx; }
   }
   if(greske.length) throw new Error(greske.join(' | '));
 }
@@ -881,24 +893,33 @@ async function loadState(){
 }
 
 function saveState(){ clearTimeout(saveTimer); saveTimer=setTimeout(doSave,400); }
-async function doSave(){
+let saveTok=null;   // obecanje upisa u toku — odjava ga ceka
+function doSave(){
   /* pushAll je 13 uzastopnih HTTP poziva; bez ovog guarda dva preklopljena
      upisa mogu da vrate stariji snapshot preko novijeg. */
-  if(saving){ dirty=true; return; }
+  if(saving){ dirty=true; return saveTok; }
   saving=true;
-  try{
-    if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; await osveziZdravlje(true); }
-    else if(mode==='skladiste'){ await window.storage.set(SKEY, JSON.stringify(DATA)); saveErr=null; }
-  }catch(e){
-    saveErr=e.message||String(e);
-    console.error('Cuvanje nije uspelo:', e);
-  }finally{
-    saving=false; updateFoot();
-    if(dirty){ dirty=false; doSave(); }
-  }
+  saveTok=(async()=>{
+    try{
+      if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; await osveziZdravlje(true); }
+      else if(mode==='skladiste'){ await window.storage.set(SKEY, JSON.stringify(DATA)); saveErr=null; }
+    }catch(e){
+      saveErr=e.message||String(e);
+      console.error('Cuvanje nije uspelo:', e);
+    }finally{
+      saving=false; updateFoot();
+      if(dirty){ dirty=false; doSave(); }
+    }
+  })();
+  return saveTok;
 }
 /* Poslednja izmena unutar debounce prozora se gubila pri zatvaranju taba. */
 function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); saveTimer=null; doSave(); } }
+/* Sacuvaj SVE sto ceka (debounce + upis u toku + ono sto je stiglo za vreme upisa) — za odjavu. */
+async function sacuvajSve(){
+  clearTimeout(saveTimer); saveTimer=null;
+  do{ await doSave(); }while(saving||dirty);
+}
 if(typeof window!=='undefined' && window.addEventListener){
   window.addEventListener('pagehide', flushSave);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushSave(); });
@@ -1009,7 +1030,7 @@ function modulSeg(){
   }
   return '<div class="modul-wrap">'+h+'</div>';
 }
-function setRole(r){ if(PROFIL && PROFIL.uloga!=='direktor') return; ROLE=r; renderNav(); render(); closeDrawer(); }
+function setRole(r){ if(PROFIL && PROFIL.uloga!=='direktor') return; ROLE=r; if(r!=='all' && ['cena','marza','naplata'].includes(dashSort.key)) dashSort={key:'smart',dir:-1}; renderNav(); render(); closeDrawer(); }
 function roleOptions(){
   const vodji=new Set(DATA.gradilista.map(g=>g.rukovodilac));
   const ruks = DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||vodji.has(z.id));
@@ -1168,6 +1189,10 @@ function head(title, sub){
 /* ---------- ZDRAVLJE PROJEKTA (0-100) ---------- */
 function zdravlje(g){
   if(ZDR_SRV && Object.prototype.hasOwnProperty.call(ZDR_SRV, g.id) && ZDR_SRV[g.id]!=null) return ZDR_SRV[g.id];   // rukovodilac: server (nema finansijske redove)
+  /* Pravi rukovodilacki nalog ima finansije kao NULL — lokalna formula bi tiho dala
+     pogresan (do 25 nizi) skor. Bez servera: null → "—", nikad izmisljen broj.
+     Direktor u "Pogled kao" ima pune podatke i racuna lokalno (jedan skor za sve). */
+  if(jeRukovodilacNalog()) return null;
   if(g.status==='zavrseno') return Math.min(100, 90 + (marzaPct(g)>=10?10:5));
   let sc=100;
   const diff=daysBetween(TODAY,dParse(g.rok));
@@ -1184,9 +1209,11 @@ function zdravlje(g){
   if(g.napredak-naplataPct(g)>25) sc-=15;
   return Math.max(5,sc);
 }
-function zdrBoja(sc){ return sc>=80?'var(--green)':sc>=60?'var(--amber)':'var(--red)'; }
+function zdrBoja(sc){ return sc==null?'var(--faint)':sc>=80?'var(--green)':sc>=60?'var(--amber)':'var(--red)'; }
+const zdrTekst=sc=>sc==null?'—':sc;
+const ZDR_NEMA='Skor zdravlja stiže sa servera i trenutno nije dostupan';
 function ringSvg(sc,size){
-  size=size||36; const r=(size-6)/2, c=2*Math.PI*r, off=c*(1-sc/100);
+  size=size||36; const r=(size-6)/2, c=2*Math.PI*r, off=c*(1-(sc||0)/100);
   return `<svg class="zdr-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="5"/>
     <circle class="arc" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${zdrBoja(sc)}" stroke-width="5"
@@ -1195,7 +1222,7 @@ function ringSvg(sc,size){
 }
 function zdrCell(g){
   const sc=zdravlje(g);
-  return `<td><div style="display:flex;align-items:center;gap:8px">${ringSvg(sc,34)}<b class="num" style="color:${zdrBoja(sc)};font-size:13.5px">${sc}</b></div></td>`;
+  return `<td><div style="display:flex;align-items:center;gap:8px"${sc==null?` title="${ZDR_NEMA}"`:''}>${ringSvg(sc,34)}<b class="num" style="color:${zdrBoja(sc)};font-size:13.5px">${zdrTekst(sc)}</b></div></td>`;
 }
 function animateUI(){
   try{
@@ -1365,7 +1392,7 @@ function viewDash(){
   const alertsCard = alerts.length ? `<div class="card" style="margin-bottom:18px">
     <div class="card-h"><h3>Upozorenja</h3><span class="hint">${alerts.length} — klik vodi na projekat</span></div>
     <div class="card-b tight">${alerts.slice(0,7).map(a=>`
-      <div class="dl ${a.sev==='red'?'over':'warn'}" style="cursor:pointer" onclick="openSite('${a.gr}')">
+      <div class="dl ${a.sev==='red'?'over':'warn'}" style="cursor:pointer" onclick="${a.gr?`openSite('${a.gr}')`:`go('resursi')`}">
         <div class="when" style="width:40px;padding:9px 2px"><div class="d" style="font-size:15px;color:${a.sev==='red'?'var(--red)':'var(--amber)'}">!</div></div>
         <div style="flex:1"><div class="nm">${a.tekst}</div><div class="meta">${a.nas}</div></div>
       </div>`).join('')}</div>
@@ -1379,7 +1406,7 @@ function viewDash(){
   // jutarnji brif
   const dan=['nedelja','ponedeljak','utorak','sreda','četvrtak','petak','subota'][TODAY.getDay()];
   const aktProj=sites.filter(g=>g.status!=='zavrseno'&&g.status!=='planirano');
-  const najrizik=[...aktProj].sort((a,b)=>zdravlje(a)-zdravlje(b))[0];
+  const najrizik=aktProj.filter(g=>zdravlje(g)!=null).sort((a,b)=>zdravlje(a)-zdravlje(b))[0];
   const rokovi7=sites.filter(g=>g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))>=0&&daysBetween(TODAY,dParse(g.rok))<=7).length
               + DATA.zadaci.filter(t=>t.kol!=='done'&&ids.has(t.gr)&&daysBetween(TODAY,dParse(t.rok))>=0&&daysBetween(TODAY,dParse(t.rok))<=7).length;
   const bl=[];
@@ -1484,7 +1511,7 @@ function viewSites(){
 }
 function sitesCards(){
   let list = visibleSites().filter(g=> siteFilter==='all'||g.status===siteFilter);
-  if(siteQuery.trim()){ const q=siteQuery.toLowerCase(); list=list.filter(g=>(g.naziv+' '+g.lok).toLowerCase().includes(q)); }
+  if(siteQuery.trim()){ const q=siteQuery.toLowerCase(); list=list.filter(g=>unesc(g.naziv+' '+g.lok).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema gradilišta koja odgovaraju filteru.</div>`;
   return list.map(g=>{
     const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
@@ -1527,7 +1554,7 @@ function viewClients(){
   <div class="card"><div id="clTable">${clientsTable()}</div></div>`;
 }
 function clientsTable(){
-  let list=DATA.clijenti; if(clientQuery.trim()){ const q=clientQuery.toLowerCase(); list=list.filter(c=>(c.naziv+' '+c.osoba+' '+c.tip).toLowerCase().includes(q)); }
+  let list=DATA.clijenti; if(clientQuery.trim()){ const q=clientQuery.toLowerCase(); list=list.filter(c=>unesc(c.naziv+' '+c.osoba+' '+c.tip).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema rezultata.</div>`;
   const tip=t=> t==='Javni sektor'?'b-blue':t==='Fizičko lice'?'b-amber':'b-gray';
   return `<div style="overflow-x:auto"><table><thead><tr><th>Klijent</th><th>Tip</th><th>Kontakt osoba</th><th>Telefon</th><th>Aktivni projekti</th></tr></thead><tbody>
@@ -1564,7 +1591,7 @@ function viewEmps(){
 function empsTable(){
   const ids=visibleSiteIds();
   let list=DATA.zaposleni.filter(z=>((isDirector()&&MODUL==='sve')||(z.grs||[]).some(x=>ids.has(x))) && (empFilter==='all'||z.status===empFilter));
-  if(empQuery.trim()){ const q=empQuery.toLowerCase(); list=list.filter(z=>(z.ime+' '+z.poz+' '+(z.grs||[]).map(x=>grById[x]?grById[x].naziv:'').join(' ')).toLowerCase().includes(q)); }
+  if(empQuery.trim()){ const q=empQuery.toLowerCase(); list=list.filter(z=>unesc(z.ime+' '+z.poz+' '+(z.grs||[]).map(x=>grById[x]?grById[x].naziv:'').join(' ')).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema rezultata.</div>`;
   return `<table><thead><tr><th>Zaposleni</th><th>Pozicija</th><th>Projekat</th><th>Opis posla</th><th>Status</th></tr></thead><tbody>
     ${list.map(z=>{ const projs=(z.grs||[]).map(x=>grById[x]).filter(Boolean);
@@ -2145,7 +2172,7 @@ let PRED_ID=null;
 function predmerZa(grId){ return (DATA.predmer||[]).filter(x=>x.gr===grId); }
 function jePro(g){ return (g.modul||'izvodjenje')==='projektovanje'; }
 function predNaslov(g){ return jePro(g)?'Specifikacija usluga':'Predmer i količine'; }
-function openPredmer(id){ PRED_ID=id; current='predmer'; render(); window.scrollTo(0,0); closeDrawer(); }
+function openPredmer(id){ if(!smemNa(id)) return; PRED_ID=id; current='predmer'; render(); window.scrollTo(0,0); closeDrawer(); }
 function zaduzenIme(zid){ if(!zid) return '—'; const z=zapById[zid]; if(z) return z.ime; const p=(DATA.podizvodjaci||[]).find(x=>x.id===zid); return p?p.naziv+' (spolj.)':'—'; }
 function viewPredmer(){
   const g=grById[PRED_ID]; if(!g) { current='sites'; return viewSites(); }
@@ -2172,8 +2199,8 @@ function viewPredmer(){
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
     <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="current='sites';render();openSite('${g.id}')">← Detalji gradilišta</button>
   </div>
-  ${head(predNaslov(g)+' — '+g.naziv, pro?'Usluge sa cenama, zaduženima i realizacijom.':'Ugovorene pozicije, izvedene količine i realizacija.')}
-  ${fin?`<div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+  ${head(predNaslov(g)+' — '+g.naziv, pro?(fin?'Usluge sa cenama, zaduženima i realizacijom.':'Usluge sa zaduženima i realizacijom.'):'Ugovorene pozicije, izvedene količine i realizacija.')}
+  ${fin?`<div class="grid kpis kpis3">
     <div class="card kpi"><div class="accent" style="background:var(--blue)"></div><div class="lab">Ugovoreno${pro?' (usluge)':' (predmer)'}</div><div class="val num">${fmtEur(ugUk)}</div><div class="sub">${list.length} pozicija</div></div>
     <div class="card kpi"><div class="accent" style="background:var(--green)"></div><div class="lab">Izvedena vrednost</div><div class="val num">${fmtEur(izUk)}</div><div class="sub">${ugUk?Math.round(izUk/ugUk*100):0}% ugovorenog</div></div>
     <div class="card kpi"><div class="accent" style="background:var(--amber)"></div><div class="lab">Preostalo</div><div class="val num">${fmtEur(ugUk-izUk)}</div><div class="sub">za izvođenje / fakturisanje</div></div>
@@ -2219,7 +2246,7 @@ function savePredmerRed(grId){
   if(!isDirector()) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const poz=esc(String(v('f_pm_poz')).trim()); if(!poz){ alert('Unesi opis pozicije.'); return; }
-  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''?broj(v('f_pm_kol')):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
+  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
   saveState(); closeModal(); render();
 }
 function formPredmerImport(grId){
@@ -2258,7 +2285,7 @@ function izvozPredmer(grId){
   try{
     const a=document.createElement('a');
     a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-    a.download='izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\w]+/g,'-'):grId)+'.csv';
+    a.download='izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-'):grId)+'.csv';
     document.body.appendChild&&document.body.appendChild(a); a.click&&a.click(); a.remove&&a.remove();
   }catch(err){}
 }
@@ -2276,7 +2303,7 @@ function openKumulativ(id){
       </div>
       <div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:20px">
         <div class="mark" style="background:var(--ink)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/></svg></div>
-        <div style="flex:1"><b style="font-family:'Space Grotesk';font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Kumulativni pregled izvedenih ${pro?'usluga':'količina'}</div></div>
+        <div style="flex:1"><b style="font-family:'Space Grotesk',sans-serif;font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Kumulativni pregled izvedenih ${pro?'usluga':'količina'}</div></div>
         <div style="font-size:12px;color:var(--muted)">${fmtDate(todayStr())}</div>
       </div>
       <h1 style="font-size:20px;margin:0 0 16px">${g.naziv}</h1>
@@ -2366,7 +2393,8 @@ function otvoriTrosakPrilog(trId){
 function ukloniTrosakPrilog(trId){
   if(!canFinance()) return;
   const t=(DATA.troskovi_st||[]).find(x=>x.id===trId); if(!t) return;
-  delete t.prilog; saveState(); render(); openSite(t.gr);
+  /* NULL, ne delete: PATCH postavlja samo kljuceve koje nosi — obrisan kljuc = prilog ostaje u bazi. */
+  t.prilog=null; saveState(); render(); openSite(t.gr);
 }
 
 /* ---------- PODIZVODJACI ---------- */
@@ -2443,7 +2471,7 @@ function openIzvestaj(id){
       </div>
       <div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:20px">
         <div class="mark" style="background:var(--ink)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/></svg></div>
-        <div style="flex:1"><b style="font-family:'Space Grotesk';font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Izveštaj o napretku radova</div></div>
+        <div style="flex:1"><b style="font-family:'Space Grotesk',sans-serif;font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Izveštaj o napretku radova</div></div>
         <div style="font-size:12px;color:var(--muted);text-align:right">${fmtDate(todayStr())}</div>
       </div>
       <h1 style="font-size:22px;margin:0 0 4px;letter-spacing:-.4px">${g.naziv}</h1>
@@ -2495,7 +2523,7 @@ function openPresek(id){
       </div>
       <div style="display:flex;align-items:center;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:20px">
         <div class="mark" style="background:var(--ink)"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/></svg></div>
-        <div style="flex:1"><b style="font-family:'Space Grotesk';font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Finansijski presek gradilišta — INTERNO</div></div>
+        <div style="flex:1"><b style="font-family:'Space Grotesk',sans-serif;font-size:15px">GradnjaOS</b><div style="font-size:11px;color:var(--muted)">Finansijski presek gradilišta — INTERNO</div></div>
         <div style="font-size:12px;color:var(--muted);text-align:right">${fmtDate(todayStr())}</div>
       </div>
       <h1 style="font-size:22px;margin:0 0 4px;letter-spacing:-.4px">${g.naziv}</h1>
@@ -2745,7 +2773,7 @@ function viewPay(){
     </tr>`;
   }).join('');
   return head('Naplata','Privremene situacije po projektima — šta je izdato, šta plaćeno, ko probija valutu.') +
-  `<div class="grid kpis" style="grid-template-columns:repeat(3,1fr)">
+  `<div class="grid kpis kpis3">
     <div class="card kpi"><div class="accent"></div>
       <div class="lab">${icon('money')} Ukupno izdato</div>
       <div class="val num" style="font-size:24px">${fmtEur(izdato)}</div>
@@ -2799,6 +2827,7 @@ function saveSit(){
 /* ---------- AŽURIRANJE PROJEKTA ---------- */
 function formUpdate(id){
   const g=grById[id]; if(!g)return;
+  if(!(isDirector()||g.rukovodilac===ROLE)) return;
   const faze = fazeZa(g);
   const fazeOpts = (faze.includes(g.faza)?faze:[g.faza,...faze]).map(f=>`<option ${g.faza===f?'selected':''}>${f}</option>`).join('');
   openModal(`
@@ -2821,7 +2850,7 @@ function saveUpdate(id){
   const g=grById[id]; if(!g)return;
   if(!(isDirector()||g.rukovodilac===ROLE)) return;
   const el=x=>document.getElementById(x);
-  g.napredak=Math.round(Math.max(0,Math.min(100,+el('u_nap').value||0)));
+  if(String(el('u_nap').value).trim()!=='') g.napredak=Math.round(Math.max(0,Math.min(100,+el('u_nap').value||0)));
   g.status=el('u_st').value; g.faza=el('u_faza').value;
   if(canFinance()&&el('u_pot')) g.potroseno=+el('u_pot').value||0;
   if(g.napredak===100&&(g.status==='u toku'||g.status==='kasni')) g.status='zavrseno';
@@ -3057,7 +3086,7 @@ function openSite(id){
       ${isDirector()&&!jePro(g)&&!DATA.zadaci.some(t=>t.gr===id)?`<button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="ubaciSablonFaza('${id}')">＋ Ubaci šablon faza (${PODTIPOVI[g.tip||'visokogradnja']})</button>`:''}
       <div class="dr-stats">
         <div class="dr-stat"><div class="l">Zdravlje projekta</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:6px">${ringSvg(zdravlje(g),40)}<span class="v num" style="color:${zdrBoja(zdravlje(g))}">${zdravlje(g)}<span style="font-size:12px;color:var(--faint)">/100</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:6px"${zdravlje(g)==null?` title="${ZDR_NEMA}"`:''}>${ringSvg(zdravlje(g),40)}<span class="v num" style="color:${zdrBoja(zdravlje(g))}">${zdrTekst(zdravlje(g))}<span style="font-size:12px;color:var(--faint)">/100</span></span></div>
         </div>
         <div class="dr-stat"><div class="l">Napredak</div><div class="v">${g.napredak}%</div>
           <div class="bar" style="margin-top:8px"><span style="width:${g.napredak}%;background:${g.status==='kasni'?'var(--red)':g.status==='zavrseno'?'var(--green)':'var(--blue)'}"></span></div>
@@ -3160,10 +3189,15 @@ async function proveriNovuVerziju(){
   try{
     if(!/^https?:/.test(location.protocol)) return;
     if(sessionStorage.getItem("gos_reload")){ sessionStorage.removeItem("gos_reload"); return; }
-    const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store"});
+    /* Timeout: na poluotvorenoj mobilnoj vezi HEAD bez roka drzi "Učitavam…" zauvek. */
+    const ac=typeof AbortController!=='undefined'?new AbortController():null;
+    const tm=ac?setTimeout(()=>ac.abort(),4000):null;
+    const r=await fetch(location.pathname,{method:"HEAD",cache:"no-store",signal:ac?ac.signal:undefined});
+    if(tm) clearTimeout(tm);
     const lm=r.headers.get("last-modified"); if(!lm) return;
     const srv=new Date(lm).getTime(), moj=new Date(document.lastModified).getTime();
-    if(isFinite(srv)&&isFinite(moj)&&srv>moj+1000){ sessionStorage.setItem("gos_reload","1"); location.replace(location.pathname+"?v="+Date.now()); }
+    /* location.hash se cuva: magic link / reset lozinke stizu kao #access_token=… */
+    if(isFinite(srv)&&isFinite(moj)&&srv>moj+1000){ sessionStorage.setItem("gos_reload","1"); location.replace(location.pathname+"?v="+Date.now()+location.hash); }
   }catch(e){}
 }
 function verzijaTekst(){
@@ -3223,7 +3257,16 @@ async function prijavaLink(){
   loginPoruka(error ? '<div class="err">'+esc(error.message||error)+'</div>'
                     : '<div class="ok">Link je poslat na '+esc(email)+'. Otvori ga na ovom uređaju.</div>');
 }
-async function odjava(){ flushSave(); try{ await supa.auth.signOut(); }catch(e){} location.reload(); }
+let odjavaUToku=false;
+async function odjava(){
+  /* flushSave() nije cekao upis: signOut + reload su ubijali zahtev u letu i poslednja izmena se gubila. */
+  if(odjavaUToku) return; odjavaUToku=true;
+  const f=document.getElementById('sideFoot'); if(f) f.innerHTML='<span class="dot"></span> Čuvam izmene pre odjave…';
+  try{ await sacuvajSve(); }catch(e){}
+  if(saveErr && !confirm('Poslednje čuvanje NIJE uspelo ('+unesc(saveErr).slice(0,120)+'). Odjaviti se svejedno? Nesačuvane izmene će biti izgubljene.')){ odjavaUToku=false; updateFoot(); return; }
+  try{ await supa.auth.signOut(); }catch(e){}
+  location.reload();
+}
 async function promeniLozinku(){
   const p=prompt('Nova lozinka (najmanje 8 znakova):'); if(p===null) return;
   if(String(p).length<8){ alert('Lozinka mora imati najmanje 8 znakova.'); return; }
@@ -3262,11 +3305,22 @@ function normalizeData(){
     });
   });
 }
-(async ()=>{
+/* Baza je podesena, a biblioteka/klijent nisu dostupni (CDN blokiran, mreza): NE padamo
+   tiho u demo rezim sa izmisljenim podacima i bez prijave — zatvoreno, sa objasnjenjem. */
+function prikaziGreskuUcitavanja(poruka){
+  document.body.classList.add('login');
+  document.getElementById('view').innerHTML=`<div class="login-wrap"><div class="login-card">
+    <h1>GradnjaOS</h1><div class="err">${poruka}</div>
+    <p>Proveri internet vezu (i da li je cdn.jsdelivr.net dostupan na ovoj mreži), pa pokušaj ponovo.</p>
+    <button class="btn" style="width:100%" onclick="location.reload()">Pokušaj ponovo</button>
+  </div></div>`;
+}
+async function pokreni(){
   const v=document.getElementById('view'); if(v) v.innerHTML='<div class="empty" id="ucitavam">Učitavam…</div>';
   const pVerzija=proveriNovuVerziju();   // HEAD zahtev — ne ceka se pre biblioteke
-  await initSupa();
+  const supaOk=await initSupa();
   await pVerzija;
+  if(SUPABASE_URL && SUPABASE_ANON_KEY && !supaOk){ prikaziGreskuUcitavanja('Ne mogu da učitam biblioteku za bazu, pa se podaci ne mogu prikazati.'); return; }
   if(supa && !(await initAuth())) return;   // ekran za prijavu — podaci se ne ucitavaju bez sesije
   await loadState();
   normalizeData();
@@ -3275,6 +3329,7 @@ function normalizeData(){
   renderNalog();
   renderNav();
   render();
-})();
+}
+pokreni();
 </script>
 </html>

@@ -134,3 +134,32 @@ tekst moze biti duzi od 300px?
 filtrirano na supabase.co + performance.now() oko initAuth/loadState. Nalaz: 16
 zahteva SERIJSKI (for...await), ~200 ms svaki = 2,7 s. Promise.all -> 204 ms.
 Svaki `await` unutar petlje preko nezavisnih zahteva je sumnjiv.
+
+## Lekcija 22 (2026-10-03, setup agenata)
+Subagenti iz `~/.claude/agents/*.md` (explorer/worker/researcher) se ucitavaju pri
+STARTU sesije - fajl napisan usred sesije daje "Agent type not found". Posle izmene
+agenata: nova sesija, ili u tekucoj koristiti ekvivalent (Explore / general-purpose
+uz `model: sonnet`) i reci korisniku da custom agenti vaze od sledece sesije.
+Takodje: auto-mode klasifikator blokira upis u `~/.claude` kao "Self-Modification"
+cak i uz izricitu dozvolu u chatu - ponuditi korisniku Run blok umesto zaobilazenja.
+
+## Lekcija 23 (2026-10-03, revizija)
+Mock mora da oponasa GRANT-ove, ne samo polise: upsert finansijskih tabela je u
+mocku prolazio, a na bazi pada (42501: `excluded.budzet` trazi SELECT na koloni).
+Seed na praznu bazu i direktorov reset su bili pokvareni od migracije 11, a
+550 testova zeleno. Kad se na serveru ukine privilegija, isti dan je ukini i u
+mock-u (`FIN_COLS` provera u upsert grani) — test koji ne moze da padne nije test.
+
+## Lekcija 24 (2026-10-03, revizija)
+`delete obj.kolona` pred diff-upis = PATCH bez tog kljuca = baza zadrzava staru
+vrednost (prilog se "vracao"). Uklanjanje je uvek `obj.kolona=null`. Isto vazi za
+PUSHED: belezi se po uspelom ZAHTEVU — insert koji prodje pre update-a koji padne
+inace sledeci put ide ponovo kao insert (23505) i tabela ostaje "crvena" do refresha.
+
+## Lekcija 25 (2026-10-03, revizija)
+Fallback je greska kad ulaz nije poverljiv: `zdravlje()` je za rukovodioca bez
+servera "padao na lokalnu formulu" nad NULL finansijama i tiho davao do 25 nizi
+skor; boot je pri padu CDN-a "padao u demo rezim" bez prijave. Kad nedostaje izvor
+istine, prikazi "—"/gresku sa "pokusaj ponovo", ne izmisljen broj ili demo podatke.
+Bonus iz iste revizije: `broj()` je za TEKST — `type=number` daje kanonicnu
+vrednost, pa "1.250" (1,25 m3) postaje 1250.
