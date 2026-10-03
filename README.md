@@ -52,6 +52,8 @@ Postojeća baza sa starijom šemom: pokreni `supabase/migracija-NN-*.sql` redom,
 
 **https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root) — jedan link za telefon, tablet i računar; raspored se sam prilagođava širini ekrana. Svaka sledeća izmena = commit + push (Pages objavi za ~1 min). Aplikacija pri svakom otvaranju proveri da li na serveru postoji novija verzija i sama se osveži — nema potrebe za `?v=N`; u podnožju sidebara piše „verzija od <datum vreme>".
 
+Na telefonu se instalira kao aplikacija: Android Chrome ⋮ → „Dodaj na početni ekran", iPhone Safari → Deli → „Add to Home Screen" (otvara se preko celog ekrana, sa donjom navigacijom Tabla · Gradilišta · Zadaci · Dnevnik · Više).
+
 Tu adresu upiši i u Supabase → Authentication → URL Configuration → **Site URL** i **Redirect URLs** (zbog magic linka i reseta lozinke). Sopstveni domen kasnije: `CNAME` fajl u repou + CNAME zapis kod registrara.
 
 ### 3. Pravo slanje mejla trebovanja (opciono)
