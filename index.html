@@ -822,7 +822,9 @@ async function pushAll(d, opt){
     try{
       /* Upsert = INSERT…ON CONFLICT DO UPDATE SET col=excluded.col; citanje excluded.<fin>
          trazi SELECT na finansijskoj koloni, koji je ukinut (migracija 11) → 42501 i za
-         direktora (provereno na bazi 2026-10-03). Zato tabele sa FIN_KOLONE NIKAD upsert. */
+         direktora (provereno na bazi 2026-10-03). Zato tabele sa FIN_KOLONE NIKAD upsert.
+         Podela novi/stari se oslanja na to da je PUSHED = trenutno stanje baze (snapshot
+         posle loadState; u resetDemo se zapamtiSnapshot zove tek POSLE upisa — ne pomerati). */
       if(opt.sve && !FIN_KOLONE[t]){ await posalji(supa.from(t).upsert(izmenjeni), izmenjeni); }
       else {
         /* postojeci -> UPDATE (upsert bi pao na INSERT WITH CHECK za rukovodioca), novi -> INSERT */
