@@ -230,6 +230,16 @@ posle bloka je dao display:none na telefonu). PWA: `manifest.webmanifest` +
 „Dodaj na početni ekran" otvara app standalone; `start_url:"./"` radi samo dok
 manifest stoji pored index.html. Bez service workera (namerno: offline bi bio lažan
 uz živu bazu). iOS: magic link iz mejla otvara Safari, ne instaliranu kopiju. T25.
+**Tema (od 2026-10-04):** sve boje su CSS promenljive u `:root, .rpt-page` (svetla) +
+DVA identična tamna bloka (`@media (prefers-color-scheme: dark){:root:not([data-theme="light"])}`
+za sistem i `:root[data-theme="dark"]` za ručni izbor) — menjati oba, T27 poredi.
+`postaviTemu('system'|'light'|'dark')` → `localStorage gos_tema` + `data-theme` na `<html>`;
+inline skript u `<head>` primenjuje izbor pre prvog crtanja; `theme-color` meta prati.
+Segment „Tema" u sidebaru. `.rpt-page` ostaje bela (izveštaj = papir). Pravila: nikad
+`color:#fff` na pozadini `var(--ink)` (u tamnoj je ink svetao) — koristi `var(--paper)`;
+nova boja = nova promenljiva u SVA TRI bloka; sidebar/brif su tamno-plavi u obe teme.
+Provera: u browser panelu `resize_window colorScheme:'dark'` + skener elemenata sa
+`background rgb(255,255,255)` ili `color===backgroundColor` kroz sve poglede.
 Pravila: široka tabela UVEK u `<div style="overflow-x:auto">`; nikad `1fr`
 grid bez `minmax(0,…)` ako sadržaj može biti širok; nikad `white-space:nowrap`
 na tekstu koji može premašiti 300px; hamburger nikad ne sme biti jedini način

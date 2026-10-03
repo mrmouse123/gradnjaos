@@ -8,6 +8,7 @@
 <!-- PWA: "Dodaj na početni ekran" otvara app preko celog ekrana, bez adresne trake -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#1F4E79">
+<script>/* tema pre prvog crtanja (bez bljeska): sacuvan izbor ili sistem */try{var _t=localStorage.getItem('gos_tema');if(_t==='dark'||_t==='light')document.documentElement.setAttribute('data-theme',_t);}catch(e){}</script>
 <link rel="icon" type="image/svg+xml" href="ikone/icon.svg">
 <link rel="apple-touch-icon" href="ikone/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,7 +23,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'">
 <style>
 
-  :root{
+  /* Svetla paleta — i na .rpt-page (izvestaji ostaju beli "papir" i u tamnom rezimu) */
+  :root, .rpt-page{
     --paper:#F7F6F2; --surface:#FFFFFF;
     --ink:#16191D; --muted:#71767E; --faint:#9AA0A6;
     --line:#E9E7E1; --line-strong:#D8D5CC;
@@ -30,11 +32,48 @@
     --amber:#DF8E1C; --amber-soft:#FBF1DE;
     --green:#2E9E5B; --green-soft:#E6F4EB;
     --red:#D2453F; --red-soft:#FBEAE9;
-    --slate:#3B4048;
+    --slate:#3B4048; --purple:#6B5CA5;
     --radius:14px; --radius-sm:9px;
     --shadow:0 1px 2px rgba(20,25,30,.04), 0 8px 24px -12px rgba(20,25,30,.12);
     --shadow-lg:0 12px 40px -16px rgba(20,25,30,.28);
+    color-scheme:light;
   }
+  .rpt-page{color-scheme:light}
+  /* Tamna paleta: prati sistem (prefers-color-scheme) osim kad korisnik izabere
+     data-theme="light"/"dark" (postaviTemu, localStorage gos_tema). Dva bloka sa
+     ISTIM vrednostima — menjati oba. Sidebar i brif su vec tamno-plavi u obe teme. */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#101418; --surface:#181D24;
+      --ink:#E6E8EB; --muted:#A0A7B0; --faint:#737B86;
+      --line:#262C35; --line-strong:#353D48;
+      --blue:#4F8FCB; --blue-2:#7FB1E3; --blue-soft:#1B2C3F;
+      --amber:#E9A23B; --amber-soft:#3A2B12;
+      --green:#4CBB73; --green-soft:#153021;
+      --red:#E5665F; --red-soft:#3B1B1A;
+      --slate:#C3C8CF; --purple:#A596D8;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+      --shadow-lg:0 12px 40px -16px rgba(0,0,0,.8);
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#101418; --surface:#181D24;
+    --ink:#E6E8EB; --muted:#A0A7B0; --faint:#737B86;
+    --line:#262C35; --line-strong:#353D48;
+    --blue:#4F8FCB; --blue-2:#7FB1E3; --blue-soft:#1B2C3F;
+    --amber:#E9A23B; --amber-soft:#3A2B12;
+    --green:#4CBB73; --green-soft:#153021;
+    --red:#E5665F; --red-soft:#3B1B1A;
+    --slate:#C3C8CF; --purple:#A596D8;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+    --shadow-lg:0 12px 40px -16px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+  .tema-box{padding:8px 14px 2px; display:flex; align-items:center; gap:6px; font-size:11px; color:#7E93AB}
+  .tema-box .seg{display:flex; background:rgba(255,255,255,.06); border-radius:8px; padding:2px; margin-left:auto}
+  .tema-box .seg button{border:0; background:transparent; color:#A9BCD1; font:inherit; font-size:11px; padding:4px 8px; border-radius:6px; cursor:pointer}
+  .tema-box .seg button.on{background:rgba(255,255,255,.16); color:#fff; font-weight:600}
   *{box-sizing:border-box}
   html,body{margin:0}
   body{
@@ -191,7 +230,7 @@
   tr.grp td{background:var(--paper); font-size:12px; font-weight:600; color:var(--slate); padding:8px 16px; cursor:pointer; border-top:1px solid var(--line-strong)}
   tr.grp:hover td{background:var(--blue-soft)}
   tr.grp .g-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:8px;vertical-align:middle}
-  tr.total td{border-top:2px solid var(--line-strong); font-weight:700; background:#fff; font-size:13px}
+  tr.total td{border-top:2px solid var(--line-strong); font-weight:700; background:var(--surface); font-size:13px}
   .napl{display:flex; align-items:center; gap:8px; justify-content:flex-end}
   .napl .bar{width:60px}
   .napl b{font-size:12.5px; width:38px; text-align:right}
@@ -208,7 +247,7 @@
   .search input{border:0; outline:0; background:none; font:inherit; width:100%; color:var(--ink)}
   .chip{background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:7px 14px; font-size:12.5px; font-weight:500; color:var(--slate); transition:.12s}
   .chip:hover{border-color:var(--line-strong)}
-  .chip.active{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .chip.active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
   .btn{background:var(--blue); color:#fff; border:0; border-radius:10px; padding:9px 15px; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:7px}
   .btn svg{width:15px;height:15px}
   .btn.ghost{background:var(--surface); color:var(--slate); border:1px solid var(--line)}
@@ -297,6 +336,7 @@
   .dr-h .x:hover{background:var(--paper)}
   .dr-h h2{margin:0 0 4px; font-size:19px; letter-spacing:-.3px; padding-right:40px}
   .dr-h .loc{font-size:13px; color:var(--muted); display:flex; align-items:center; gap:6px}
+  .dr-h .loc svg{width:14px; height:14px; flex:none; opacity:.8}   /* bez ovoga pin-ikona raste na punu sirinu fioke */
   .dr-b{padding:18px 22px 40px}
   .dr-stats{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px}
   .dr-stat{background:var(--paper); border:1px solid var(--line); border-radius:10px; padding:12px 13px}
@@ -358,7 +398,7 @@
   .modul-seg button{border:0; background:none; padding:7px 16px; border-radius:18px; font-size:12.5px; font-weight:600; color:var(--muted); display:inline-flex; align-items:center; gap:7px; transition:.14s}
   .modul-seg button i{width:8px; height:8px; border-radius:3px; display:inline-block}
   .modul-seg button:hover{color:var(--ink)}
-  .modul-seg button.on{background:var(--ink); color:#fff}
+  .modul-seg button.on{background:var(--ink); color:var(--paper)}
   .modul-seg button.on i{outline:2px solid rgba(255,255,255,.35)}
 
   /* jutarnji brif */
@@ -507,6 +547,13 @@
     <div class="role-box" id="roleBox">
       <label>Prijavljen kao</label>
       <select id="roleSel" onchange="setRole(this.value)"></select>
+    </div>
+    <div class="tema-box">Tema
+      <div class="seg" id="temaSeg">
+        <button onclick="postaviTemu('system')" title="Prati podešavanje telefona/računara">Auto</button>
+        <button onclick="postaviTemu('light')">Svetla</button>
+        <button onclick="postaviTemu('dark')">Tamna</button>
+      </div>
     </div>
 
     <nav class="nav" id="nav"></nav>
@@ -1043,7 +1090,7 @@ const MESECI_PUN = ['januar','februar','mart','april','maj','jun','jul','avgust'
 let ROLE = 'all'; // 'all' = direktor; inače id rukovodioca
 let MODUL = 'sve';  // 'sve' | 'projektovanje' | 'izvodjenje'
 let PODTIP = 'sve'; // samo za izvodjenje: 'sve' | 'visokogradnja' | 'niskogradnja'
-const MODUL_BOJA = {projektovanje:'#6B5CA5', izvodjenje:'var(--blue)'};
+const MODUL_BOJA = {projektovanje:'var(--purple)', izvodjenje:'var(--blue)'};
 const PODTIPOVI = {visokogradnja:'Visokogradnja', niskogradnja:'Niskogradnja'};
 const PODTIP_BOJA = {visokogradnja:'var(--blue)', niskogradnja:'var(--amber)'};
 function modLab(g){ return (g.modul||'izvodjenje')==='projektovanje' ? ('Projektovanje'+(g.nivo?' · '+g.nivo:'')) : PODTIPOVI[g.tip||'visokogradnja']; }
@@ -3353,6 +3400,29 @@ function toggleSide(){
   const s=document.getElementById('side'); const on=s.classList.toggle('open');
   document.getElementById('scrim').classList.toggle('on', on);
 }
+
+/* ---------- TEMA (svetla / tamna / auto) ----------
+   'system' = prati prefers-color-scheme (data-theme se uklanja), 'light'/'dark' = prisilno.
+   Izbor u localStorage 'gos_tema'; inline skript u <head> ga primenjuje pre prvog crtanja. */
+const TEMA_BOJA={light:'#1F4E79', dark:'#101418'};
+function temaIzbor(){ try{ const t=localStorage.getItem('gos_tema'); return t==='dark'||t==='light'?t:'system'; }catch(e){ return 'system'; } }
+function temaStvarna(){ const t=temaIzbor(); if(t!=='system') return t; try{ return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; }catch(e){ return 'light'; } }
+function postaviTemu(t){
+  if(t!=='dark'&&t!=='light') t='system';
+  try{ if(t==='system') localStorage.removeItem('gos_tema'); else localStorage.setItem('gos_tema',t); }catch(e){}
+  const h=document.documentElement;
+  if(t==='system') h.removeAttribute('data-theme'); else h.setAttribute('data-theme',t);
+  osveziTemuUI();
+}
+function osveziTemuUI(){
+  const izbor=temaIzbor(), stvarna=temaStvarna();
+  const seg=document.getElementById('temaSeg');
+  if(seg) seg.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', ['system','light','dark'][i]===izbor));
+  const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute('content', TEMA_BOJA[stvarna]);
+}
+if(typeof window!=='undefined' && window.matchMedia){
+  try{ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', osveziTemuUI); }catch(e){}
+}
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeDrawer(); closeModal(); closeIzvestaj(); } });
 
 /* ============================================================
@@ -3506,6 +3576,7 @@ async function pokreni(){
   if(mode==='supabase') zapamtiSnapshot(DATA);   // posle normalize, da prvi diff ne gura sve
   rebuildMaps();
   renderNalog();
+  osveziTemuUI();
   renderNav();
   render();
 }

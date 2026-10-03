@@ -1,3 +1,15 @@
+# Tema + uvoz + Rokovi (2026-10-04) — GOTOVO
+- [x] Rokovi: linija "danas" tacna na telefonu (CSS var --g-lab), datum na markeru, auto-skrol
+      na danas, dugme "Danas", imena projekata sticky. T26.
+- [x] Excel sablon za masovni uvoz (uvoz/) + uvezi.py -> uvoz.sql; provereno na zivoj bazi
+      (rollback) i sa namerno pokvarenim fajlom (4 greske, bez SQL-a).
+- [x] Tema svetla/tamna/auto: CSS promenljive u 3 bloka, postaviTemu + localStorage + rani
+      skript bez bljeska, segment u sidebaru, theme-color meta prati; .rpt-page ostaje bela.
+      Skener kroz 13 pogleda u tamnoj temi: 0 belih pozadina, 0 "tekst iste boje kao
+      pozadina". Usput: pin-ikona u zaglavlju fioke bila bez dimenzija (306px). T27.
+Review: jedina prava zamka bila je redosled CSS pravila (isto kao kod .bnav) i dva mesta sa
+`color:#fff` na pozadini `var(--ink)` koja bi u tamnoj temi dala belo na svetlom.
+
 # Zahtevi po modulima — popunjavanje rupa (2026-10-03)
 
 Trazeno: "proveri da li su zahtevi (MODUL 1 Izvodjenje / MODUL 2 Projektovanje) u

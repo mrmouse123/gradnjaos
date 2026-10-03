@@ -454,6 +454,46 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T27 tema: svetla / tamna / auto (prefers-color-scheme), bez bljeska, bez hardkodiranog #fff na var(--ink) ---- */
+  section('T27 tema');
+  check('CSS: tamna paleta u oba oblika (sistem + rucno), svetla i na .rpt-page, bez color:#fff na pozadini var(--ink)', () => {
+    const css = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+    if (!/@media \(prefers-color-scheme: dark\)\{\s*:root:not\(\[data-theme="light"\]\)\{/.test(css)) throw new Error('nema sistemskog tamnog bloka sa :root:not([data-theme="light"])');
+    if (!/:root\[data-theme="dark"\]\{/.test(css)) throw new Error('nema :root[data-theme="dark"] bloka');
+    const sys = css.slice(css.indexOf(':root:not([data-theme="light"]){')); const sysBlok = sys.slice(0, sys.indexOf('}'));
+    const man = css.slice(css.indexOf(':root[data-theme="dark"]{')); const manBlok = man.slice(0, man.indexOf('}'));
+    const vars = b => Object.fromEntries([...b.matchAll(/(--[a-z-]+):([^;]+);/g)].map(m => [m[1], m[2].trim()]));
+    const a = vars(sysBlok), b = vars(manBlok);
+    const razlike = Object.keys({ ...a, ...b }).filter(k => a[k] !== b[k]);
+    if (razlike.length) throw new Error('sistemski i rucni tamni blok se razlikuju: ' + razlike.join(', '));
+    for (const k of ['--paper', '--surface', '--ink', '--line', '--blue', '--amber', '--green', '--red', '--purple']) if (!a[k]) throw new Error('tamna paleta nema ' + k);
+    if (!/:root, \.rpt-page\{/.test(css)) throw new Error('svetla paleta nije primenjena i na .rpt-page (izvestaj bi bio svetao tekst na belom)');
+    for (const sel of ['.chip.active', '.modul-seg button.on']) {
+      const i = css.indexOf(sel + '{'); const pravilo = css.slice(i, css.indexOf('}', i));
+      if (/color:#fff/.test(pravilo)) throw new Error(sel + ' ima color:#fff na pozadini var(--ink) — u tamnoj temi belo na svetlom');
+    }
+    if (!HTML.includes("localStorage.getItem('gos_tema')")) throw new Error('nema ranog skripta u <head> (bljesak svetle teme)');
+    if (HTML.includes("projektovanje:'#6B5CA5'")) throw new Error('MODUL_BOJA hardkodira ljubicastu umesto var(--purple)');
+  });
+  await acheck('postaviTemu: dark/light postavlja data-theme + localStorage, system uklanja; meta theme-color prati; UI segment', async () => {
+    const a = await boot();
+    a.run("var _ls={}; localStorage={getItem:k=>(k in _ls?_ls[k]:null), setItem:(k,v)=>{_ls[k]=String(v)}, removeItem:k=>{delete _ls[k]}};");
+    const html = () => a.g.document.documentElement;
+    a.run("postaviTemu('dark')");
+    if (html()['data-theme'] !== 'dark') throw new Error('data-theme posle dark = ' + html()['data-theme']);
+    if (a.run("localStorage.getItem('gos_tema')") !== 'dark') throw new Error('gos_tema nije dark');
+    if (a.run('temaStvarna()') !== 'dark') throw new Error('temaStvarna != dark');
+    a.run("postaviTemu('light')");
+    if (html()['data-theme'] !== 'light') throw new Error('data-theme posle light = ' + html()['data-theme']);
+    a.run("postaviTemu('system')");
+    if (html()['data-theme'] !== undefined) throw new Error('system nije uklonio data-theme: ' + html()['data-theme']);
+    if (a.run("localStorage.getItem('gos_tema')") !== null) throw new Error('system nije obrisao gos_tema');
+    if (a.run('temaIzbor()') !== 'system') throw new Error('temaIzbor != system');
+    a.run("postaviTemu('nesto')");
+    if (a.run('temaIzbor()') !== 'system') throw new Error('nepoznata vrednost nije pala na system');
+    if (!HTML.includes('id="temaSeg"') || !HTML.includes("postaviTemu('dark')")) throw new Error('nema segmenta Tema u sidebaru');
+  });
+
   /* ---- T26 Rokovi: linija "danas" prati sirinu kolone sa imenima (200px desktop / 150px telefon) i nosi datum ---- */
   section('T26 Rokovi: danas');
   await acheck('Gantt: marker danas koristi var(--g-lab) i nosi danasnji datum; CSS definise 200px i 150px', async () => {
