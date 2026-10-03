@@ -2170,6 +2170,18 @@ function ubaciSablonFaza(grId){
   const n=primeniSablonFaza(grId);
   if(n){ saveState(); renderNav(); render(); openSite(grId); }
 }
+/* Naknadno ubacivanje sablona nivoa (projektovanje): dodaje samo stavke kojih jos nema (isti oblik reda kao saveSite). */
+function ubaciSablonNivoa(grId){
+  if(!isDirector()) return;
+  const g=grById[grId]; if(!g||!jePro(g)||!g.nivo) return;
+  const niv=g.nivo, sab=NIVOI_DOK[niv]||[];
+  const ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
+  const nove=sab.filter(sv=>!ima.has((niv+' — '+sv).toLowerCase())&&!ima.has(sv.toLowerCase()));
+  if(!nove.length){ alert('Sve stavke šablona već postoje u specifikaciji.'); return; }
+  const ts=Date.now();
+  nove.forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:esc(niv+' — '+sv), jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
+  saveState(); render();
+}
 let PRED_ID=null;
 function predmerZa(grId){ return (DATA.predmer||[]).filter(x=>x.gr===grId); }
 function jePro(g){ return (g.modul||'izvodjenje')==='projektovanje'; }
@@ -2194,7 +2206,8 @@ function viewPredmer(){
       ${fin?`<td class="r num-cell">${fmtEur(x.cena)}</td><td class="r num-cell">${fmtEur(x.kol*x.cena)}</td>`:''}
       <td class="r"><input class="izv-in num" value="${x.izv||0}" onchange="setIzv('${x.id}',this.value)"></td>
       <td class="r" style="min-width:90px"><div class="bar" style="height:6px"><span style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--blue)'}"></span></div><div class="sub num" style="text-align:right">${pct}%</div></td>
-      ${pro?`<td>${zaduzenIme(x.zaduzen)}</td>`:''}
+      <td>${zaduzenIme(x.zaduzen)}</td>
+      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button></td>`:''}
     </tr>`;
   }).join('');
   return `
@@ -2211,10 +2224,11 @@ function viewPredmer(){
     ${isDirector()?`<button class="btn" onclick="formPredmerImport('${g.id}')">${icon('plus')} Uvezi iz Excela (nalepi)</button>
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
     <button class="btn ghost" onclick="izvozPredmer('${g.id}')">⇩ Izvoz izvedenih (CSV)</button>
-    <button class="btn ghost" onclick="openKumulativ('${g.id}')">Kumulativni pregled</button>`:''}
+    <button class="btn ghost" onclick="openKumulativ('${g.id}')">Kumulativni pregled</button>
+    ${pro&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}`:''}
   </div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${fin?'<th class="r">Jed. cena</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th>${pro?'<th>Zadužen</th>':''}</tr></thead>
+    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${fin?'<th class="r">Jed. cena</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':`<div class="empty">Još nema pozicija — ${isDirector()?'uvezi predmer iz Excela ili dodaj poziciju ručno.':'direktor još nije uvezao predmer.'}</div>`}
   </div>`;
@@ -2227,27 +2241,43 @@ function setIzv(pid,val){
   x.izv=Math.min(+x.kol||0, Math.max(0, broj(val)));
   saveState(); render();
 }
-function formPredmerRed(grId){
+/* formPredmerRed(grId) = nova pozicija; formPredmerRed(grId,pid) = izmena postojece (samo direktor). */
+function formPredmerRed(grId,pid){
   if(!isDirector()) return;
-  const g=grById[grId]; const pro=jePro(g);
-  const opcije = pro ? [...timNa(grId).map(z=>`<option value="${z.id}">${z.ime}</option>`), ...subsZa(grId).map(x=>`<option value="${x.id}">${x.naziv} (spoljni)</option>`)].join('') : '';
+  const g=grById[grId]; if(!g) return;
+  const pro=jePro(g);
+  const x=pid?(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId):null;
+  if(pid&&!x) return;
+  const zs=x?x.zaduzen:null, sel=id=>id===zs?' selected':'';
+  const opcije = [...timNa(grId).map(z=>`<option value="${z.id}"${sel(z.id)}>${z.ime}</option>`), ...subsZa(grId).map(s=>`<option value="${s.id}"${sel(s.id)}>${s.naziv} (spoljni)</option>`)].join('');
+  const jms=['m³','m²','m','kom','kg','t','h','paušal']; if(x&&x.jm&&!jms.includes(x.jm)) jms.push(x.jm);
+  const jmOpc=jms.map(j=>`<option${x&&x.jm===j?' selected':''}>${j}</option>`).join('');
   openModal(`
-    <div class="m-h"><h3>Nova pozicija</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-h"><h3>${x?'Izmena pozicije':'Nova pozicija'}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
-      <div class="f-row"><label>${pro?'Usluga':'Opis pozicije'}</label><input id="f_pm_poz"></div>
+      <div class="f-row"><label>${pro?'Usluga':'Opis pozicije'}</label><input id="f_pm_poz"${x?` value="${x.poz}"`:''}></div>
       <div class="f-2">
-        <div class="f-row"><label>JM</label><select id="f_pm_jm"><option>m³</option><option>m²</option><option>m</option><option>kom</option><option>kg</option><option>t</option><option>h</option><option>paušal</option></select></div>
-        <div class="f-row"><label>Količina</label><input id="f_pm_kol" type="number" value="1"></div>
+        <div class="f-row"><label>JM</label><select id="f_pm_jm">${jmOpc}</select></div>
+        <div class="f-row"><label>Količina</label><input id="f_pm_kol" type="number" value="${x?x.kol:1}"></div>
       </div>
-      <div class="f-row"><label>Jedinična cena (€)</label><input id="f_pm_cena" type="number"></div>
-      ${pro?`<div class="f-row"><label>Zadužen</label><select id="f_pm_zad"><option value="">—</option>${opcije}</select></div>`:''}
-      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}')">Sačuvaj</button></div>
+      <div class="f-row"><label>Jedinična cena (€)</label><input id="f_pm_cena" type="number"${x?` value="${x.cena}"`:''}></div>
+      <div class="f-row"><label>Zadužen</label><select id="f_pm_zad"><option value="">—</option>${opcije}</select></div>
+      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}'${x?`,'${x.id}'`:''})">${x?'Sačuvaj izmene':'Sačuvaj'}</button></div>
     </div>`);
 }
-function savePredmerRed(grId){
+function savePredmerRed(grId,pid){
   if(!isDirector()) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const poz=esc(String(v('f_pm_poz')).trim()); if(!poz){ alert('Unesi opis pozicije.'); return; }
+  if(pid){
+    const x=(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId); if(!x) return;
+    x.poz=poz; x.jm=esc(v('f_pm_jm')||x.jm||'kom');
+    const kt=String(v('f_pm_kol')).trim(); if(kt!==''&&Number.isFinite(+kt)) x.kol=+kt;
+    x.izv=Math.min(x.izv||0, x.kol);                      // izvedeno ne sme preko nove ugovorene kolicine
+    const ct=String(v('f_pm_cena')).trim(); if(canFinance()&&ct!==''&&Number.isFinite(+ct)) x.cena=+ct;
+    x.zaduzen=v('f_pm_zad')||null;
+    saveState(); closeModal(); render(); return;
+  }
   DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
   saveState(); closeModal(); render();
 }
@@ -2379,6 +2409,24 @@ function uploadTrosakPrilog(trId){
     };
     inp.click();
   }catch(e){}
+}
+/* Puna lista troskova gradilista (dobavljac, faktura, prilog) — samo uloge sa uvidom u finansije. */
+function openTroskovi(grId){
+  if(!canFinance()) return;
+  const g=grById[grId]; if(!g) return;
+  const list=troskoviZa(grId).sort((a,b)=>dParse(b.datum)-dParse(a.datum));
+  const uk=list.reduce((a,t)=>a+(+t.iznos||0),0);
+  const rows=list.map(t=>`<tr><td>${fmtDate(t.datum)}</td><td class="strong">${t.opis}</td><td>${t.kat||'—'}</td><td>${t.dobavljac||'—'}</td><td>${t.fakt||'—'}</td><td class="r num-cell">${fmtEur(t.iznos)}</td><td>${t.prilog?`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span>`:'—'}</td></tr>`).join('');
+  openModal(`
+    <div class="m-h"><h3>Troškovi — ${g.naziv}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-b">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">${list.length} stavki</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th>Dobavljač</th><th>Br. fakture</th><th class="r">Iznos</th><th>Prilog</th></tr></thead>
+        <tbody>${rows}<tr><td class="strong" colspan="5">Ukupno</td><td class="r num-cell strong">${fmtEur(uk)}</td><td></td></tr></tbody>
+      </table></div>
+      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Zatvori</button></div>
+    </div>`);
 }
 function otvoriTrosakPrilog(trId){
   if(!canFinance()) return;
@@ -3149,8 +3197,9 @@ function openSite(id){
         <div class="dr-kv"><span class="k">Utrošeno do sada</span><span class="v num">${fmtEur(pot)} (${budPct}%)${trSt.length?' · iz '+trSt.length+' stavki':''}</span></div>
         <div class="dr-kv"><span class="k">Naplaćeno</span><span class="v num">${fmtEur(naplSum(g))} (${n}%)</span></div>
         <div class="budget-bar ${budPct>90?'hot':''}"><span style="width:${Math.min(100,budPct)}%"></span></div>
-        ${trSt.length?`<div style="margin-top:12px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:4px">Poslednji troškovi</div>${trSt.slice(-4).reverse().map(t=>`<div class="dr-kv"><span class="k">${fmtDate(t.datum)} · ${t.opis} <span style="color:var(--faint)">· ${t.kat}</span>${t.prilog?`<br><span style="color:var(--blue);font-weight:600;cursor:pointer;font-size:11px" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span> <span style="color:var(--red);cursor:pointer;font-size:11px" onclick="ukloniTrosakPrilog('${t.id}')" title="Ukloni prilog">✕</span>`:`<br><span style="color:var(--blue);cursor:pointer;font-size:11px" onclick="uploadTrosakPrilog('${t.id}')">📎 Dodaj fakturu</span>`}</span><span class="v num">${fmtEur(t.iznos)}</span></div>`).join('')}</div>`:''}
+        ${trSt.length?`<div style="margin-top:12px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:4px">Poslednji troškovi</div>${trSt.slice(-4).reverse().map(t=>`<div class="dr-kv"><span class="k">${fmtDate(t.datum)} · ${t.opis} <span style="color:var(--faint)">· ${t.kat}</span>${(t.dobavljac||t.fakt)?`<br><span class="sub">${[t.dobavljac,t.fakt?'fakt. '+t.fakt:''].filter(Boolean).join(' · ')}</span>`:''}${t.prilog?`<br><span style="color:var(--blue);font-weight:600;cursor:pointer;font-size:11px" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span> <span style="color:var(--red);cursor:pointer;font-size:11px" onclick="ukloniTrosakPrilog('${t.id}')" title="Ukloni prilog">✕</span>`:`<br><span style="color:var(--blue);cursor:pointer;font-size:11px" onclick="uploadTrosakPrilog('${t.id}')">📎 Dodaj fakturu</span>`}</span><span class="v num">${fmtEur(t.iznos)}</span></div>`).join('')}</div>`:''}
         <button class="btn ghost" style="margin-top:10px;padding:6px 12px;font-size:12px" onclick="formTrosak('${id}')">＋ Dodaj trošak</button>
+        ${trSt.length?`<button class="btn ghost" style="margin-top:10px;padding:6px 12px;font-size:12px" onclick="openTroskovi('${id}')">Svi troškovi (${trSt.length})</button>`:''}
         ${sitZa(id).length?`<div style="margin-top:12px">${sitZa(id).map(s=>{
           const st=s.status==='placeno'?'<span class="badge b-green">Plaćeno</span>':sitKasni(s)?'<span class="badge b-red">Kasni</span>':'<span class="badge b-amber">Čeka</span>';
           return `<div class="dr-kv"><span class="k">${s.br} · ${s.opis}</span><span class="v num" style="display:flex;gap:8px;align-items:center;justify-content:flex-end">${fmtEurK(s.iznos)} ${st}</span></div>`;

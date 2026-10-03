@@ -148,6 +148,7 @@ const MUTATORS = [
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
   ['saveTask', ''], ['saveDiary', ''],
+  ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
 ];
 
 /* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
@@ -561,6 +562,104 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     let thr = null; try { a.run(`openSite(${G});`); } catch (e) { thr = e.message; }
     if (thr) throw new Error('izuzetak za nepoznatog klijenta: ' + thr);
     if (!/Investitor<\/span><span class="v">—<\/span>/.test(dr.innerHTML)) throw new Error('nema "—" za nepoznatog klijenta');
+  });
+
+  /* ---- T24b zahtevi po modulima (C, D, E) ---- */
+  section('T24b zahtevi po modulima (C, D, E)');
+  await acheck('C1 predmer: kolona Zadužen i za izvođenje (direktor + rukovodilac), th==td, ✎ samo direktor', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje'&&DATA.predmer.some(r=>r.gr===g.id)).id"), G = JSON.stringify(gid);
+    const dirH = a.run(`ROLE='all'; PRED_ID=${G}; viewPredmer()`);
+    const ruk = a.run(`grById[${G}].rukovodilac`);
+    const rukH = a.run(`ROLE=${JSON.stringify(ruk)}; PRED_ID=${G}; viewPredmer()`);
+    a.run("ROLE='all';");
+    if (!dirH.includes('<th>Zadužen</th>')) throw new Error('direktor: nema zaglavlja Zadužen za izvođenje');
+    if (!rukH.includes('<th>Zadužen</th>')) throw new Error('rukovodilac: nema zaglavlja Zadužen za izvođenje');
+    if (!dirH.includes("formPredmerRed('" + gid + "','")) throw new Error('direktor nema ✎ kontrolu');
+    if (rukH.includes('formPredmerRed')) throw new Error('rukovodilac vidi ✎ kontrolu');
+    for (const [n, h] of [['direktor', dirH], ['rukovodilac', rukH]]) {
+      const p = tableAsymmetry(h); if (p.length) throw new Error(n + ' th!=td: ' + JSON.stringify(p[0]));
+    }
+  });
+  await acheck('C2 formPredmerRed(gid,pid): prefill + "Izmena pozicije"; bez pid = "Nova pozicija"', async () => {
+    const a = await boot();
+    const modal = a.g.document.getElementById('modal');
+    a.run("ROLE='all'; formPredmerRed('g5','pm3');");
+    const h = modal.innerHTML;
+    if (!h.includes('Izmena pozicije') || !h.includes('Sačuvaj izmene')) throw new Error('nema naslova/dugmeta izmene');
+    if (!h.includes('Zidanje giter blokom d=25')) throw new Error('poz nije popunjen');
+    if (!h.includes("savePredmerRed('g5','pm3')")) throw new Error('dugme ne zove savePredmerRed(gid,pid)');
+    if (!/<option selected>m²<\/option>/.test(h)) throw new Error('JM nije prefill');
+    a.run("formPredmerRed('g5');");
+    if (!modal.innerHTML.includes('Nova pozicija') || modal.innerHTML.includes('Izmena pozicije')) throw new Error('bez pid nije "Nova pozicija"');
+    if (!/<select id="f_pm_zad">/.test(modal.innerHTML)) throw new Error('izvođenje nema select Zadužen u formi');
+  });
+  await acheck('C3 savePredmerRed(gid,pid): izmena in-place, cena prazna = ostaje, izv klamp; rukovodilac ne menja ništa', async () => {
+    const a = await boot();
+    const doc = a.g.document, set = (id, val) => { doc.getElementById(id).value = val; };
+    const pre = a.run("DATA.predmer.length"), cena0 = a.run("DATA.predmer.find(r=>r.id==='pm1').cena");
+    if (a.run("DATA.predmer.find(r=>r.id==='pm1').izv") <= 2.5) throw new Error('setup: izv pm1 nije > 2.5');
+    set('f_pm_poz', 'Izmenjen & opis'); set('f_pm_kol', '2.5'); set('f_pm_cena', ''); set('f_pm_jm', 'm²'); set('f_pm_zad', '');
+    const before = a.run("JSON.stringify(DATA)");
+    a.run(`ROLE=${JSON.stringify(a.run("grById.g5.rukovodilac"))}; savePredmerRed('g5','pm1'); ROLE='all';`);
+    if (a.run("JSON.stringify(DATA)") !== before) throw new Error('rukovodilac je izmenio poziciju');
+    a.run("savePredmerRed('g5','pm1');");
+    const r = JSON.parse(a.run("JSON.stringify(DATA.predmer.find(r=>r.id==='pm1'))"));
+    if (r.poz !== 'Izmenjen &amp; opis') throw new Error('poz = ' + r.poz);
+    if (r.kol !== 2.5) throw new Error('kol = ' + r.kol);
+    if (r.cena !== cena0) throw new Error('cena promenjena: ' + r.cena);
+    if (r.izv !== 2.5) throw new Error('izv nije klampovan na kol: ' + r.izv);
+    if (r.jm !== 'm²' || r.zaduzen !== null) throw new Error('jm/zaduzen: ' + r.jm + '/' + r.zaduzen);
+    if (a.run("DATA.predmer.length") !== pre) throw new Error('izmena je dodala novi red');
+    set('f_pm_cena', '30');
+    a.run("savePredmerRed('g5','pm1');");
+    if (a.run("DATA.predmer.find(r=>r.id==='pm1').cena") !== 30) throw new Error('cena nije promenjena kad je uneta');
+  });
+  await acheck('D ubaciSablonNivoa: dodaje samo nepostojeće, drugi poziv 0 + alert, izvođenje ništa, rukovodilac ništa', async () => {
+    const a = await boot();
+    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
+    const tpl = JSON.parse(a.run("JSON.stringify(NIVOI_DOK[grById.g8.nivo])")).length;
+    const pre = cnt('g8');
+    a.run("ROLE='z4'; ubaciSablonNivoa('g8'); ROLE='all';");
+    if (cnt('g8') !== pre) throw new Error('rukovodilac je ubacio šablon');
+    a.run("ubaciSablonNivoa('g8');");
+    if (cnt('g8') !== pre + tpl) throw new Error('dodato ' + (cnt('g8') - pre) + ', očekivano ' + tpl);
+    if (!a.run("DATA.predmer.some(r=>r.gr==='g8'&&r.poz==='IDP/PGD — 1.0 Arhitektura'&&r.kol===1&&r.cena===0&&r.zaduzen===null)")) throw new Error('red nema oblik kao saveSite');
+    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
+    a.run("ubaciSablonNivoa('g8');");
+    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
+    if (a.g._calls.alert.length !== alerts + 1 || !/već postoje/.test(a.g._calls.alert[a.g._calls.alert.length - 1])) throw new Error('nema alert-a o postojećim stavkama');
+    const izv = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje').id"), n2 = cnt(izv);
+    a.run(`ubaciSablonNivoa('${izv}');`);
+    if (cnt(izv) !== n2) throw new Error('izvođenje dobilo šablon nivoa');
+    const h = a.run("ROLE='all'; PRED_ID='g8'; viewPredmer()");
+    if (!h.includes("ubaciSablonNivoa('g8')") || !h.includes('(IDP/PGD)')) throw new Error('nema dugmeta u viewPredmer (projektovanje)');
+    if (a.run("PRED_ID='g5'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('dugme na izvođenju');
+    if (a.run("ROLE='z4'; PRED_ID='g8'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('rukovodilac vidi dugme');
+    a.run("ROLE='all';");
+  });
+  await acheck('E openTroskovi + drawer: dobavljač/faktura, Ukupno, "Svi troškovi (N)"; rukovodilac ništa', async () => {
+    const a = await boot();
+    const modal = a.g.document.getElementById('modal'), dr = a.g.document.getElementById('drawer');
+    a.run("DATA.troskovi_st.push({id:'tr_e1', gr:'g5', datum:'2026-02-01', opis:'Beton E', kat:'materijal', iznos:1000, dobavljac:'Beton Test d.o.o.', fakt:'2024-117'}, {id:'tr_e2', gr:'g5', datum:'2026-03-01', opis:'Armatura E', kat:'materijal', iznos:500, dobavljac:'', fakt:'', prilog:{name:'f.pdf', tip:'application/pdf', data:'data:,x'}});");
+    const uk = a.run("troskoviZa('g5').reduce((s,t)=>s+(+t.iznos||0),0)"), n = a.run("troskoviZa('g5').length");
+    a.run("ROLE='all'; openSite('g5');");
+    const dh = dr.innerHTML;
+    if (!dh.includes('Svi troškovi (' + n + ')')) throw new Error('drawer nema "Svi troškovi (' + n + ')"');
+    if (!dh.includes('Beton Test d.o.o. · fakt. 2024-117')) throw new Error('drawer ne prikazuje dobavljača/fakturu');
+    a.run("openTroskovi('g5');");
+    const h = modal.innerHTML;
+    for (const x of ['Ukupno', 'Beton Test d.o.o.', '2024-117', n + ' stavki', 'Br. fakture', "otvoriTrosakPrilog('tr_e2')", 'overflow-x:auto', a.run(`fmtEur(${uk})`)]) if (!h.includes(x)) throw new Error('modal nema: ' + x);
+    if (h.indexOf('Armatura E') < 0 || h.indexOf('Armatura E') > h.indexOf('Beton E')) throw new Error('nije sortirano po datumu opadajuće (noviji prvi)');
+    const tp = tableAsymmetry(h); if (tp.length) throw new Error('modal th!=td: ' + JSON.stringify(tp[0]));
+    const ruk = a.run("grById.g5.rukovodilac");
+    modal.innerHTML = '';
+    a.run(`ROLE=${JSON.stringify(ruk)}; openTroskovi('g5'); openSite('g5');`);
+    const mh = modal.innerHTML, rh = dr.innerHTML;
+    a.run("ROLE='all';");
+    if (mh !== '') throw new Error('rukovodilac otvorio modal troškova');
+    if (rh.includes('Svi troškovi (') || rh.includes('Beton Test')) throw new Error('rukovodilac vidi troškove u drawer-u');
+    if (!rh.includes('Ažuriraj')) throw new Error('drawer rukovodioca nije otvoren (test nije validan)');
   });
 
   /* ---- T22 revizija 2026-10-03: CSS, guardovi, pretraga, brojevi ---- */
