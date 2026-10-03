@@ -218,6 +218,18 @@ zalepljenih hover efekata). Nosive ispravke: `.main{min-width:0}` (grid ćelija
 inače raste na min-content Gantta/tabela i širi CEO layout), `.kanban`
 `minmax(0,1fr)`, `.sites-grid minmax(min(310px,100%),1fr)`, `.side` 100dvh +
 skrol + safe-area, fioka `width:100%` (100vw uključuje skrol-traku).
+**Mobilni sloj (od 2026-10-04):** na ≤900 px donja traka `#bnav` (Tabla · Gradilišta ·
+Zadaci · Dnevnik · Više→`toggleSide()`), puni je `renderNav()` pa aktivno prati
+`current`; `.main` dobija `padding-bottom:calc(72px + safe-area)`; z-index 35 (ispod
+scrima 40 i modala 60). Brze akcije `.qa` na vrhu table (`brzeAkcije()`: ＋ Dnevnik,
+＋ Zadatak, ＋ Trebovanje, Rokovi) — forme bez argumenata, pa su bezbedne za
+rukovodioca. Osnovna pravila `.bnav{display:none}`/`.qa{display:none}` MORAJU stajati
+PRE `@media(max-width:900px)` (ista specifičnost — poslednje pobeđuje; prvi pokušaj
+posle bloka je dao display:none na telefonu). PWA: `manifest.webmanifest` +
+`ikone/` (PNG generisane skriptom bez biblioteka, SVG, maskable) + meta u head-u →
+„Dodaj na početni ekran" otvara app standalone; `start_url:"./"` radi samo dok
+manifest stoji pored index.html. Bez service workera (namerno: offline bi bio lažan
+uz živu bazu). iOS: magic link iz mejla otvara Safari, ne instaliranu kopiju. T25.
 Pravila: široka tabela UVEK u `<div style="overflow-x:auto">`; nikad `1fr`
 grid bez `minmax(0,…)` ako sadržaj može biti širok; nikad `white-space:nowrap`
 na tekstu koji može premašiti 300px; hamburger nikad ne sme biti jedini način

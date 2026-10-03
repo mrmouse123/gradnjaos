@@ -6,20 +6,22 @@ DELIMICNO, 0 NE. Rupe koje se zatvaraju u ovoj iteraciji (bez nove kolone u bazi
 sve ide u postojece kolone / jsonb `adm`):
 
 ## Plan
-- [ ] A. Izmena osnovnih podataka gradilista posle kreiranja (oba modula): naziv, lokacija,
+- [x] A. Izmena osnovnih podataka gradilista posle kreiranja (oba modula): naziv, lokacija,
       povrsina, nadzor (ime, tel), klijent, rukovodilac, pocetak, rok, tip/nivo, budzet/troskovi
       (fin samo direktor). Direktor-only. Dugme "Izmeni podatke" u fioci.
-- [ ] B. Kontakt investitora vidljiv u fioci (osoba/tel/mail klijenta) — oba modula.
-- [ ] C. Zaduzen po poziciji predmera i za IZVODJENJE (kolona postoji; forma+uvoz+prikaz) +
+- [x] B. Kontakt investitora vidljiv u fioci (osoba/tel/mail klijenta) — oba modula.
+- [x] C. Zaduzen po poziciji predmera i za IZVODJENJE (kolona postoji; forma+uvoz+prikaz) +
       izmena postojeceg reda predmera (opis, jm, kol, cena, zaduzen) — direktor.
-- [ ] D. Projektovanje: "Ubaci sablon nivoa" naknadno (kao ubaciSablonFaza za izvodjenje).
-- [ ] E. Troskovi: fioka prikazuje dobavljaca/br. fakture; dugme "Svi troskovi (N)" otvara
+- [x] D. Projektovanje: "Ubaci sablon nivoa" naknadno (kao ubaciSablonFaza za izvodjenje).
+- [x] E. Troskovi: fioka prikazuje dobavljaca/br. fakture; dugme "Svi troskovi (N)" otvara
       punu listu sa prilozima (direktor).
-- [ ] F. Zaposleni: izmena podataka (ime, pozicija, tel, opis) + sekcija "Resursi zaduzeni"
+- [x] F. Zaposleni: izmena podataka (ime, pozicija, tel, opis) + sekcija "Resursi zaduzeni"
       na stranici zaposlenog (vozila/alati/licence gde r.zaduzen===z.id, sa istekom).
-- [ ] G. Administracija: "vazi do" datum za ugovor/polisu/prijavu (jsonb adm[key].vazi_do),
+- [x] G. Administracija: "vazi do" datum za ugovor/polisu/prijavu (jsonb adm[key].vazi_do),
       upozorenje 30 d pre isteka / isteklo (computeAlerts, nije fin).
-- [ ] Testovi T24 po stavci; e2e 0 palo; docs; commit; live provera.
+- [x] Testovi T24/T24b/T24c (18 provera); 566 -> 589; e2e 0 palo; docs; commit; live provera.
+
+- [x] H. Mobilni sloj (2026-10-04): donja navigacija, brze akcije, PWA manifest+ikonice; T25 (4); 589 -> 593
 
 Svesno NE sada (traze novu kolonu/migraciju ili dizajn odluku): vozila km/servis,
 licence po zaposlenom kao struktura, parsiranje fakture, trebovanje→magacin, situacija iz

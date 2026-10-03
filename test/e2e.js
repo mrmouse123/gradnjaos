@@ -454,6 +454,61 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T25 mobilni sloj: donja navigacija, brze akcije, PWA manifest ---- */
+  section('T25 mobilni sloj');
+  await acheck('donja navigacija: 5 dugmadi za obe uloge, aktivno prati current, "Više" otvara meni', async () => {
+    const a = await boot();
+    const bn = () => a.g.document.getElementById('bnav').innerHTML;
+    const broj = h => (h.match(/<button/g) || []).length;
+    if (broj(bn()) !== 5) throw new Error('direktor: dugmadi u bnav = ' + broj(bn()));
+    if (!/class="active"[^>]*onclick="go\('dash'\)"/.test(bn())) throw new Error('dash nije aktivan na startu');
+    a.run("go('tasks')");
+    if (!/class="active"[^>]*onclick="go\('tasks'\)"/.test(bn())) throw new Error('posle go(tasks) aktivan nije tasks');
+    if (!bn().includes("toggleSide()") || !bn().includes('Više')) throw new Error('nema "Više" (toggleSide)');
+    a.run("ROLE='z1'; renderNav();");
+    if (broj(bn()) !== 5) throw new Error('rukovodilac: dugmadi u bnav = ' + broj(bn()));
+    for (const t of ['Naplata', 'Klijenti', 'cena', 'marž']) if (bn().toLowerCase().includes(t.toLowerCase())) throw new Error('bnav sadrzi "' + t + '"');
+  });
+  await acheck('brze akcije na tabli: Dnevnik/Zadatak/Trebovanje postoje i zovu postojece forme (obe uloge)', async () => {
+    const a = await boot();
+    for (const role of ['all', 'z1']) {
+      a.run(`ROLE=${JSON.stringify(role)}; current='dash'; renderNav(); render();`);
+      const h = a.g.document.getElementById('view').innerHTML;
+      const qa = (h.match(/<div class="qa">[\s\S]*?<\/div>/) || [''])[0];
+      if (!qa) throw new Error(role + ': nema .qa bloka');
+      for (const f of ['formDiary()', 'formTask()', 'formNarudzba()']) {
+        if (!qa.includes(`onclick="${f}"`)) throw new Error(role + ': nema akcije ' + f);
+        if (typeof a.run(f.replace('()', '')) !== 'function') throw new Error(f + ' ne postoji');
+      }
+      if (/cena|marž|naplat/i.test(qa)) throw new Error(role + ': finansijski termin u brzim akcijama');
+    }
+  });
+  check('CSS: .bnav/.qa skriveni na desktopu, definisani u <=900 bloku, skriveni na login/print', () => {
+    const css = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+    if (!/\.bnav\{display:none\}/.test(css)) throw new Error('nema .bnav{display:none}');
+    if (!/\.qa\{display:none\}/.test(css)) throw new Error('nema .qa{display:none}');
+    const m900 = css.slice(css.indexOf('@media(max-width:900px)'));
+    const blok = m900.slice(0, m900.indexOf('\n  }') + 4);
+    if (!/\.bnav\{display:grid/.test(blok)) throw new Error('.bnav nije grid u 900 bloku');
+    if (!/\.qa\{display:flex/.test(blok)) throw new Error('.qa nije flex u 900 bloku');
+    if (!/\.main\{[^}]*padding-bottom:calc\(72px \+ env\(safe-area-inset-bottom\)\)/.test(blok)) throw new Error('.main nema mesto za bnav');
+    if (!/body\.login \.bnav\{display:none\}/.test(css)) throw new Error('bnav nije skriven na login ekranu');
+    const print = css.slice(css.indexOf('@media print'));
+    if (!/\.bnav,\.qa\{display:none !important\}/.test(print)) throw new Error('bnav/qa nisu skriveni u print-u');
+  });
+  check('PWA: manifest validan, ikonice postoje, head ima manifest/theme-color/apple-touch-icon', () => {
+    const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+    if (mf.start_url !== './' || mf.display !== 'standalone') throw new Error('start_url/display: ' + mf.start_url + '/' + mf.display);
+    if (!Array.isArray(mf.icons) || mf.icons.length < 3) throw new Error('premalo ikonica u manifestu');
+    for (const ic of mf.icons) if (!fs.existsSync(path.join(ROOT, ic.src))) throw new Error('ikonica ne postoji: ' + ic.src);
+    if (!mf.icons.some(i => i.purpose === 'maskable')) throw new Error('nema maskable ikonice');
+    const head = HTML.slice(0, HTML.indexOf('<style>'));
+    for (const s of ['rel="manifest" href="manifest.webmanifest"', 'name="theme-color"', 'rel="apple-touch-icon" href="ikone/apple-touch-icon.png"', 'name="apple-mobile-web-app-capable"']) {
+      if (!head.includes(s)) throw new Error('head nema ' + s);
+    }
+    for (const f of ['ikone/apple-touch-icon.png', 'ikone/icon.svg']) if (!fs.existsSync(path.join(ROOT, f))) throw new Error('nema ' + f);
+  });
+
   /* ---- T24 zahtevi po modulima: izmena osnovnih podataka (A), kontakt investitora/nadzora (B) ----
      Stub ne parsira HTML u input-e, pa se prefill proverava u HTML-u modala, a polja se pune rucno. */
   section('T24 zahtevi po modulima (A, B)');

@@ -5,6 +5,15 @@
 <meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GradnjaOS — kontrolna tabla</title>
+<!-- PWA: "Dodaj na početni ekran" otvara app preko celog ekrana, bez adresne trake -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1F4E79">
+<link rel="icon" type="image/svg+xml" href="ikone/icon.svg">
+<link rel="apple-touch-icon" href="ikone/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GradnjaOS">
 <link rel="preconnect" href="https://xqggoxrihitvqaocowlb.supabase.co">
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="preload" as="script" crossorigin="anonymous" href="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js" integrity="sha384-Rj26LVGvoeRVR6+mwQmFfcR3QOBEwT+ZmuCWpuiqeTzJpCs0ER4ITAWGb4Hiy3Ok">
@@ -372,13 +381,27 @@
   .zdr-ring .arc{transition:stroke-dashoffset .7s cubic-bezier(.3,.7,.3,1)}
 
   .empty{text-align:center; padding:50px 20px; color:var(--faint)}
+  /* Mobilni sloj (<=900): donja navigacija + brze akcije na tabli; na desktopu ne postoje.
+     Osnovno pravilo MORA biti pre @media(max-width:900px) — ista specificnost, poslednje pobedjuje. */
+  .bnav{display:none}
+  .qa{display:none}
   .hide{display:none !important}
 
   @media(max-width:900px){
     .app{grid-template-columns:1fr}
     .side{position:fixed; z-index:50; width:230px; transform:translateX(-100%); transition:.2s}
     .side.open{transform:translateX(0)}
-    .main{padding:18px 14px 50px; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); padding-bottom:max(50px, env(safe-area-inset-bottom))}
+    .main{padding:18px 14px 50px; padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); padding-bottom:calc(72px + env(safe-area-inset-bottom))}   /* mesto za donju navigaciju */
+    .bnav{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); position:fixed; left:0; right:0; bottom:0; z-index:35;
+      background:var(--surface); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); box-shadow:0 -4px 16px rgba(20,25,30,.06)}
+    .bnav button{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:56px; padding:6px 2px 7px;
+      border:0; background:transparent; color:var(--muted); font:inherit; font-size:10.5px; font-weight:600; letter-spacing:.01em; cursor:pointer; -webkit-tap-highlight-color:transparent}
+    .bnav button svg{width:22px; height:22px; stroke-width:1.9}
+    .bnav button.active{color:var(--blue)}
+    .bnav button.active svg{stroke:var(--blue)}
+    .qa{display:flex; gap:8px; overflow-x:auto; margin:-6px 0 16px; padding-bottom:4px; scrollbar-width:none}
+    .qa::-webkit-scrollbar{display:none}
+    .qa .btn{flex:0 0 auto; min-height:40px; padding:0 14px; white-space:nowrap}
     .kpis{grid-template-columns:1fr 1fr}
     .menu-btn{display:inline-grid !important}
     input,select,textarea{font-size:16px !important} /* sprecava iOS auto-zoom pri fokusu */
@@ -443,6 +466,7 @@
     tbody tr.clk:hover{background:transparent}
   }
   .menu-btn{display:none; width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--surface);place-items:center;margin-bottom:14px}
+  body.login .bnav{display:none}
 
   /* ---------- Izvestaj ---------- */
   .rpt{position:fixed; inset:0; background:rgba(20,25,30,.5); z-index:70; display:none; overflow-y:auto; padding:30px 16px}
@@ -453,7 +477,7 @@
   /* ---------- Print / PDF ---------- */
   @media print{
     body{background:#fff}
-    .side,.menu-btn,.tools,.banner,.print-btn,.scrim,.drawer,.modal-wrap,.modul-seg{display:none !important}
+    .side,.menu-btn,.tools,.banner,.print-btn,.scrim,.drawer,.modal-wrap,.modul-seg,.bnav,.qa{display:none !important}
     body.rpt-open .app{display:none !important}
     body.rpt-open .rpt{position:static; background:#fff; padding:0; display:block; overflow:visible}
     body.rpt-open .rpt-page{box-shadow:none; max-width:none; border-radius:0; padding:10px 0}
@@ -499,6 +523,8 @@
     </button>
     <div id="view"></div>
   </main>
+  <!-- Telefon/tablet: donja navigacija (5 najčešćih odredišta), puni se u renderNav() -->
+  <nav class="bnav" id="bnav" aria-label="Brza navigacija"></nav>
 </div>
 
 <!-- ===== Drawer ===== -->
@@ -1158,6 +1184,15 @@ function renderNav(){
       ${tb.cnt!=null?`<span class="tag num">${tb.cnt}</span>`:''}
     </button>`).join('');
   const rs=document.getElementById('roleSel'); if(rs) rs.innerHTML=roleOptions();
+  /* Donja traka (telefon/tablet): 4 najcesca odredista + "Vise" koje otvara pun meni.
+     Ista dugmad za obe uloge; aktivno prati `current` jer go() zove renderNav(). */
+  const b=document.getElementById('bnav');
+  if(b){
+    const brzi=[['dash','Tabla','dash'],['sites','Gradilišta','site'],['tasks','Zadaci','task'],['diary','Dnevnik','book']];
+    const meni='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
+    b.innerHTML=brzi.map(([id,n,ic])=>`<button class="${id===current?'active':''}" onclick="go('${id}')">${icon(ic)}<span>${n}</span></button>`).join('')
+      +`<button onclick="toggleSide()">${meni}<span>Više</span></button>`;
+  }
 }
 function go(id){ current=id; renderNav(); render(); window.scrollTo(0,0); document.getElementById('side').classList.remove('open'); document.getElementById('scrim').classList.remove('on'); }
 
@@ -1302,6 +1337,16 @@ function dashSorted(sites){
   const v=g=>({cena:g.budzet, marza:marzaPct(g), naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
   arr.sort((a,b)=>(v(b)-v(a))*(-dashSort.dir));
   return arr;
+}
+/* Brze akcije na tabli — vidljive samo na telefonu/tabletu (CSS .qa). Forme same nude
+   samo gradilista koja korisnik sme (formDiary/formTask/formNarudzba bez argumenata). */
+function brzeAkcije(){
+  return `<div class="qa">
+    <button class="btn" onclick="formDiary()">＋ Dnevnik</button>
+    <button class="btn ghost" onclick="formTask()">＋ Zadatak</button>
+    <button class="btn ghost" onclick="formNarudzba()">＋ Trebovanje</button>
+    <button class="btn ghost" onclick="go('time')">Rokovi</button>
+  </div>`;
 }
 function viewDash(){
   const sites = visibleSites();
@@ -1471,6 +1516,7 @@ function viewDash(){
     </tr>`;
   }
   return head('Kontrolna tabla', fin?'Finansije, napredak i rokovi svih projekata na jednom mestu.':'Napredak, rokovi i zadaci na tvojim gradilištima.') +
+  brzeAkcije() +
   briefCard +
   `<div class="grid kpis">
     <div class="card kpi"><div class="accent"></div>
