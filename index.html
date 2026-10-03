@@ -2868,28 +2868,40 @@ function openModal(html){
 }
 function closeModal(){ document.getElementById('modalWrap').classList.remove('on'); }
 
-function formSite(){
+/* formSite() = novo gradilište; formSite(id) = izmena osnovnih podataka postojećeg (samo direktor; modul se ne menja). */
+function formSite(id){
+  const g=id?grById[id]:null, ed=!!g;
+  if(id&&!g) return;
+  if(ed&&!isDirector()) return;
+  const va=x=>ed?` value="${x}"`:'';                         // prefill (g.* je već esc-ovan → ispravan HTML atribut)
+  const sel=(a,b)=>ed&&a===b?' selected':'';
+  const rukLista=DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||(ed&&z.id===g.rukovodilac));  // trenutni rukovodilac uvek u listi (inače bi se tiho zamenio)
   openModal(`
-    <div class="m-h"><h3>Novo gradilište</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-h"><h3>${ed?'Izmeni podatke gradilišta':'Novo gradilište'}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
-      <div class="f-row"><label>Naziv projekta</label><input id="f_naziv" placeholder="npr. Stambena zgrada Vračar"></div>
-      <div class="f-row"><label>Lokacija</label><input id="f_lok" placeholder="Grad, deo grada"></div>
+      <div class="f-row"><label>Naziv projekta</label><input id="f_naziv" placeholder="npr. Stambena zgrada Vračar"${va(g&&g.naziv)}></div>
+      <div class="f-row"><label>Lokacija</label><input id="f_lok" placeholder="Grad, deo grada"${va(g&&(g.lok==='—'?'':g.lok))}></div>
       <div class="f-2">
-        <div class="f-row"><label>Površina (m²)</label><input id="f_povrsina" type="number" placeholder="npr. 1200"></div>
-        <div class="f-row"><label>Kontakt nadzora</label><input id="f_nadzor" placeholder="Firma / ime, telefon"></div>
+        <div class="f-row"><label>Površina (m²)</label><input id="f_povrsina" type="number" placeholder="npr. 1200"${va(g&&(g.povrsina||''))}></div>
+        <div class="f-row"><label>Kontakt nadzora (ime, telefon)</label><input id="f_nadzor" placeholder="npr. Ing. M. Petrović, 06x…"${va(g&&g.nadzor)}></div>
       </div>
-      <div class="f-2">
+      ${ed?`<div class="f-2">
+        <div class="f-row"><label>Modul</label><div style="padding:8px 0;font-size:13.5px;font-weight:600">${jePro(g)?'Projektovanje':'Izvođenje radova'}</div></div>
+        ${jePro(g)
+          ?`<div class="f-row"><label>Nivo dokumentacije</label><select id="f_nivo">${['IDR','IDP/PGD','PZI'].map(n=>`<option value="${n}"${sel(g.nivo,n)}>${n}</option>`).join('')}</select></div>`
+          :`<div class="f-row"><label>Tip izvođenja</label><select id="f_tip">${Object.keys(PODTIPOVI).map(t=>`<option value="${t}"${sel(g.tip||'visokogradnja',t)}>${PODTIPOVI[t]}</option>`).join('')}</select></div>`}
+      </div>`:`<div class="f-2">
         <div class="f-row"><label>Modul</label><select id="f_modul" onchange="toggleTipRadova(this.value)"><option value="izvodjenje">Izvođenje radova</option><option value="projektovanje">Projektovanje</option></select></div>
         <div class="f-row" id="tipRadovaBox"><label>Tip izvođenja</label><select id="f_tip"><option value="visokogradnja">Visokogradnja</option><option value="niskogradnja">Niskogradnja</option></select></div>
         <div class="f-row" id="nivoBox" style="display:none"><label>Nivo dokumentacije</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
       <div class="f-row" id="nivoFillBox" style="display:none"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_nivo_fill" checked> Popuni Specifikaciju usluga sveskama izabranog nivoa (šablon)</label></div>
-      <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>
+      <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>`}
       <div class="f-2">
-        <div class="f-row"><label>Klijent</label><select id="f_kli" onchange="toggleNoviKlijent(this.value)">${DATA.clijenti.map(c=>`<option value="${c.id}">${c.naziv}</option>`).join('')}<option value="__novi__">＋ Novi klijent…</option></select></div>
-        <div class="f-row"><label>Rukovodilac</label><select id="f_ruk">${DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta').map(z=>`<option value="${z.id}">${z.ime}</option>`).join('')}</select></div>
+        <div class="f-row"><label>Klijent</label><select id="f_kli"${ed?'':' onchange="toggleNoviKlijent(this.value)"'}>${DATA.clijenti.map(c=>`<option value="${c.id}"${sel(g&&g.klijent,c.id)}>${c.naziv}</option>`).join('')}${ed?'':'<option value="__novi__">＋ Novi klijent…</option>'}</select></div>
+        <div class="f-row"><label>Rukovodilac</label><select id="f_ruk">${rukLista.map(z=>`<option value="${z.id}"${sel(g&&g.rukovodilac,z.id)}>${z.ime}</option>`).join('')}</select></div>
       </div>
-      <div id="noviKlijentBox" style="display:none;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:14px">
+      ${ed?'':`<div id="noviKlijentBox" style="display:none;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:14px">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:9px">Podaci novog klijenta</div>
         <div class="f-2">
           <div class="f-row" style="margin-bottom:10px"><label>Naziv klijenta</label><input id="f_nk_naziv" placeholder="Firma ili ime i prezime"></div>
@@ -2899,18 +2911,18 @@ function formSite(){
           <div class="f-row" style="margin-bottom:2px"><label>Kontakt osoba</label><input id="f_nk_osoba"></div>
           <div class="f-row" style="margin-bottom:2px"><label>Telefon</label><input id="f_nk_tel"></div>
         </div>
-      </div>
+      </div>`}
+      ${(!ed||canFinance())?`<div class="f-2">
+        <div class="f-row"><label>Ugovorena cena (€)</label><input id="f_cena" type="number" placeholder="npr. 1500000"${va(g&&g.budzet)}></div>
+        <div class="f-row"><label>Planirani troškovi (€)</label><input id="f_tro" type="number" placeholder="npr. 1275000"${va(g&&g.troskovi)}></div>
+      </div>`:''}
       <div class="f-2">
-        <div class="f-row"><label>Ugovorena cena (€)</label><input id="f_cena" type="number" placeholder="npr. 1500000"></div>
-        <div class="f-row"><label>Planirani troškovi (€)</label><input id="f_tro" type="number" placeholder="npr. 1275000"></div>
-      </div>
-      <div class="f-2">
-        <div class="f-row"><label>Početak radova</label><input id="f_poc" type="date" value="${todayStr()}"></div>
-        <div class="f-row"><label>Rok završetka</label><input id="f_rok" type="date" value="${plusDays(365)}"></div>
+        <div class="f-row"><label>Početak radova</label><input id="f_poc" type="date" value="${ed?g.pocetak:todayStr()}"></div>
+        <div class="f-row"><label>Rok završetka</label><input id="f_rok" type="date" value="${ed?g.rok:plusDays(365)}"></div>
       </div>
       <div class="m-foot">
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
-        <button class="btn" onclick="saveSite()">Sačuvaj gradilište</button>
+        <button class="btn" onclick="${ed?`saveSite('${id}')`:'saveSite()'}">${ed?'Sačuvaj izmene':'Sačuvaj gradilište'}</button>
       </div>
     </div>`);
 }
@@ -2925,9 +2937,22 @@ function toggleNoviKlijent(val){
   const box=document.getElementById('noviKlijentBox');
   if(box) box.style.display = val==='__novi__' ? 'block' : 'none';
 }
-function saveSite(){
+function saveSite(grId){
   if(!isDirector()) return;
   const v=id=>document.getElementById(id).value;
+  if(grId){   // IZMENA postojećeg: modul/napredak/status/potroseno/naplaceno/adm se ne diraju; prazan datum/rukovodilac/klijent = zadrži staro (pravilo 6, RLS)
+    const g=grById[grId]; if(!g) return;
+    const nazivE=esc(String(v('f_naziv')).trim()); if(!nazivE){ alert('Unesi naziv projekta.'); return; }
+    g.naziv=nazivE; g.lok=esc(String(v('f_lok')).trim())||'—'; g.povrsina=+v('f_povrsina')||null; g.nadzor=esc(String(v('f_nadzor')).trim())||'';
+    g.klijent=v('f_kli')||g.klijent; g.rukovodilac=v('f_ruk')||g.rukovodilac;
+    g.pocetak=v('f_poc')||g.pocetak; g.rok=v('f_rok')||g.rok;
+    const tipPre=g.tip, nivoPre=g.nivo;
+    if(jePro(g)) g.nivo=v('f_nivo')||g.nivo; else g.tip=v('f_tip')||g.tip||'visokogradnja';
+    if(canFinance()){ const c=String(v('f_cena')).trim(), t=String(v('f_tro')).trim(); if(c!=='') g.budzet=+c||0; if(t!=='') g.troskovi=+t||0; }
+    if((g.tip!==tipPre||g.nivo!==nivoPre)&&!fazeZa(g).includes(g.faza)) g.faza=fazeZa(g)[0];   // promena tipa → stara faza ne postoji u novom šablonu
+    saveState(); closeModal(); rebuildMaps(); renderNav(); render(); openSite(grId);
+    return;
+  }
   const naziv=esc(v('f_naziv').trim()); if(!naziv){ alert('Unesi naziv projekta.'); return; }
   let klijentId=v('f_kli');
   if(klijentId==='__novi__'){
@@ -3045,6 +3070,8 @@ function saveDiary(){
 /* ============================================================
    DRAWER — DETALJ GRADILIŠTA
    ============================================================ */
+/* Kontakt investitora za fioku: " — osoba, tel, mail" (prazni delovi i '—' se preskaču). */
+function investKontakt(k){ const p=[k.osoba,k.tel,k.mail].filter(x=>x&&x!=='—'); return p.length?' — '+p.join(', '):''; }
 function openSite(id){
   const g=grById[id]; if(!g)return;
   if(!smemNa(id)) return;
@@ -3084,7 +3111,8 @@ function openSite(id){
       ${isDirector()?`<div style="display:flex;gap:8px;margin-bottom:16px">
         <button class="btn" style="flex:1" onclick="openPresek('${id}')">Finansijski presek</button>
         <button class="btn ghost" style="flex:1" onclick="openIzvestaj('${id}')">Izveštaj za investitora</button>
-      </div>`:''}
+      </div>
+      <button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="formSite('${id}')">✎ Izmeni podatke</button>`:''}
       ${isDirector()&&!jePro(g)&&!DATA.zadaci.some(t=>t.gr===id)?`<button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="ubaciSablonFaza('${id}')">＋ Ubaci šablon faza (${PODTIPOVI[g.tip||'visokogradnja']})</button>`:''}
       <div class="dr-stats">
         <div class="dr-stat"><div class="l">Zdravlje projekta</div>
@@ -3109,8 +3137,7 @@ function openSite(id){
 
       <div class="dr-sec">
         <h4>Osnovni podaci</h4>
-        <div class="dr-kv"><span class="k">Klijent</span><span class="v">${cl?cl.naziv:'—'}</span></div>
-        <div class="dr-kv"><span class="k">Kontakt</span><span class="v">${cl?cl.osoba+' · '+cl.tel:'—'}</span></div>
+        <div class="dr-kv"><span class="k">Investitor</span><span class="v">${cl?`<b>${cl.naziv}</b>`+investKontakt(cl):'—'}</span></div>
         <div class="dr-kv"><span class="k">Rukovodilac</span><span class="v">${ruk?ruk.ime:'—'}</span></div>
         <div class="dr-kv"><span class="k">Početak radova</span><span class="v">${fmtDate(g.pocetak)}</span></div>
       </div>
@@ -3140,7 +3167,7 @@ function openSite(id){
         <h4>Osnovni podaci</h4>
         ${g.nivo?`<div class="dr-kv"><span class="k">Nivo dokumentacije</span><span class="v" style="font-weight:600;color:${MODUL_BOJA.projektovanje}">${g.nivo}</span></div>`:''}
         ${g.povrsina?`<div class="dr-kv"><span class="k">Površina</span><span class="v num">${g.povrsina.toLocaleString('sr-RS')} m²</span></div>`:''}
-        ${g.nadzor?`<div class="dr-kv"><span class="k">Nadzor</span><span class="v" style="font-weight:500">${g.nadzor}</span></div>`:''}
+        ${g.nadzor?`<div class="dr-kv"><span class="k">Kontakt nadzora</span><span class="v" style="font-weight:500">${g.nadzor}</span></div>`:''}
       </div>`:''}
       <div class="dr-sec">
         <h4>Administracija</h4>

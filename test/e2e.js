@@ -144,7 +144,7 @@ const MODULI = [
 /* [ime, pozivArgumenti] — poziv se radi kao rukovodilac; DATA se ne sme promeniti */
 const MUTATORS = [
   ['saveSit', ''], ['markPaid', "'s1'"], ['saveEmp', ''], ['saveClient', ''],
-  ['saveSite', ''], ['saveSub', ''], ['saveNarudzba', ''], ['saveTrosak', "'g1'"],
+  ['saveSite', ''], ['saveSite', "'g1'"], ['saveSub', ''], ['saveNarudzba', ''], ['saveTrosak', "'g1'"],
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
   ['saveTask', ''], ['saveDiary', ''],
@@ -451,6 +451,117 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
   });
 
+
+  /* ---- T24 zahtevi po modulima: izmena osnovnih podataka (A), kontakt investitora/nadzora (B) ----
+     Stub ne parsira HTML u input-e, pa se prefill proverava u HTML-u modala, a polja se pune rucno. */
+  section('T24 zahtevi po modulima (A, B)');
+  await acheck('A1 formSite(id): prefill iz g, bez modul selektora/sablona, naslov izmene, dugme saveSite(id)', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje').id");
+    a.run(`ROLE='all'; formSite(${JSON.stringify(gid)});`);
+    const html = a.g.document.getElementById('modal').innerHTML;
+    const g = JSON.parse(a.run(`JSON.stringify(grById[${JSON.stringify(gid)}])`));
+    const has = (id, val) => new RegExp('id="' + id + '"[^>]*value="' + String(val).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"').test(html);
+    if (!html.includes('Izmeni podatke gradilišta')) throw new Error('naslov izmene nedostaje');
+    if (!has('f_naziv', g.naziv)) throw new Error('f_naziv nije prefill-ovan');
+    if (!has('f_rok', g.rok)) throw new Error('f_rok nije prefill-ovan');
+    if (!has('f_poc', g.pocetak)) throw new Error('f_poc nije prefill-ovan');
+    if (!has('f_cena', g.budzet)) throw new Error('f_cena nije prefill-ovan');
+    if (!has('f_tro', g.troskovi)) throw new Error('f_tro nije prefill-ovan');
+    if (!new RegExp('<option value="' + g.klijent + '" selected>').test(html)) throw new Error('klijent nije selektovan');
+    if (!new RegExp('<option value="' + g.rukovodilac + '" selected>').test(html)) throw new Error('rukovodilac nije selektovan');
+    if (!new RegExp('<option value="' + g.tip + '" selected>').test(html)) throw new Error('tip nije selektovan');
+    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nivo_fill', 'noviKlijentBox', '__novi__']) if (html.includes(x)) throw new Error('u izmeni ne sme biti: ' + x);
+    if (!html.includes("saveSite('" + gid + "')")) throw new Error('dugme ne zove saveSite(id)');
+    if (!html.includes('Kontakt nadzora (ime, telefon)')) throw new Error('labela nadzora');
+  });
+  await acheck('A1b formSite() (novo): neizmenjeno — modul selektor, sablon, novi klijent, saveSite()', async () => {
+    const a = await boot();
+    a.run('ROLE=\'all\'; formSite();');
+    const html = a.g.document.getElementById('modal').innerHTML;
+    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nivo_fill', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"', 'Kontakt nadzora (ime, telefon)'])
+      if (!html.includes(x)) throw new Error('create forma nema: ' + x);
+  });
+  await acheck('A1c formSite(id) kao rukovodilac ne otvara modal', async () => {
+    const a = await boot();
+    const modal = a.g.document.getElementById('modal'), pre = modal.innerHTML;
+    const own = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id");
+    a.run(`ROLE='z1'; formSite(${JSON.stringify(own)});`);
+    if (modal.innerHTML !== pre) throw new Error('modal popunjen za rukovodioca');
+  });
+  await acheck('A2 saveSite(id): menja u mestu (lok, povrsina), prazan rok zadrzava stari, bez duplikata', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje').id");
+    const G = JSON.stringify(gid), doc = a.g.document;
+    const pre = JSON.parse(a.run(`JSON.stringify(grById[${G}])`)), nPre = a.run('DATA.gradilista.length');
+    const set = (id, val) => { doc.getElementById(id).value = val; };
+    set('f_naziv', 'Izmenjen naziv'); set('f_lok', 'Nova lokacija & 2'); set('f_povrsina', '123'); set('f_nadzor', 'Ing. Test, 060 1');
+    set('f_kli', ''); set('f_ruk', ''); set('f_poc', ''); set('f_rok', ''); set('f_tip', ''); set('f_cena', ''); set('f_tro', '');
+    a.run(`ROLE='all'; saveSite(${G});`);
+    const g = JSON.parse(a.run(`JSON.stringify(grById[${G}])`));
+    if (g.lok !== 'Nova lokacija &amp; 2') throw new Error('lok = ' + g.lok);
+    if (g.povrsina !== 123) throw new Error('povrsina = ' + g.povrsina);
+    if (g.naziv !== 'Izmenjen naziv') throw new Error('naziv = ' + g.naziv);
+    if (g.rok !== pre.rok) throw new Error('rok promenjen: ' + g.rok + ' (bio ' + pre.rok + ')');
+    if (g.pocetak !== pre.pocetak) throw new Error('pocetak promenjen');
+    if (g.rukovodilac !== pre.rukovodilac || !g.rukovodilac) throw new Error('rukovodilac promenjen/prazan');
+    if (g.klijent !== pre.klijent) throw new Error('klijent promenjen');
+    for (const k of ['napredak', 'status', 'faza', 'potroseno', 'naplaceno', 'modul', 'tip', 'budzet', 'troskovi', 'id'])
+      if (g[k] !== pre[k]) throw new Error(k + ' promenjen: ' + g[k] + ' (bio ' + pre[k] + ')');
+    if (a.run('DATA.gradilista.length') !== nPre) throw new Error('napravljen duplikat gradilista');
+  });
+  await acheck('A3 saveSite(id) kao rukovodilac na SVOM gradilistu: nista se ne menja (samo direktor)', async () => {
+    const a = await boot();
+    const own = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id");
+    const doc = a.g.document;
+    doc.getElementById('f_naziv').value = 'Hakovan'; doc.getElementById('f_lok').value = 'X'; doc.getElementById('f_ruk').value = 'z2';
+    const before = a.run('JSON.stringify(DATA)');
+    a.run(`ROLE='z1'; saveSite(${JSON.stringify(own)});`);
+    a.run("ROLE='all';");
+    if (a.run('JSON.stringify(DATA)') !== before) throw new Error('DATA promenjen kao rukovodilac');
+  });
+  await acheck('A4 promena tipa revalidira fazu; ista faza ostaje kad tip nije menjan', async () => {
+    const a = await boot();
+    const doc = a.g.document, set = (id, val) => { doc.getElementById(id).value = val; };
+    const gid = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje'&&g.tip==='visokogradnja').id"), G = JSON.stringify(gid);
+    set('f_naziv', 'Tip test'); set('f_lok', 'L'); set('f_povrsina', ''); set('f_nadzor', ''); set('f_kli', ''); set('f_ruk', ''); set('f_poc', ''); set('f_rok', ''); set('f_cena', ''); set('f_tro', '');
+    a.run(`ROLE='all'; grById[${G}].faza='Temelji';`);          // postoji samo u visokogradnji
+    set('f_tip', 'visokogradnja'); a.run(`saveSite(${G});`);
+    if (a.run(`grById[${G}].faza`) !== 'Temelji') throw new Error('faza promenjena bez promene tipa');
+    set('f_tip', 'niskogradnja'); a.run(`saveSite(${G});`);
+    if (a.run(`grById[${G}].tip`) !== 'niskogradnja') throw new Error('tip nije promenjen');
+    if (!a.run(`fazeZa(grById[${G}]).includes(grById[${G}].faza)`)) throw new Error('faza nije validna za novi tip: ' + a.run(`grById[${G}].faza`));
+    if (a.run(`grById[${G}].faza`) !== 'Priprema terena') throw new Error('faza = ' + a.run(`grById[${G}].faza`));
+  });
+  await acheck('A5 drawer: "Izmeni podatke" samo za direktora', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id"), G = JSON.stringify(gid);
+    const dr = a.g.document.getElementById('drawer');
+    a.run(`ROLE='all'; openSite(${G});`);
+    if (!dr.innerHTML.includes('Izmeni podatke')) throw new Error('direktor nema dugme');
+    if (!dr.innerHTML.includes("formSite('" + gid + "')")) throw new Error('dugme ne zove formSite(id)');
+    a.run(`ROLE='z1'; openSite(${G});`);
+    const html = dr.innerHTML;
+    a.run("ROLE='all';");
+    if (!html.includes('Ažuriraj')) throw new Error('rukovodilac izgubio Ažuriraj (test nije validan)');
+    if (html.includes('Izmeni podatke')) throw new Error('rukovodilac vidi dugme');
+  });
+  await acheck('B drawer: kontakt investitora (naziv, osoba, tel, mail); nepoznat klijent -> "—" bez izuzetka; rukovodilac vidi', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista[0].id"), G = JSON.stringify(gid);
+    const k = JSON.parse(a.run(`JSON.stringify(cliById[grById[${G}].klijent])`));
+    const dr = a.g.document.getElementById('drawer');
+    a.run(`ROLE='all'; openSite(${G});`);
+    for (const x of ['Investitor', '<b>' + k.naziv + '</b>', k.osoba, k.tel, k.mail]) if (!dr.innerHTML.includes(x)) throw new Error('drawer nema: ' + x);
+    const ruk = a.run(`grById[${G}].rukovodilac`);
+    a.run(`ROLE=${JSON.stringify(ruk)}; openSite(${G});`);
+    const rh = dr.innerHTML; a.run("ROLE='all';");
+    if (!rh.includes(k.osoba)) throw new Error('rukovodilac ne vidi kontakt investitora');
+    a.run(`grById[${G}].klijent='nema';`);
+    let thr = null; try { a.run(`openSite(${G});`); } catch (e) { thr = e.message; }
+    if (thr) throw new Error('izuzetak za nepoznatog klijenta: ' + thr);
+    if (!/Investitor<\/span><span class="v">—<\/span>/.test(dr.innerHTML)) throw new Error('nema "—" za nepoznatog klijenta');
+  });
 
   /* ---- T22 revizija 2026-10-03: CSS, guardovi, pretraga, brojevi ---- */
   section('T22 revizija 2026-10-03');
