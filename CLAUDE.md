@@ -114,6 +114,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    dobiti `null` kao default — default na smislen datum (isti kao u formi). Jedini
    null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string
    `''` ne sme u Postgres `date` kolonu (22007 je ranije tiho obarao upis).
+   `adm[key].vazi_do` (važenje ugovora/prijave/polise) je drugi null-safe opcioni datum — svuda iza `if(st.vazi_do)`; `setAdmVazi` sa praznom vrednošću briše ključ (jsonb objekat se šalje ceo, pa je tu `delete` ispravan).
 7. **DATA je PARCIJALAN pogled** (od F4): rukovodilac ima samo svoja gradilišta,
    ali SVE zaposlene i SVE veze — `z.grs`/`p.grs` sadrže id-jeve gradilišta koja
    NISU u `grById`. Nikad `grById[x].naziv` bez zaštite: koristi

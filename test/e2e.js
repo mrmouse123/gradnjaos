@@ -149,6 +149,7 @@ const MUTATORS = [
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
   ['saveTask', ''], ['saveDiary', ''],
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
+  ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
 ];
 
 /* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
@@ -660,6 +661,90 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (mh !== '') throw new Error('rukovodilac otvorio modal troškova');
     if (rh.includes('Svi troškovi (') || rh.includes('Beton Test')) throw new Error('rukovodilac vidi troškove u drawer-u');
     if (!rh.includes('Ažuriraj')) throw new Error('drawer rukovodioca nije otvoren (test nije validan)');
+  });
+
+  /* ---- T24c zahtevi po modulima (F, G) ---- */
+  section('T24c zahtevi po modulima (F, G)');
+  const isoPlus = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+  await acheck('F1 formEmp(id): izmena zaposlenog (direktor prefill, bez gradilišta; rukovodilac ništa)', async () => {
+    const a = await boot();
+    const modal = a.g.document.getElementById('modal');
+    const ime = a.run("zapById.z1.ime");
+    modal.innerHTML = '';
+    a.run("ROLE='z1'; formEmp('z1'); ROLE='all';");
+    if (modal.innerHTML !== '') throw new Error('rukovodilac je otvorio formu izmene');
+    a.run("ROLE='all'; formEmp('z1');");
+    const h = modal.innerHTML;
+    if (!h.includes('Izmeni zaposlenog') || !h.includes(ime) || !h.includes("saveEmp('z1')")) throw new Error('nema naslova/imena/dugmeta izmene');
+    if (h.includes('Gradilišta (može više)')) throw new Error('izmena prikazuje izbor gradilišta');
+    a.run("formEmp();");
+    if (!modal.innerHTML.includes('Novi zaposleni') || !modal.innerHTML.includes('Gradilišta (može više)')) throw new Error('create put se promenio');
+  });
+  await acheck('F1 saveEmp(id): izmena in-place, grs netaknut; rukovodilac ništa', async () => {
+    const a = await boot();
+    const doc = a.g.document, set = (id, val) => { doc.getElementById(id).value = val; };
+    const poz = a.run("zapById.z1.poz"), grs0 = a.run("JSON.stringify(zapById.z1.grs)"), n = a.run("DATA.zaposleni.length");
+    a.run("formEmp('z1');");
+    set('f_eime', 'Petar & Co'); set('f_etel', ''); set('f_epoz', poz); set('f_est', 'Odsutan'); set('f_eopis', 'opis <b>');
+    const before = a.run("JSON.stringify(DATA)");
+    a.run("ROLE='z1'; saveEmp('z1'); ROLE='all';");
+    if (a.run("JSON.stringify(DATA)") !== before) throw new Error('rukovodilac je izmenio zaposlenog');
+    a.run("saveEmp('z1');");
+    const z = JSON.parse(a.run("JSON.stringify(zapById.z1)"));
+    if (z.ime !== 'Petar &amp; Co') throw new Error('ime = ' + z.ime);
+    if (z.tel !== '—' || z.status !== 'Odsutan') throw new Error('tel/status: ' + z.tel + '/' + z.status);
+    if (z.opis !== 'opis &lt;b&gt;') throw new Error('opis = ' + z.opis);
+    if (JSON.stringify(z.grs) !== grs0) throw new Error('grs promenjen');
+    if (a.run("DATA.zaposleni.length") !== n) throw new Error('izmena je dodala zaposlenog');
+  });
+  await acheck('F2 viewEmpPage: Zaduženi resursi + Izmeni podatke (samo direktor)', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; openEmpPage('z1'); render();");
+    let h = a.run("viewEmpPage()");
+    if (!h.includes('Zaduženi resursi') || !h.includes('Nema zaduženih resursa.')) throw new Error('nema praznog stanja kartice');
+    if (!h.includes('Izmeni podatke') || !h.includes("formEmp('z1')")) throw new Error('nema dugmeta Izmeni podatke');
+    a.run(`DATA.resursi.push({id:'r_t24', tip:'vozilo', naziv:'Kombi T24', oznaka:'BG-123', istice:'${isoPlus(-1)}', gr:null, zaduzen:'z1'}); render();`);
+    h = a.run("viewEmpPage()");
+    if (!h.includes('Kombi T24') || !h.includes('Baza / kancelarija') || !h.includes('Zaduženi resursi (1)')) throw new Error('resurs nije prikazan');
+    if (!h.includes('isteklo')) throw new Error('istekao resurs nije označen');
+  });
+  await acheck('G2/G4 setAdmVazi + computeAlerts: ističe/isteklo, vidi i rukovodilac, prazno briše, rukovodilac ništa', async () => {
+    const a = await boot();
+    const gid = a.run("DATA.gradilista.find(g=>g.rukovodilac&&g.modul==='izvodjenje').id"), G = JSON.stringify(gid);
+    const ruk = a.run(`grById[${G}].rukovodilac`);
+    const alerts = () => JSON.stringify(a.run("computeAlerts()").map(x => x.tekst));
+    a.run(`ROLE=${JSON.stringify(ruk)}; setAdmVazi(${G},'polisa','${isoPlus(10)}'); ROLE='all';`);
+    if (a.run(`admInfo(grById[${G}],'polisa').vazi_do`)) throw new Error('rukovodilac je postavio vazi_do');
+    a.run(`setAdmVazi(${G},'polisa','${isoPlus(10)}');`);
+    if (a.run(`admInfo(grById[${G}],'polisa').vazi_do`) !== isoPlus(10)) throw new Error('vazi_do nije postavljen');
+    if (!alerts().includes('Polisa osiguranja ističe za')) throw new Error('nema upozorenja "ističe za": ' + alerts());
+    a.run(`setAdmVazi(${G},'polisa','${isoPlus(-1)}');`);
+    if (!alerts().includes('Polisa osiguranja isteklo')) throw new Error('nema upozorenja "isteklo"');
+    a.run(`ROLE=${JSON.stringify(ruk)};`);
+    const rk = alerts(); a.run("ROLE='all';");
+    if (!rk.includes('Polisa osiguranja isteklo')) throw new Error('rukovodilac ne vidi upozorenje svog gradilišta');
+    a.run(`setAdmVazi(${G},'podugovori','${isoPlus(5)}');`);
+    a.run(`setAdmVazi(${G},'polisa','');`);
+    if ('vazi_do' in JSON.parse(a.run(`JSON.stringify(admInfo(grById[${G}],'polisa'))`))) throw new Error('ključ vazi_do nije uklonjen');
+    if (alerts().includes('Polisa osiguranja')) throw new Error('upozorenje ostalo posle brisanja');
+    a.run(`setAdmVazi(${G},'nepoznato','${isoPlus(5)}');`);
+    if (a.run(`'nepoznato' in (grById[${G}].adm||{})`)) throw new Error('nepoznat ključ prihvaćen');
+  });
+  await acheck('G3 drawer Administracija: unos datuma samo direktor, "važi do" za sve', async () => {
+    const a = await boot();
+    const dr = a.g.document.getElementById('drawer');
+    const gid = a.run("DATA.gradilista.find(g=>g.rukovodilac&&g.modul==='izvodjenje').id"), G = JSON.stringify(gid);
+    const ruk = a.run(`grById[${G}].rukovodilac`);
+    a.run(`setAdmVazi(${G},'ugovor','${isoPlus(100)}');`);
+    a.run(`ROLE='all'; openSite(${G});`);
+    const dh = dr.innerHTML;
+    a.run(`ROLE=${JSON.stringify(ruk)}; openSite(${G});`);
+    const rh = dr.innerHTML;
+    a.run("ROLE='all';");
+    if (!dh.includes('setAdmVazi(') || !dh.includes('važi do')) throw new Error('direktor: nema unosa/prikaza važi do');
+    if (!rh.includes('važi do')) throw new Error('rukovodilac ne vidi važi do');
+    if (rh.includes('setAdmVazi(')) throw new Error('rukovodilac vidi unos datuma');
+    if (dh.includes("setAdmVazi('" + gid + "','podugovori'")) throw new Error('unos datuma na podugovorima');
   });
 
   /* ---- T22 revizija 2026-10-03: CSS, guardovi, pretraga, brojevi ---- */

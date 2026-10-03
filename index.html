@@ -1274,6 +1274,14 @@ function computeAlerts(){
     if(d<0) out.push({sev:'red', gr:r.gr||null, tekst:'Isteklo: '+r.naziv+' ('+(r.napomena||RES_TIP[r.tip]||'resurs')+', '+fmtDate(r.istice)+')', nas});
     else if(d<=30) out.push({sev:'amber', gr:r.gr||null, tekst:'Ističe za '+d+' d: '+r.naziv+' ('+(r.napomena||RES_TIP[r.tip]||'resurs')+')', nas});
   });
+  sites.forEach(g=>{   // administracija: "važi do" (opciono, null-safe; nije fin — vidi ga i rukovodilac)
+    ADM_DOK.slice(0,3).forEach(([key,lab])=>{
+      const st=admInfo(g,key); if(!st.vazi_do) return;
+      const d=daysBetween(TODAY,dParse(st.vazi_do));
+      if(d<0) out.push({sev:'red', gr:g.id, tekst:lab+' isteklo '+fmtDate(st.vazi_do), nas:g.naziv});
+      else if(d<=30) out.push({sev:'amber', gr:g.id, tekst:lab+' ističe za '+d+' d', nas:g.naziv});
+    });
+  });
   return out.filter(a=>canFinance()||!a.fin).sort((a,b)=>(a.sev==='red'?0:1)-(b.sev==='red'?0:1));
 }
 
@@ -1684,6 +1692,14 @@ function viewEmpPage(){
       <div style="text-align:right;align-self:center">${badge(g.status)}</div>
     </div>`;
 
+  const zRes=(DATA.resursi||[]).filter(r=>r.zaduzen===z.id);   // zaduženi resursi (istice je null-safe: resIstice)
+  const resRow=r=>{
+    const d=resIstice(r);
+    const ist=r.istice?`<span style="${d<0?'color:var(--red);font-weight:600':d<=30?'color:var(--amber);font-weight:600':''}">${d<0?'isteklo ':'ističe '}${fmtDate(r.istice)}</span>`:'';
+    return `<div class="dr-task" style="padding:10px 18px">
+      <div class="lb">${RES_TIP[r.tip]||r.tip} · ${r.naziv}${r.oznaka?' ('+r.oznaka+')':''}<div class="sub" style="font-size:11.5px">${r.gr&&grById[r.gr]?grById[r.gr].naziv:'Baza / kancelarija'}${ist?' · '+ist:''}</div></div>
+    </div>`;
+  };
   const zadRow=t=>{
     const g=grById[t.gr]; const dd=dParse(t.rok); const diff=daysBetween(TODAY,dd);
     const rokTxt=t.kol==='done'?'':(diff<0?`<span style="color:var(--red);font-weight:600"> · kasni ${Math.abs(diff)}d</span>`:` · rok ${fmtDate(t.rok)}`);
@@ -1706,6 +1722,7 @@ function viewEmpPage(){
       </div>
     </div>
     <div class="top-right">
+      ${isDirector()?`<button class="print-btn" onclick="formEmp('${z.id}')">✎ Izmeni podatke</button>`:''}
       <button class="print-btn" onclick="formRaspored('${z.id}')">✎ Izmeni raspored</button>
       <button class="print-btn" onclick="window.print()">${icon('print')} Štampaj / PDF</button>
     </div>
@@ -1758,6 +1775,11 @@ function viewEmpPage(){
         <div style="flex:1"><div class="nm">${g?g.naziv:''}</div>
         <div style="font-size:12.5px;color:var(--slate);margin-top:3px">${e.tekst.length>140?e.tekst.slice(0,139)+'…':e.tekst}</div></div></div>`;}).join(''):'<div class="empty">Nema unosa.</div>'}</div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="card-h" style="padding:12px 16px"><h3>Zaduženi resursi (${zRes.length})</h3></div>
+    <div class="card-b tight" style="max-height:260px;overflow-y:auto">${zRes.length?zRes.map(resRow).join(''):'<div class="empty" style="padding:24px 16px">Nema zaduženih resursa.</div>'}</div>
   </div>`;
 }
 
@@ -1887,41 +1909,50 @@ function viewDiary(){
   ${html}`;
 }
 
-/* ---------- FORMA: NOVI ZAPOSLENI ---------- */
-function formEmp(){
+/* ---------- FORMA: NOVI / IZMENA ZAPOSLENOG ---------- */
+function formEmp(id){
   const pozicije=['Rukovodilac gradilišta','Građevinski inženjer','Arhitekta','Inženjer geodezije','Inženjer instalacija','Građevinski tehničar','Nadzorni organ','Majstor','Pomoćni radnik'];
+  let z=null;
+  if(id){ if(!isDirector()) return; z=zapById[id]; if(!z) return; if(!pozicije.includes(z.poz)) pozicije.push(z.poz); }   // izmena: nepoznata pozicija se ne gubi
+  const sel=(a,b)=>z&&a===b?' selected':'';
   openModal(`
-    <div class="m-h"><h3>Novi zaposleni</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-h"><h3>${z?'Izmeni zaposlenog':'Novi zaposleni'}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
-      <div class="f-row"><label>Ime i prezime</label><input id="f_eime" placeholder="npr. Marko Marković"></div>
+      <div class="f-row"><label>Ime i prezime</label><input id="f_eime" placeholder="npr. Marko Marković" value="${z?z.ime:''}"></div>
       <div class="f-2">
-        <div class="f-row"><label>Pozicija</label><select id="f_epoz">${pozicije.map(p=>`<option>${p}</option>`).join('')}</select></div>
-        <div class="f-row"><label>Telefon</label><input id="f_etel" placeholder="06x xxx xxxx"></div>
+        <div class="f-row"><label>Pozicija</label><select id="f_epoz">${pozicije.map(p=>`<option${sel(p,z&&z.poz)}>${p}</option>`).join('')}</select></div>
+        <div class="f-row"><label>Telefon</label><input id="f_etel" placeholder="06x xxx xxxx" value="${z&&z.tel!=='—'?z.tel:''}"></div>
       </div>
-      <div class="f-row"><label>Gradilišta (može više)</label>
+      ${z?'':`<div class="f-row"><label>Gradilišta (može više)</label>
         <div class="chk-list">${DATA.gradilista.map(g=>`<label class="chk"><input type="checkbox" id="f_egr_${g.id}"> ${g.naziv}</label>`).join('')}</div>
-      </div>
+      </div>`}
       <div class="f-2">
-        <div class="f-row"><label>Status</label><select id="f_est"><option>Na terenu</option><option>Kancelarija</option><option>Odsutan</option></select></div>
+        <div class="f-row"><label>Status</label><select id="f_est">${['Na terenu','Kancelarija','Odsutan'].map(s=>`<option${sel(s,z&&z.status)}>${s}</option>`).join('')}</select></div>
         <div></div>
       </div>
-      <div class="f-row"><label>Opis posla</label><textarea id="f_eopis" placeholder="Šta ova osoba konkretno radi na projektu…"></textarea></div>
+      <div class="f-row"><label>Opis posla</label><textarea id="f_eopis" placeholder="Šta ova osoba konkretno radi na projektu…">${z?z.opis||'':''}</textarea></div>
       <div class="m-foot">
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
-        <button class="btn" onclick="saveEmp()">Sačuvaj zaposlenog</button>
+        <button class="btn" onclick="saveEmp(${z?`'${z.id}'`:''})">${z?'Sačuvaj izmene':'Sačuvaj zaposlenog'}</button>
       </div>
     </div>`);
 }
-function saveEmp(){
+function saveEmp(id){
   if(!isDirector()) return;
   const v=id=>document.getElementById(id).value;
-  const ime=esc(v('f_eime').trim()); if(!ime){ alert('Unesi ime i prezime.'); return; }
+  const ime=esc(String(v('f_eime')).trim()); if(!ime){ alert('Unesi ime i prezime.'); return; }
+  if(id){   // IZMENA: grs/bivsi/id se ne diraju (raspored ide kroz formRaspored/formTim)
+    const z=zapById[id]; if(!z) return;
+    z.ime=ime; z.poz=v('f_epoz'); z.tel=esc(String(v('f_etel')).trim())||'—'; z.status=v('f_est'); z.opis=esc(String(v('f_eopis')).trim());
+    rebuildMaps(); saveState(); closeModal(); renderNav(); render(); return;
+  }
   const grs=DATA.gradilista.filter(g=>{const c=document.getElementById('f_egr_'+g.id); return c&&c.checked;}).map(g=>g.id);
   DATA.zaposleni.push({ id:'z'+Date.now(), ime, poz:v('f_epoz'), grs, bivsi:[], status:v('f_est'), tel:esc(v('f_etel').trim())||'—', opis:esc(v('f_eopis').trim()) });
   rebuildMaps(); saveState(); closeModal(); renderNav(); render();
 }
 
 const ADM_ST={nema:['Nema','b-red','✗'], priprema:['U pripremi','b-amber','…'], ima:['Ima','b-green','✓']};
+const ADM_DOK=[['ugovor','Ugovor / radni nalog'],['prijava','Prijava radova'],['polisa','Polisa osiguranja'],['podugovori','Ugovori podizvođača']];
 function admInfo(g,key){
   let v=(g.adm||{})[key];
   if(v===true) v={st:'ima'}; else if(!v||v===false) v={st:'nema'}; else if(!v.st) v.st='nema';
@@ -1932,6 +1963,13 @@ function setAdmStatus(grId,key,val){
   const g=grById[grId]; if(!g||!ADM_ST[val]) return;
   g.adm=g.adm||{}; g.adm[key]=Object.assign(admInfo(g,key),{st:val});
   saveState(); openSite(grId);
+}
+function setAdmVazi(grId,key,val){   // vazi_do: opciono (null-safe) — samo `if(st.vazi_do)`; prazno = ukloni ključ
+  if(!isDirector()) return;
+  const g=grById[grId]; if(!g||!ADM_DOK.some(d=>d[0]===key)) return;
+  g.adm=g.adm||{}; const a=admInfo(g,key);
+  if(val) a.vazi_do=val; else delete a.vazi_do;
+  g.adm[key]=a; saveState(); openSite(grId);
 }
 function setAdmDoc(grId,key,doc){
   if(!isDirector()) return;
@@ -3220,13 +3258,16 @@ function openSite(id){
       </div>`:''}
       <div class="dr-sec">
         <h4>Administracija</h4>
-        ${[['ugovor','Ugovor / radni nalog'],['prijava','Prijava radova'],['polisa','Polisa osiguranja'],['podugovori','Ugovori '+(jePro(g)?'saradnika':'podizvođača')]].map(a=>{
+        ${ADM_DOK.map(a=>a[0]==='podugovori'&&jePro(g)?[a[0],'Ugovori saradnika']:a).map(a=>{
           const st=admInfo(g,a[0]); const m=ADM_ST[st.st]||ADM_ST.nema;
+          const vd=st.vazi_do?daysBetween(TODAY,dParse(st.vazi_do)):null;
+          const vaziHtml = st.vazi_do ? `<div class="sub" style="font-size:11px;${vd<0?'color:var(--red);font-weight:600':vd<=30?'color:var(--amber);font-weight:600':''}">važi do ${fmtDate(st.vazi_do)}${vd<0?' (isteklo)':vd<=30?' (ističe za '+vd+' d)':''}</div>` : '';
+          const vaziIn = a[0]!=='podugovori' ? ` <input type="date" value="${st.vazi_do||''}" onchange="setAdmVazi('${id}','${a[0]}',this.value)" title="Važi do" style="border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11.5px;background:var(--surface);color:var(--ink);width:118px">` : '';
           const docHtml = st.doc ? `<div style="margin-top:4px"><span style="color:var(--blue);font-weight:600;cursor:pointer;font-size:12px" onclick="otvoriAdmDoc('${id}','${a[0]}')">📄 ${st.doc.name}</span><span class="sub" style="font-size:11px"> · ${fmtDate(st.doc.datum)}</span>${isDirector()?` <span style="color:var(--red);cursor:pointer;font-size:11px" onclick="ukloniAdmDoc('${id}','${a[0]}')" title="Ukloni dokument">✕</span>`:''}</div>` : '';
           const ctrl = isDirector()
-            ? `<select onchange="setAdmStatus('${id}','${a[0]}',this.value)" style="border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11.5px;background:var(--surface);color:var(--ink)">${Object.entries(ADM_ST).map(o=>`<option value="${o[0]}" ${st.st===o[0]?'selected':''}>${o[1][0]}</option>`).join('')}</select> <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="uploadAdmDoc('${id}','${a[0]}')" title="Učitaj dokument">📎</button>`
+            ? `<select onchange="setAdmStatus('${id}','${a[0]}',this.value)" style="border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11.5px;background:var(--surface);color:var(--ink)">${Object.entries(ADM_ST).map(o=>`<option value="${o[0]}" ${st.st===o[0]?'selected':''}>${o[1][0]}</option>`).join('')}</select>${vaziIn} <button class="btn ghost" style="padding:3px 8px;font-size:11px" onclick="uploadAdmDoc('${id}','${a[0]}')" title="Učitaj dokument">📎</button>`
             : `<span class="badge ${m[1]}">${m[2]} ${m[0]}</span>`;
-          return `<div class="dr-kv"><span class="k">${a[1]}${docHtml}</span><span class="v" style="display:flex;gap:6px;align-items:center">${ctrl}</span></div>`;
+          return `<div class="dr-kv"><span class="k">${a[1]}${vaziHtml}${docHtml}</span><span class="v" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${ctrl}</span></div>`;
         }).join('')}
       </div>
       ${subs.length?`<div class="dr-sec">
