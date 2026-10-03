@@ -163,3 +163,8 @@ skor; boot je pri padu CDN-a "padao u demo rezim" bez prijave. Kad nedostaje izv
 istine, prikazi "—"/gresku sa "pokusaj ponovo", ne izmisljen broj ili demo podatke.
 Bonus iz iste revizije: `broj()` je za TEKST — `type=number` daje kanonicnu
 vrednost, pa "1.250" (1,25 m3) postaje 1250.
+
+## Lekcija 26 (2026-10-04, restart sesije)
+Sesija se moze restartovati dok subagent radi (dva puta u istoj rundi). Pre
+ponovnog pokretanja: `git status` + `git diff` — delimican rad je na disku; novom
+worker-u dati "proveri sta vec postoji u diff-u, dopuni" umesto da krece ispocetka.

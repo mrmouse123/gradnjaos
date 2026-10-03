@@ -27,6 +27,30 @@ Svesno NE sada (traze novu kolonu/migraciju ili dizajn odluku): vozila km/servis
 licence po zaposlenom kao struktura, parsiranje fakture, trebovanje→magacin, situacija iz
 kumulativa, xlsx upload.
 
+
+## Review (2026-10-04) — zahtevi A-H, 566 → 593 asertacija
+
+**Uradjeno u 4 runde (3 worker-a + ja), sve kroz Edit + e2e pre/posle:** izmena
+osnovnih podataka gradilista (A), investitor u fioci (B), zaduzen po poziciji u oba
+modula + izmena reda predmera (C), sablon nivoa naknadno (D), puna lista troskova sa
+dobavljacem/fakturom (E), izmena zaposlenog + zaduzeni resursi (F), "vazi do" za
+ugovor/prijavu/polisu + upozorenja (G), mobilni sloj (H: donja traka, brze akcije,
+PWA). Nijedna nova kolona u bazi — sve u postojece kolone / jsonb `adm`.
+
+**Sta sam sam pogresio i uhvatio:** osnovno `.bnav{display:none}` stavljeno POSLE
+@media 900 bloka → na telefonu traka nevidljiva (ista specificnost, poslednje
+pobedjuje). Uhvaceno merenjem u browseru, ne testom — T25 sad proverava redosled.
+Prvi pokusaj merenja preko python http.server: ERR_CONNECTION_RESET u browser
+panelu (curl radi) → node server sa MIME mapom u demo folderu.
+
+**Dve sesije su se restartovale usred worker-a** (runda 3): delimican rad je bio na
+disku (git diff), nastavljeno novim worker-om umesto ponavljanja (lekcija 26).
+
+**Svesno NE (backlog, sa razlogom):** rukovodilac menja zaduzenog po poziciji
+(trigger zastiti_kolone_predmer dozvoljava samo izv → migracija); vozila km/servis i
+licence po zaposlenom (nove kolone); parsiranje fakture; trebovanje → magacin;
+situacija iz kumulativa; xlsx upload (odluka od ranije).
+
 # Revizija koda po novom setapu agenata (2026-10-03)
 
 Trazeno: "pregledaj kod po novom setapu agenata (explorer/worker/researcher/advisor)

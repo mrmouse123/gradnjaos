@@ -150,7 +150,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-25 lekcija; najvažnije za svaku izmenu:
+26 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.
