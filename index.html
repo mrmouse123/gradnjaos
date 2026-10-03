@@ -232,13 +232,14 @@
 
   /* ---------- Gantt ---------- */
   .gantt{overflow-x:auto}
-  .gantt-inner{min-width:820px; padding:4px 0 10px}
-  .g-head{display:grid; grid-template-columns:200px 1fr; border-bottom:1px solid var(--line-strong)}
+  .gantt-inner{min-width:820px; padding:4px 0 10px; --g-lab:200px}   /* sirina kolone sa imenima — JS marker "danas" cita istu promenljivu */
+  .g-head{display:grid; grid-template-columns:var(--g-lab) 1fr; border-bottom:1px solid var(--line-strong)}
   .g-months{display:grid}
   .g-months .gm{font-size:11px; color:var(--faint); text-transform:uppercase; letter-spacing:.03em; padding:9px 6px; border-left:1px solid var(--line)}
-  .g-row{display:grid; grid-template-columns:200px 1fr; border-bottom:1px solid var(--line); align-items:center}
+  .g-row{display:grid; grid-template-columns:var(--g-lab) 1fr; border-bottom:1px solid var(--line); align-items:center}
   .g-row:last-child{border-bottom:0}
-  .g-lab{padding:12px 14px}
+  .g-lab{padding:12px 14px; position:sticky; left:0; z-index:4; background:var(--surface)}   /* imena ostaju vidljiva dok se osa skroluje (telefon) */
+  .g-lab-h{position:sticky; left:0; z-index:4; background:var(--surface)}
   .g-lab .nm{font-weight:600; font-size:13px}
   .g-lab .cl{font-size:11.5px; color:var(--muted); margin-top:2px}
   .g-track{position:relative; height:56px}
@@ -251,7 +252,7 @@
   .g-bar.late{background:var(--red-soft); border-color:#f2cfce} .g-bar.late .fill{background:var(--red)} .g-bar.late .lbl{color:var(--red)}
   .g-bar.plan{background:var(--paper); border-color:var(--line-strong)} .g-bar.plan .fill{background:var(--faint); opacity:.4} .g-bar.plan .lbl{color:var(--muted)}
   .g-today{position:absolute; top:0; bottom:0; width:2px; background:var(--amber); z-index:5}
-  .g-today::after{content:"danas"; position:absolute; top:-2px; left:4px; font-size:10px; font-weight:700; color:var(--amber); background:var(--amber-soft); padding:1px 5px; border-radius:4px; white-space:nowrap}
+  .g-today::after{content:attr(data-d); position:absolute; top:-2px; left:4px; font-size:10px; font-weight:700; color:var(--amber); background:var(--amber-soft); padding:1px 5px; border-radius:4px; white-space:nowrap}
   .legend{display:flex; gap:16px; flex-wrap:wrap; padding:12px 18px 2px; font-size:12px; color:var(--muted)}
   .legend i{display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:middle}
 
@@ -437,7 +438,7 @@
     .brief{padding:14px 16px} .brief h2{font-size:16px}
     .search{max-width:none; min-width:0; width:100%}
     .legend{gap:8px 14px}
-    .g-head,.g-row{grid-template-columns:150px 1fr} .gantt-inner{min-width:700px}
+    .gantt-inner{min-width:700px; --g-lab:150px}   /* uza kolona imena; marker "danas" prati (ranije hardkodirano 200px -> linija pomerena ~mesec unazad) */
     .dr-h{padding:16px 16px 12px} .dr-h h2{font-size:17px} .dr-b{padding:14px 16px 32px}
     .dr-b .btn{white-space:normal; text-align:center; line-height:1.25}
     .modal-wrap{padding:10px}
@@ -1206,6 +1207,7 @@ function render(){
   const v = document.getElementById('view');
   v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin}[current])();
   animateUI();
+  if(current==='time') skrolujNaDanas();
   if(current==='sites') bindSitesSearch();
   if(current==='clients') bindClientSearch();
   if(current==='emps') bindEmpSearch();
@@ -1829,6 +1831,18 @@ function viewEmpPage(){
 }
 
 /* ---------- ROKOVI (GANTT) ---------- */
+/* Gantt na telefonu: osa pocinje od najstarijeg projekta, pa je "danas" van ekrana —
+   posle rendera skroluj tako da je danasnja linija na ~1/3 vidljive sirine. */
+function skrolujNaDanas(){
+  const g=document.querySelector('.gantt'), t=document.querySelector('.g-today');
+  if(!g||!t||typeof g.getBoundingClientRect!=='function') return;
+  const gr=g.getBoundingClientRect(), tr=t.getBoundingClientRect();
+  const labW=parseFloat(getComputedStyle(document.querySelector('.gantt-inner')).getPropertyValue('--g-lab'))||200;
+  const vidljivo=gr.width-labW;
+  if(vidljivo<=0) return;
+  const cilj=(tr.left-gr.left)+g.scrollLeft-labW-vidljivo*0.35;
+  g.scrollLeft=Math.max(0,cilj);
+}
 function viewTime(){
   const vs=visibleSites();
   if(!vs.length) return head('Rokovi','Vremenska osa projekata.')+'<div class="card"><div class="empty">Nema projekata za prikaz.</div></div>';
@@ -1869,14 +1883,15 @@ function viewTime(){
       <span><i style="background:var(--green)"></i>Završeno</span>
       <span><i style="background:var(--faint)"></i>Planirano</span>
       <span style="margin-left:auto"><i style="background:var(--amber)"></i>Današnji datum</span>
+      <button class="btn ghost" style="padding:4px 10px;font-size:11.5px;min-height:0" onclick="skrolujNaDanas()">⟶ Danas</button>
     </div>
     <div class="gantt"><div class="gantt-inner">
       <div class="g-head">
-        <div style="padding:9px 14px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Projekat</div>
+        <div class="g-lab-h" style="padding:9px 14px;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;font-weight:600">Projekat</div>
         <div class="g-months" style="grid-template-columns:${colTmpl}">${monHead}</div>
       </div>
       <div style="position:relative">
-        <div class="g-today" style="left:calc(200px + (100% - 200px) * ${todayLeft/100})"></div>
+        <div class="g-today" data-d="danas ${TODAY.getDate()}.${TODAY.getMonth()+1}." style="left:calc(var(--g-lab) + (100% - var(--g-lab)) * ${todayLeft/100})" title="${fmtDate(todayStr())}"></div>
         ${rows}
       </div>
     </div></div>

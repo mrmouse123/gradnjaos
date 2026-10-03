@@ -454,6 +454,31 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T26 Rokovi: linija "danas" prati sirinu kolone sa imenima (200px desktop / 150px telefon) i nosi datum ---- */
+  section('T26 Rokovi: danas');
+  await acheck('Gantt: marker danas koristi var(--g-lab) i nosi danasnji datum; CSS definise 200px i 150px', async () => {
+    const a = await boot();
+    a.run("current='time'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    const m = h.match(/<div class="g-today"[^>]*>/); if (!m) throw new Error('nema .g-today');
+    if (!m[0].includes('var(--g-lab)')) throw new Error('marker ne koristi var(--g-lab): ' + m[0]);
+    if (/calc\(200px/.test(m[0])) throw new Error('marker i dalje hardkodira 200px (na telefonu kolona je 150px -> pomeren ~mesec dana)');
+    const d = new Date(); const ocek = `data-d="danas ${d.getDate()}.${d.getMonth() + 1}."`;
+    if (!m[0].includes(ocek)) throw new Error('marker nema danasnji datum: ' + m[0] + ' / ' + ocek);
+    const css = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+    if (!/--g-lab:200px/.test(css)) throw new Error('CSS nema --g-lab:200px');
+    if (!/--g-lab:150px/.test(css)) throw new Error('CSS nema --g-lab:150px za telefon');
+    if (!/grid-template-columns:var\(--g-lab\) 1fr/.test(css)) throw new Error('g-head/g-row ne koriste var(--g-lab)');
+    if (/grid-template-columns:150px 1fr/.test(css) || /grid-template-columns:200px 1fr/.test(css)) throw new Error('ostao hardkodiran 150px/200px grid');
+    if (!/\.g-today::after\{content:attr\(data-d\)/.test(css)) throw new Error('::after ne cita data-d');
+    if (typeof a.run('skrolujNaDanas') !== 'function') throw new Error('nema skrolujNaDanas()');
+    if (!h.includes('onclick="skrolujNaDanas()"')) throw new Error('nema dugmeta "Danas" u legendi');
+    // staro TODAY -> render() osvezi i marker
+    a.run("TODAY=new Date(TODAY.getTime()-40*86400000); render();");
+    const h2 = a.g.document.getElementById('view').innerHTML;
+    if (!h2.includes(ocek)) throw new Error('posle zastarelog TODAY render() nije vratio danasnji datum na marker');
+  });
+
   /* ---- T25 mobilni sloj: donja navigacija, brze akcije, PWA manifest ---- */
   section('T25 mobilni sloj');
   await acheck('donja navigacija: 5 dugmadi za obe uloge, aktivno prati current, "Više" otvara meni', async () => {
