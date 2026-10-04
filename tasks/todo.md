@@ -1,3 +1,30 @@
+# Nalozi i log koriscenja (2026-10-04) — GOTOVO (596 -> 600)
+
+Trazeno: interfejs preko kog direktor (kasnije i admin) dodeljuje uloge + log koriscenja.
+Opseg faze 1 (bez dashboard podesavanja koja Jovan jos nije uradio): dodela/izmena/
+uklanjanje uloge POSTOJECIM auth korisnicima + log; kreiranje korisnika ostaje u
+Supabase dashboardu. Pozivnice (magic link uz self-signup) i uloga admin — ponedeljak.
+
+## Plan
+- [x] 1. migracija-12: log_koriscenja (RLS: insert svoj, select direktor), RPC
+      nalozi_pregled / dodeli_ulogu / ukloni_pristup (direktor; ne sebi; ne poslednjem
+      direktoru; log na serveru). apply_migration + schema.sql.
+- [x] 2. set local role provera: rukovodilac -> rpc odbijen, log select 0, insert svog ok;
+      direktor -> lista; dodela sebi odbijena; poslednji direktor zasticen (rollback).
+- [x] 3. Klijent: tab "Nalozi" (dirOnly): tabela naloga (email, ime, uloga, zaposleni,
+      poslednja prijava, Ukloni), forma dodele (email + uloga + zaposleni) -> rpc,
+      log (poslednjih 200, filter po dogadjaju). log_koriscenja NIJE u PUSH_TABLES;
+      upisi fire-and-forget: prijava, odjava (pre signOut), otvaranje (verzija, uredjaj),
+      cuvanje (tabela -> broj redova).
+- [x] 4. Mock: rpc nalozi_pregled/dodeli_ulogu/ukloni_pristup + insert log; T28.
+- [x] 5. Docs (CLAUDE.md: RPC-ovi, izuzetak od pravila 8, admin/pozivnice odlozeni;
+      README: dodavanje korisnika sad iz app-a posle Add user), memorija, commit, push.
+
+Review: zamka je bila u mocku — insert u log se logovao kao "upsert", pa su 4 stara testa
+koji broje upserte pala; log je sad op:'log'. Rukovodilac na praznoj bazi ne seje demo
+(pada u memoriju) pa test loga mora prvo da zaseje kao direktor. Nije radjeno: pozivnice
+(magic link + self-signup) i admin uloga — ponedeljak.
+
 # Tema + uvoz + Rokovi (2026-10-04) — GOTOVO
 - [x] Rokovi: linija "danas" tacna na telefonu (CSS var --g-lab), datum na markeru, auto-skrol
       na danas, dugme "Danas", imena projekata sticky. T26.

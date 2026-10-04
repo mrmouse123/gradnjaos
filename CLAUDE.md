@@ -47,8 +47,24 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `pushAll`: POSTOJEĆI red → `update().eq(id)`, NOV → `insert`; upsert samo za
   seed/reset (`opt.sve`). Razlog: upsert = INSERT…ON CONFLICT, a INSERT WITH
   CHECK `je_direktor()` obara rukovodiočev upsert i kad je red njegov.
+- **Nalozi i log korišćenja** (od 2026-10-04, migracija 12): tab „Nalozi i log" (samo
+  direktor, `dirOnly`, `viewNalozi` vraća ostale na dash). RPC-ovi `security definer` sa
+  sopstvenim guardom: `nalozi_pregled()` (profili ⋈ auth.users: email, poslednja prijava,
+  bez_profila), `dodeli_ulogu(email, uloga, zaposleni_id)` (POSTOJEĆEM auth nalogu; ne
+  sebi; ne poslednjem direktoru), `ukloni_pristup(email)` (briše profil, nalog ostaje).
+  Kreiranje korisnika i dalje u dashboardu (Add user) — pozivnice/magic link čekaju Site
+  URL + odluku o self-signupu. Tabela `log_koriscenja` je **append-only i VAN
+  `PUSH_TABLES`/`DATA`** (izuzetak od pravila 8, kao `profili`): RLS insert = svoj red,
+  select = direktor. Klijent piše fire-and-forget `beleziLog()` (nikad ne dira `saveErr`):
+  `otvaranje` (verzija, uređaj) posle `initAuth`, `prijava` (pre reload-a), `odjava` (PRE
+  `signOut` — posle njega RLS odbija), `cuvanje` (`pushAll` vraća tabela→broj redova).
+  Server sam piše `uloga_promena` / `pristup_uklonjen`. `ULOGE` konstanta = check
+  constraint na `profili.uloga` — proširiti na oba mesta kad stignu admin/zaposleni.
+  Provereno `set local role`: rukovodilac → RPC raise, log select 0, insert svog reda OK;
+  direktor → lista, sebi odbijeno, uklanjanje + log. Mock: `rpc` sve tri + `limit()`,
+  insert u `log_koriscenja` se loguje kao `op:'log'` (ne `upsert`). T28.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..11.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..12.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.

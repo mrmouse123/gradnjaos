@@ -826,6 +826,19 @@ const PUSH_TABLES=[...TABLES, ...JOIN_TABELE];
    nazad — server ih svakako drzi trigerom, ovo je da diff ne salje NULL. */
 const FIN_KOLONE={gradilista:['budzet','troskovi','potroseno','naplaceno'], predmer:['cena'], podizvodjaci:['cena']};
 function jeRukovodilacNalog(){ return !!(PROFIL && PROFIL.uloga!=='direktor'); }
+/* Uloge koje aplikacija poznaje (isti skup kao check constraint na profili.uloga).
+   Admin / zaposleni / rukovodilac-sa-finansijama cekaju odluku klijenta (ponedeljak). */
+const ULOGE=[['direktor','Direktor'],['rukovodilac','Rukovodilac gradilišta']];
+function uredjajTip(){ try{ return window.matchMedia&&window.matchMedia('(max-width:900px)').matches?'mobilni':'desktop'; }catch(e){ return '?'; } }
+/* Log koriscenja (migracija 12): append-only tabela VAN PUSH_TABLES (izuzetak od pravila 8 —
+   nikad se ne cita u DATA, nikad ne ide kroz diff). Upis je fire-and-forget i ne dira saveErr.
+   Server sam belezi uloga_promena / pristup_uklonjen; klijent: prijava, odjava, otvaranje, cuvanje. */
+function beleziLog(dogadjaj, detalj){
+  if(!supa || !SESIJA) return Promise.resolve();
+  const red={ email:(SESIJA.user&&SESIJA.user.email)||null, uloga:PROFIL?PROFIL.uloga:null, dogadjaj, detalj:detalj||{} };
+  try{ return Promise.resolve(supa.from('log_koriscenja').insert(red)).then(r=>{ if(r&&r.error) console.warn('log:', r.error.message||r.error); }, e=>console.warn('log:', e)); }
+  catch(e){ console.warn('log:', e); return Promise.resolve(); }
+}
 function bezKolona(r,keys){ const o={...r}; keys.forEach(k=>delete o[k]); return o; }
 function rowsZa(t,d){
   const ruk=jeRukovodilacNalog();
@@ -881,7 +894,7 @@ async function pushAll(d, opt){
      rukovodilac ne sme ni da pokusa upsert tudjih/direktorskih redova (greska),
      a usput nestaje "cela baza + base64 prilozi na svaki klik".
      Ne prekidamo na prvoj gresci — jedan los red ne sme da zaustavi ostale tabele. */
-  const greske=[];
+  const greske=[], poslato={};   // poslato: tabela -> broj uspesno upisanih redova (za log koriscenja)
   for(const t of (opt.samo||PUSH_TABLES)){
     const rows=rowsZa(t,d), prev=PUSHED[t]||{};
     const izmenjeni = opt.sve ? rows : rows.filter(r=>prev[kljucReda(t,r)]!==JSON.stringify(r));
@@ -889,7 +902,7 @@ async function pushAll(d, opt){
     /* PUSHED se belezi PO USPELOM ZAHTEVU, ne po tabeli: ako insert prodje a kasniji
        update padne, ubaceni redovi ne smeju sledeci put ponovo kao INSERT (23505). */
     const nx={...prev};
-    const posalji=async(q, poslati)=>{ const {error}=await q; if(error) throw new Error(error.message||String(error)); poslati.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); };
+    const posalji=async(q, poslati)=>{ const {error}=await q; if(error) throw new Error(error.message||String(error)); poslati.forEach(r=>nx[kljucReda(t,r)]=JSON.stringify(r)); poslato[t]=(poslato[t]||0)+poslati.length; };
     const filtriraj=(q,r)=> t==='zaposleni_gradiliste' ? q.eq('zaposleni_id',r.zaposleni_id).eq('gradiliste_id',r.gradiliste_id)
                         : t==='podizvodjac_gradiliste' ? q.eq('podizvodjac_id',r.podizvodjac_id).eq('gradiliste_id',r.gradiliste_id)
                         : q.eq('id',r.id);
@@ -912,6 +925,7 @@ async function pushAll(d, opt){
     finally{ PUSHED[t]=nx; }
   }
   if(greske.length) throw new Error(greske.join(' | '));
+  return poslato;
 }
 
 /* Brisanje reda je EKSPLICITNA operacija, ne posledica diff-a.
@@ -977,7 +991,7 @@ function doSave(){
   saving=true;
   saveTok=(async()=>{
     try{
-      if(mode==='supabase'){ await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; await osveziZdravlje(true); }
+      if(mode==='supabase'){ const p=await pushAll(JSON.parse(JSON.stringify(DATA))); saveErr=null; if(p&&Object.keys(p).length) beleziLog('cuvanje',p); await osveziZdravlje(true); }
       else if(mode==='skladiste'){ await window.storage.set(SKEY, JSON.stringify(DATA)); saveErr=null; }
     }catch(e){
       saveErr=e.message||String(e);
@@ -1220,6 +1234,7 @@ function tabs(){
     {id:'magacin', naziv:'Magacin', ic:'box', cnt:0},
     {id:'subs', naziv:(MODUL==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&((isDirector()&&MODUL==='sve')||(x.grs||[]).some(i=>ids.has(i)))).length},
     {id:'nabavka', naziv:'Trebovanje', ic:'cart', cnt:(DATA.narudzbe||[]).filter(n=>n.status==='poslato'&&((isDirector()&&MODUL==='sve')||ids.has(n.gr))).length},
+    {id:'nalozi', naziv:'Nalozi i log', ic:'client', dirOnly:true},
   ].filter(t=>!t.dirOnly || isDirector());
 }
 function renderNav(){
@@ -1252,7 +1267,7 @@ function render(){
   /* Alat stoji otvoren danima; bez ovoga bi sutradan upisivao jucerasnji datum. */
   const _n=new Date(); _n.setHours(0,0,0,0); if(_n.getTime()!==TODAY.getTime()) TODAY.setTime(_n.getTime());
   const v = document.getElementById('view');
-  v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin}[current])();
+  v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin, nalozi:viewNalozi}[current])();
   animateUI();
   if(current==='time') skrolujNaDanas();
   if(current==='sites') bindSitesSearch();
@@ -2180,6 +2195,95 @@ function saveResurs(rid){
 }
 
 /* ---------- MAGACIN ---------- */
+/* ---------- NALOZI I LOG (direktor) ----------
+   Uloge se dodeljuju POSTOJECIM auth nalozima (kreiranje korisnika ostaje u Supabase
+   dashboardu dok Jovan ne podesi Site URL / self-signup). RPC-ovi iz migracije 12 su
+   security definer sa sopstvenim guardom (je_direktor, ne sebi, ne poslednjem direktoru). */
+let NALOZI=null, LOG_K=null, NALOZI_MSG='';
+function viewNalozi(){
+  if(!isDirector()){ current='dash'; return viewDash(); }
+  const h=head('Nalozi i log korišćenja','Ko ima pristup, sa kojom ulogom, i šta je ko radio u aplikaciji.');
+  if(!supa) return h+'<div class="card"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>';
+  if(NALOZI===null && !NALOZI_MSG) ucitajNaloge();
+  const zOpt=DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('');
+  const ulOpt=(sel)=>ULOGE.map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
+  const mojEmail=(SESIJA&&SESIJA.user&&SESIJA.user.email||'').toLowerCase();
+  const redovi=(NALOZI||[]).map(n=>{
+    const moj=(n.email||'').toLowerCase()===mojEmail;
+    const kad=n.poslednja_prijava?fmtDate(String(n.poslednja_prijava).slice(0,10))+' '+String(n.poslednja_prijava).slice(11,16):'—';
+    const st=n.bez_profila?'<span class="badge b-amber">bez uloge</span>':moj?'<span class="badge b-blue">ti</span>':'<span class="badge b-green">aktivan</span>';
+    const kontrole = moj ? `<span class="sub">${ULOGE.find(u=>u[0]===n.uloga)?.[1]||n.uloga}</span>` :
+      `<select id="nu_${esc(n.user_id)}" onchange="naloziTogglZap('${esc(n.user_id)}')">${n.bez_profila?'<option value="">— izaberi —</option>':''}${ulOpt(n.uloga)}</select>
+       <select id="nz_${esc(n.user_id)}" style="${n.uloga==='rukovodilac'||n.bez_profila?'':'display:none'}"><option value="">— zaposleni —</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${n.zaposleni_id===z.id?'selected':''}>${z.ime}</option>`).join('')}</select>
+       <button class="btn ghost" style="padding:4px 10px;font-size:12px" onclick="dodeliUlogu('${esc(n.email)}','${esc(n.user_id)}')">Sačuvaj</button>
+       ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
+    return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
+  }).join('');
+  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen'};
+  const logRed=l=>{ const d=l.detalj||{}; let det='';
+    if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
+    else if(l.dogadjaj==='uloga_promena') det=(d.email||'')+': '+(d.stara||'—')+' → '+(d.nova||'')+(d.zaposleni_id?' ('+d.zaposleni_id+')':'');
+    else if(l.dogadjaj==='pristup_uklonjen') det=(d.email||'')+' ('+(d.stara||'')+')';
+    else det=[d.uredjaj,d.verzija].filter(Boolean).join(' · ');
+    const ts=String(l.ts||''); return `<tr><td class="num">${fmtDate(ts.slice(0,10))} ${ts.slice(11,16)}</td><td>${esc(l.email||'')}</td><td>${esc(l.uloga||'')}</td><td>${DOG[l.dogadjaj]||esc(l.dogadjaj)}</td><td class="sub">${esc(det)}</td></tr>`; };
+  return h+`
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-h"><h3>Nalozi (${(NALOZI||[]).length})</h3><span class="hint">Novi korisnik: Supabase → Authentication → Users → Add user, pa mu ovde dodeli ulogu</span></div>
+    <div class="card-b tight">
+      ${NALOZI_MSG?`<div class="banner" style="margin:12px 16px">${NALOZI_MSG}</div>`:''}
+      <div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Ime</th><th>Stanje</th><th>Poslednja prijava</th><th>Uloga</th></tr></thead>
+      <tbody>${redovi||`<tr><td colspan="5" class="empty">${NALOZI===null?'Učitavam…':'Nema naloga.'}</td></tr>`}</tbody></table></div>
+      <div class="tools" style="margin:14px 16px 4px">
+        <input id="n_email" placeholder="email postojećeg naloga" style="min-width:220px">
+        <select id="n_uloga" onchange="document.getElementById('n_zap').style.display=this.value==='rukovodilac'?'':'none'">${ulOpt('rukovodilac')}</select>
+        <select id="n_zap"><option value="">— zaposleni —</option>${zOpt}</select>
+        <button class="btn" onclick="dodeliUlogu()">Dodeli ulogu</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-h"><h3>Log korišćenja</h3><span class="hint">poslednjih ${(LOG_K||[]).length} događaja · <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="ucitajNaloge()">↻ Osveži</button></span></div>
+    <div class="card-b tight"><div style="overflow-x:auto"><table><thead><tr><th>Kada</th><th>Ko</th><th>Uloga</th><th>Događaj</th><th>Detalj</th></tr></thead>
+      <tbody>${(LOG_K||[]).map(logRed).join('')||`<tr><td colspan="5" class="empty">${LOG_K===null?'Učitavam…':'Još nema zapisa.'}</td></tr>`}</tbody></table></div></div>
+  </div>`;
+}
+function naloziTogglZap(uid){ const u=document.getElementById('nu_'+uid), z=document.getElementById('nz_'+uid); if(u&&z) z.style.display=u.value==='rukovodilac'?'':'none'; }
+async function ucitajNaloge(){
+  if(!isDirector()||!supa) return;
+  NALOZI_MSG='';
+  try{
+    const [{data:n,error:e1},{data:l,error:e2}]=await Promise.all([
+      supa.rpc('nalozi_pregled'),
+      supa.from('log_koriscenja').select('*').order('ts',{ascending:false}).limit(200)
+    ]);
+    if(e1) throw new Error(e1.message||String(e1));
+    if(e2) throw new Error(e2.message||String(e2));
+    NALOZI=n||[]; LOG_K=l||[];
+  }catch(e){ NALOZI=NALOZI||[]; LOG_K=LOG_K||[]; NALOZI_MSG='Ne mogu da učitam naloge: '+esc(e.message||e); }
+  if(current==='nalozi') render();
+}
+async function dodeliUlogu(email, uid){
+  if(!isDirector()||!supa) return;
+  const v=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+  email=(email||v('n_email')).trim().toLowerCase();
+  const uloga=uid?v('nu_'+uid):v('n_uloga'), zap=(uid?v('nz_'+uid):v('n_zap'))||null;
+  if(!email||!/@/.test(email)){ alert('Unesi email naloga.'); return; }
+  if(!ULOGE.some(u=>u[0]===uloga)){ alert('Izaberi ulogu.'); return; }
+  if(uloga==='rukovodilac'&&!zap){ alert('Rukovodilac mora biti vezan za zaposlenog.'); return; }
+  const {data,error}=await supa.rpc('dodeli_ulogu',{p_email:email, p_uloga:uloga, p_zaposleni_id:uloga==='rukovodilac'?zap:null});
+  if(error){ alert('Nije uspelo: '+(error.message||error)); return; }
+  NALOZI_MSG='✓ '+esc(email)+': uloga '+(data==='dodeljeno'?'dodeljena':'izmenjena')+'. Korisnik je vidi pri sledećem otvaranju aplikacije.';
+  await ucitajNaloge();
+}
+async function ukloniPristup(email){
+  if(!isDirector()||!supa) return;
+  if(!confirm('Ukloniti pristup za '+unesc(email)+'? Nalog ostaje, ali neće videti nijedan podatak dok mu ponovo ne dodeliš ulogu.')) return;
+  const {error}=await supa.rpc('ukloni_pristup',{p_email:email});
+  if(error){ alert('Nije uspelo: '+(error.message||error)); return; }
+  NALOZI_MSG='Pristup uklonjen za '+esc(email)+'.';
+  await ucitajNaloge();
+}
+
 function viewMagacin(){
   const rows=(DATA.magacin||[]).map(m=>{
     const posl=(DATA.mag_promene||[]).filter(x=>x.mid===m.id).sort((a,b)=>dParse(b.datum)-dParse(a.datum))[0];
@@ -3466,7 +3570,7 @@ async function initAuth(){
     const {data:prof,error}=await supa.from('profili').select('*').eq('user_id',SESIJA.user.id).maybeSingle();
     if(error) throw error;
     if(!prof){
-      prikaziLogin('Nalog '+esc(SESIJA.user.email||'')+' postoji, ali nije povezan ni sa jednom ulogom. Javi direktoru da pokrene povezi_profil().');
+      prikaziLogin('Nalog '+esc(SESIJA.user.email||'')+' postoji, ali mu još nije dodeljena uloga. Javi direktoru — dodeljuje se u aplikaciji, tab „Nalozi".');
       try{ await supa.auth.signOut(); }catch(e){}
       return false;
     }
@@ -3497,6 +3601,7 @@ async function prijava(){
   if(!email||!pw){ loginPoruka('<div class="err">Unesi email i lozinku.</div>'); return; }
   const {error}=await supa.auth.signInWithPassword({email, password:pw});
   if(error){ loginPoruka('<div class="err">'+esc(/invalid/i.test(error.message||'')?'Pogrešan email ili lozinka.':(error.message||error))+'</div>'); return; }
+  try{ const s=await supa.auth.getSession(); SESIJA=(s&&s.data&&s.data.session)||null; await beleziLog('prijava',{uredjaj:uredjajTip()}); }catch(e){}
   location.reload();
 }
 async function prijavaLink(){
@@ -3513,6 +3618,7 @@ async function odjava(){
   const f=document.getElementById('sideFoot'); if(f) f.innerHTML='<span class="dot"></span> Čuvam izmene pre odjave…';
   try{ await sacuvajSve(); }catch(e){}
   if(saveErr && !confirm('Poslednje čuvanje NIJE uspelo ('+unesc(saveErr).slice(0,120)+'). Odjaviti se svejedno? Nesačuvane izmene će biti izgubljene.')){ odjavaUToku=false; updateFoot(); return; }
+  try{ await beleziLog('odjava'); }catch(e){}   // pre signOut — posle njega upis u log ne prolazi RLS
   try{ await supa.auth.signOut(); }catch(e){}
   location.reload();
 }
@@ -3571,6 +3677,7 @@ async function pokreni(){
   await pVerzija;
   if(SUPABASE_URL && SUPABASE_ANON_KEY && !supaOk){ prikaziGreskuUcitavanja('Ne mogu da učitam biblioteku za bazu, pa se podaci ne mogu prikazati.'); return; }
   if(supa && !(await initAuth())) return;   // ekran za prijavu — podaci se ne ucitavaju bez sesije
+  if(supa) beleziLog('otvaranje',{verzija:verzijaTekst(), uredjaj:uredjajTip()});
   await loadState();
   normalizeData();
   if(mode==='supabase') zapamtiSnapshot(DATA);   // posle normalize, da prvi diff ne gura sve

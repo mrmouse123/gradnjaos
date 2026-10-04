@@ -15,14 +15,10 @@ Otvori `index.html` u pretraživaču. Ako su `SUPABASE_URL`/`SUPABASE_ANON_KEY` 
 ### Dodavanje korisnika (radi direktor, ~1 minut)
 
 1. Supabase dashboard → **Authentication → Users → Add user** → email + lozinka, uključi *Auto Confirm User*.
-2. **SQL Editor → New query**:
-   ```sql
-   select povezi_profil('ime.prezime@firma.rs', 'rukovodilac', 'z1');  -- z1 = id iz tabele zaposleni
-   select povezi_profil('direktor@firma.rs', 'direktor');                 -- direktor nije vezan za zaposlenog
-   ```
-3. Korisnik se prijavljuje. Bez `povezi_profil` nalog postoji, ali vidi nula podataka (i dobija jasnu poruku).
+2. U aplikaciji, tab **Nalozi i log** (vidi ga samo direktor): upiši email, izaberi ulogu (rukovodilac → i zaposlenog), **Dodeli ulogu**. Nalog se pojavljuje u listi; dok nema ulogu, označen je „bez uloge".
+3. Korisnik se prijavljuje lozinkom koju si mu dao (menja je dugmetom **Lozinka**). Bez dodeljene uloge nalog vidi nula podataka i dobija jasnu poruku.
 
-Ista funkcija menja ulogu postojećem korisniku. Uklanjanje: obriši korisnika u Authentication → Users (profil se briše sam).
+U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje, vidi ništa), a ispod je **log korišćenja**: prijave, odjave, otvaranja (uređaj, verzija), čuvanja (koje tabele, koliko redova), promene uloga. Sopstvenu ulogu direktor ne može da menja, a poslednji direktor se ne može skinuti. SQL alternativa i dalje postoji: `select povezi_profil('mejl','rukovodilac','z1');` u SQL editoru.
 
 ## Šta rukovodilac sme (i na serveru)
 

@@ -53,6 +53,7 @@ class Query {
   select(){ this.op = 'select'; return this; }
   order(col){ this._order = col; return this; }
   range(from, to){ this._range = [from, to]; return this; }
+  limit(n){ this._limit = n; return this; }
   maybeSingle(){ this._single = 'maybe'; return this; }
   single(){ this._single = 'one'; return this; }
   upsert(rows){ this.op = 'upsert'; this._rows = clone(Array.isArray(rows) ? rows : [rows]); return this; }
@@ -98,6 +99,7 @@ class Query {
       if (this._order) rows.sort((a, b) => String(a[this._order]).localeCompare(String(b[this._order])));
       if (this._range) rows = rows.slice(this._range[0], this._range[1] + 1);
       else if (this.faults.maxRows) rows = rows.slice(0, this.faults.maxRows);
+      if (this._limit) rows = rows.slice(0, this._limit);
       this.log.push({ op: 'select', table: this.requested, n: rows.length });
       if (this._single) {
         if (this._single === 'one' && rows.length !== 1) return { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } };
@@ -125,11 +127,14 @@ class Query {
       }
       for (const r of this._rows) {
         const k = kljuc(t, r);
+        if (!this.db[t]) this.db[t] = [];          // npr. log_koriscenja — nije u seed-u
+        if (t === 'log_koriscenja' && r.id == null) { r.id = (this.db[t].length + 1); r.ts = r.ts || new Date().toISOString(); }
         const i = this.db[t].findIndex(x => kljuc(t, x) === k);
         /* kao PostgREST: kolone koje payload ne nosi ostaju netaknute pri update-u */
         if (i >= 0) this.db[t][i] = Object.assign({}, this.db[t][i], clone(r)); else this.db[t].push(clone(r));
       }
-      this.log.push({ op: 'upsert', table: t, n: this._rows.length, keys: this._rows.map(r => kljuc(t, r)), cols: Object.keys(this._rows[0] || {}) });
+      /* log_koriscenja je append-only i van PUSH_TABLES — loguje se kao op:'log' da testovi koji broje upserte ostanu tacni */
+      this.log.push({ op: t === 'log_koriscenja' ? 'log' : 'upsert', table: t, n: this._rows.length, keys: this._rows.map(r => kljuc(t, r)), cols: Object.keys(this._rows[0] || {}) });
       return { data: this._rows, error: null };
     }
     if (this.op === 'update') {
@@ -216,6 +221,38 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
     async rpc(name, args){
       log.push({ op: 'rpc', name, args });
       if (faults.rpcFail) return { data: null, error: { message: faults.rpcFail } };
+      /* Migracija 12: nalozi i log — isti guardovi kao na serveru (direktor; ne sebi; ne poslednjem direktoru). */
+      const emailOd = id => Object.keys(authOpts.users || {}).find(e => (authOpts.users[e] || {}).id === id) || null;
+      const idOd = email => ((authOpts.users || {})[String(email || '').toLowerCase()] || {}).id || null;
+      const ja = auth._session() && auth._session().user;
+      const upisiLog = (dogadjaj, detalj) => { db.log_koriscenja = db.log_koriscenja || []; db.log_koriscenja.push({ id: db.log_koriscenja.length + 1, ts: new Date().toISOString(), user_id: ja && ja.id, email: ja && ja.email, uloga: 'direktor', dogadjaj, detalj }); };
+      if (name === 'nalozi_pregled') {
+        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor vidi naloge.' } };
+        const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
+        return { data: rows, error: null };
+      }
+      if (name === 'dodeli_ulogu') {
+        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor dodeljuje uloge.' } };
+        const uid = idOd(args.p_email); if (!uid) return { data: null, error: { message: `Nema naloga ${args.p_email}.` } };
+        if (ja && uid === ja.id) return { data: null, error: { message: 'Sopstvenu ulogu ne možeš da menjaš — zamoli drugog direktora.' } };
+        if (!['direktor', 'rukovodilac'].includes(args.p_uloga)) return { data: null, error: { message: 'Nepoznata uloga: ' + args.p_uloga } };
+        if (args.p_uloga === 'rukovodilac' && !(db.zaposleni || []).some(z => z.id === args.p_zaposleni_id)) return { data: null, error: { message: 'Rukovodilac mora biti vezan za postojećeg zaposlenog.' } };
+        db.profili = db.profili || []; const p = db.profili.find(x => x.user_id === uid); const stara = p ? p.uloga : null;
+        if (stara === 'direktor' && args.p_uloga !== 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor — prvo dodeli ulogu direktora nekom drugom.' } };
+        const zid = args.p_uloga === 'direktor' ? null : args.p_zaposleni_id; const z = (db.zaposleni || []).find(x => x.id === zid);
+        if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.ime = z ? z.ime : args.p_email; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, ime: z ? z.ime : args.p_email });
+        upisiLog('uloga_promena', { email: args.p_email, stara, nova: args.p_uloga, zaposleni_id: zid });
+        return { data: stara ? 'izmenjeno' : 'dodeljeno', error: null };
+      }
+      if (name === 'ukloni_pristup') {
+        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor uklanja pristup.' } };
+        const uid = idOd(args.p_email); if (!uid) return { data: null, error: { message: `Nema naloga ${args.p_email}.` } };
+        if (ja && uid === ja.id) return { data: null, error: { message: 'Sopstveni pristup ne možeš da ukloniš.' } };
+        const p = (db.profili || []).find(x => x.user_id === uid); if (!p) return { data: null, error: null };
+        if (p.uloga === 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor.' } };
+        db.profili = db.profili.filter(x => x.user_id !== uid); upisiLog('pristup_uklonjen', { email: args.p_email, stara: p.uloga });
+        return { data: null, error: null };
+      }
       if (name === 'zdravlja_mojih') {
         if (!profil()) return { data: [], error: null };
         const dir = ctx.isDir(), z = ctx.mojZ();

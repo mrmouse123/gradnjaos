@@ -454,6 +454,77 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T28 nalozi i log (migracija 12): tab samo direktor, RPC guardovi, log dogadjaji, log van PUSH_TABLES ---- */
+  section('T28 nalozi i log');
+  const DIR_S28 = { user: { id: 'u-dir', email: 'direktor@test' } }, RUK_S28 = { user: { id: 'u-ruk', email: 'petar@test' } };
+  const USERS28 = { 'direktor@test': { id: 'u-dir', password: 'dir' }, 'petar@test': { id: 'u-ruk', password: 'ruk' }, 'novi@test': { id: 'u-novi', password: 'x' } };
+  const cekaj = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
+  await acheck('tab Nalozi: direktor ga ima i vidi listu (bez uloge oznacen); rukovodilac ga nema i viewNalozi() ga vraca na dash', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
+    if (!a.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('direktor nema tab nalozi');
+    a.run("go('nalozi')"); await cekaj();
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('novi@test') || !h.includes('bez uloge')) throw new Error('lista ne prikazuje nalog bez uloge');
+    if (!h.includes('petar@test')) throw new Error('lista ne prikazuje rukovodioca');
+    if (!/badge b-blue">ti</.test(h)) throw new Error('sopstveni nalog nije oznacen kao "ti"');
+    if (h.includes("ukloniPristup('direktor@test')")) throw new Error('nudi uklanjanje sopstvenog pristupa');
+    const b = await boot({ supabase: true, seed: {}, session: RUK_S28, users: USERS28 });
+    if (b.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('rukovodilac ima tab nalozi');
+    b.run("current='nalozi'; render();");
+    if (b.run('current') !== 'dash') throw new Error('viewNalozi nije vratio rukovodioca na dash: ' + b.run('current'));
+    if (b.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'nalozi_pregled')) throw new Error('rukovodilac je pozvao nalozi_pregled');
+  });
+  await acheck('dodeliUlogu: novom nalogu rukovodilac+z2 -> profil + log uloga_promena; sebi odbijeno; ukloniPristup brise profil + log', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
+    a.run("go('nalozi')"); await cekaj();
+    a.g.document.getElementById('n_email').value = 'Novi@test'; a.g.document.getElementById('n_uloga').value = 'rukovodilac'; a.g.document.getElementById('n_zap').value = 'z2';
+    await a.run('dodeliUlogu()'); await cekaj();
+    const p = (a.g.__mock._db.profili || []).find(x => x.user_id === 'u-novi');
+    if (!p || p.uloga !== 'rukovodilac' || p.zaposleni_id !== 'z2') throw new Error('profil nije napravljen: ' + JSON.stringify(p));
+    const lg = a.g.__mock._db.log_koriscenja || [];
+    if (!lg.some(l => l.dogadjaj === 'uloga_promena' && l.detalj && l.detalj.email === 'novi@test')) throw new Error('nema uloga_promena u logu');
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Promena uloge') || !h.includes('novi@test')) throw new Error('log tabela ne prikazuje promenu uloge');
+    const preAlert = a.g._calls.alert.length;
+    a.g.document.getElementById('n_email').value = 'direktor@test'; a.g.document.getElementById('n_uloga').value = 'rukovodilac'; a.g.document.getElementById('n_zap').value = 'z1';
+    await a.run('dodeliUlogu()'); await cekaj();
+    if (!a.g._calls.alert.slice(preAlert).some(m => /Sopstvenu ulogu/.test(m))) throw new Error('dodela sebi nije odbijena');
+    if ((a.g.__mock._db.profili || []).find(x => x.user_id === 'u-dir').uloga !== 'direktor') throw new Error('sopstvena uloga promenjena!');
+    await a.run("ukloniPristup('novi@test')"); await cekaj();
+    if ((a.g.__mock._db.profili || []).some(x => x.user_id === 'u-novi')) throw new Error('profil nije uklonjen');
+    if (!lg.some(l => l.dogadjaj === 'pristup_uklonjen')) throw new Error('nema pristup_uklonjen u logu');
+  });
+  await acheck('log koriscenja: otvaranje pri bootu, cuvanje posle doSave (tabela -> broj), odjava PRE signOut; rukovodilac upisuje ali ne cita; nije u PUSH_TABLES', async () => {
+    /* rukovodilac na praznoj bazi ne seje demo (pada u memoriju) — zato prvo direktor zaseje, pa rukovodilac dobije taj seed */
+    const s0 = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
+    const seed28 = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed28.log_koriscenja;
+    const a = await boot({ supabase: true, seed: seed28, session: RUK_S28, users: USERS28 });
+    if (a.run('mode') !== 'supabase') throw new Error('priprema: mode = ' + a.run('mode'));
+    const lg = () => a.g.__mock._db.log_koriscenja || [];
+    if (!lg().some(l => l.dogadjaj === 'otvaranje' && l.email === 'petar@test')) throw new Error('nema "otvaranje" posle boota');
+    a.run("DATA.zadaci.find(t=>t.gr==='g1').naziv='T28 log';"); await a.run('doSave()'); await cekaj();
+    const c = lg().find(l => l.dogadjaj === 'cuvanje');
+    if (!c || !c.detalj || c.detalj.zadaci !== 1) throw new Error('nema "cuvanje" sa zadaci:1 — ' + JSON.stringify(c && c.detalj));
+    if (a.run("PUSH_TABLES.includes('log_koriscenja')")) throw new Error('log_koriscenja je u PUSH_TABLES (pravilo 8)');
+    if (a.run("Object.keys(DATA).includes('log_koriscenja')")) throw new Error('log_koriscenja ucitan u DATA');
+    a.g.__mock._log.length = 0;
+    await a.run('odjava()');
+    const ops = a.g.__mock._log.map(l => l.op === 'auth.signOut' ? 'signOut' : l.op === 'log' ? 'log' : null).filter(Boolean);
+    if (ops.indexOf('log') < 0 || ops.indexOf('log') > ops.indexOf('signOut')) throw new Error('odjava nije upisana pre signOut: ' + ops.join(','));
+    if (!lg().some(l => l.dogadjaj === 'odjava')) throw new Error('nema "odjava" u logu');
+  });
+  await acheck('prijava lozinkom upisuje "prijava" pre reload-a; rpc pukne -> tab Nalozi prikazuje poruku, ne pada', async () => {
+    const a = await boot({ supabase: true, seed: {}, session: null, users: USERS28 });
+    a.g.document.getElementById('l_email').value = 'direktor@test'; a.g.document.getElementById('l_pw').value = 'dir';
+    await a.run('prijava()'); await cekaj();
+    if (!(a.g.__mock._db.log_koriscenja || []).some(l => l.dogadjaj === 'prijava' && l.email === 'direktor@test')) throw new Error('nema "prijava" u logu');
+    if (a.g._calls.reload !== 1) throw new Error('reload posle prijave = ' + a.g._calls.reload);
+    const b = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28, faults: { rpcFail: 'mreza' } });
+    b.run("go('nalozi')"); await cekaj();
+    const h = b.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Ne mogu da učitam naloge')) throw new Error('nema poruke o gresci pri rpcFail');
+  });
+
   /* ---- T27 tema: svetla / tamna / auto (prefers-color-scheme), bez bljeska, bez hardkodiranog #fff na var(--ink) ---- */
   section('T27 tema');
   check('CSS: tamna paleta u oba oblika (sistem + rucno), svetla i na .rpt-page, bez color:#fff na pozadini var(--ink)', () => {
@@ -1198,7 +1269,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('sesija bez profila: poruka + odjava, bez ucitavanja', async () => {
     const a = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-nepoznat', email: 'stranac@test' } } });
     const v = a.g.document.getElementById('view').innerHTML;
-    if (!/nije povezan/.test(v)) throw new Error('nema poruke o nepovezanom nalogu');
+    if (!/nije dodeljena uloga/.test(v)) throw new Error('nema poruke o nepovezanom nalogu');
     if (!a.g.__mock._log.some(l => l.op === 'auth.signOut')) throw new Error('nije odjavljen');
     if (a.g.__mock._log.some(l => l.op === 'select' && l.table === 'gradilista')) throw new Error('ucitao gradilista bez profila');
   });
