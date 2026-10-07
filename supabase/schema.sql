@@ -1024,3 +1024,7 @@ begin
 end $$;
 revoke execute on function angazovanost(date, date) from public, anon;
 grant  execute on function angazovanost(date, date) to authenticated;
+
+-- dopuna migracije 14 (2026-10-08): dokumenti.data bez SELECT granta (table-level select se mora ukinuti)
+revoke select on dokumenti from authenticated;
+grant select (id, gr, autor, autor_uid, datum, naziv, tip, velicina, opis) on dokumenti to authenticated;

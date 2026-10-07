@@ -168,3 +168,10 @@ vrednost, pa "1.250" (1,25 m3) postaje 1250.
 Sesija se moze restartovati dok subagent radi (dva puta u istoj rundi). Pre
 ponovnog pokretanja: `git status` + `git diff` — delimican rad je na disku; novom
 worker-u dati "proveri sta vec postoji u diff-u, dopuni" umesto da krece ispocetka.
+
+## Lekcija 27 (2026-10-08, workeri na index.html)
+Jedan worker je ceo index.html pretvorio u CRLF (node skripta "CRLF-aware"); `git diff --stat`
+to nije pokazao jer autocrlf normalizuje diff. Provera posle svakog worker-a:
+`node -e "...(s.match(/\r/g)||[]).length"` — i LF pravilo ide u svaki prompt. Takodje:
+workeri u paralelnom radu vide tudje izmene u radnom stablu (README, todo) i prijave ih
+kao "neocekivane" — reci im unapred sta je ko menjao.

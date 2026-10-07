@@ -378,3 +378,9 @@ insert into sifrarnik (id, naziv, jm, grupa, modul, redosled) values
   ('sf-i-51','Fasada','m²','Završni radovi','izvodjenje',151), ('sf-i-52','Stolarija','kom','Završni radovi','izvodjenje',152), ('sf-i-53','Podovi','m²','Završni radovi','izvodjenje',153), ('sf-i-54','Keramika','m²','Završni radovi','izvodjenje',154), ('sf-i-55','Moleraj','m²','Završni radovi','izvodjenje',155),
   ('sf-i-61','Asfaltiranje','m²','Niskogradnja','izvodjenje',161), ('sf-i-62','Ivičnjaci','m','Niskogradnja','izvodjenje',162), ('sf-i-63','Kolovozna konstrukcija','m³','Niskogradnja','izvodjenje',163)
 on conflict (id) do nothing;
+
+-- ---------- 10) dopuna 2026-10-08: dokumenti.data stvarno bez SELECT granta ----------
+-- Supabase podrazumevano daje ALL na novu tabelu roli authenticated, pa kolonski grant iznad
+-- nije imao efekta dok se table-level SELECT ne ukine (lekcija 15). Primenjeno na zivu bazu.
+revoke select on dokumenti from authenticated;
+grant select (id, gr, autor, autor_uid, datum, naziv, tip, velicina, opis) on dokumenti to authenticated;
