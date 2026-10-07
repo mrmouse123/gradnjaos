@@ -454,6 +454,56 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T30 napredak iz predmera (migracija 13): ugovoreno × izvedeno; direktor lokalno, rukovodilac sa servera; rucni napredak samo bez predmera ---- */
+  section('T30 napredak iz predmera');
+  await acheck('direktor: setIzv -> napredak = Σ min(izv,kol)·cena / Σ kol·cena; bez cena -> po kolicinama; bez predmera -> null i rucni ostaje', async () => {
+    const a = await boot();
+    const gid = a.run("ROLE='all'; DATA.predmer=DATA.predmer.filter(x=>x.gr!=='g1'); DATA.predmer.push({id:'pmA',gr:'g1',poz:'A',jm:'m',kol:10,cena:100,izv:0,zaduzen:null},{id:'pmB',gr:'g1',poz:'B',jm:'m',kol:10,cena:300,izv:0,zaduzen:null}); 'g1'");
+    if (a.run("napredakIzPredmera('g1')") !== 0) throw new Error('pocetni napredak iz predmera nije 0');
+    a.run("setIzv('pmB','5')");          // 5*300 / (1000+3000) = 37.5 -> 38
+    if (a.run("grById.g1.napredak") !== 38) throw new Error('napredak posle setIzv = ' + a.run('grById.g1.napredak') + ' (ocekivano 38)');
+    a.run("setIzv('pmA','99')");         // klamp na 10 -> (1000+1500)/4000 = 62.5 -> 63
+    if (a.run("grById.g1.napredak") !== 63) throw new Error('napredak posle klampa = ' + a.run('grById.g1.napredak') + ' (ocekivano 63)');
+    a.run("DATA.predmer.forEach(x=>{ if(x.gr==='g1') x.cena=0; })");
+    if (a.run("napredakIzPredmera('g1')") !== 75) throw new Error('bez cena treba po kolicinama 15/20=75, dobio ' + a.run("napredakIzPredmera('g1')"));
+    const bez = a.run("DATA.gradilista.find(g=>!DATA.predmer.some(x=>x.gr===g.id))");
+    if (!bez) throw new Error('priprema: nema gradilista bez predmera');
+    if (a.run(`napredakIzPredmera(${JSON.stringify(bez.id)})`) !== null) throw new Error('bez predmera mora biti null');
+  });
+  await acheck('formUpdate: sa predmerom napredak je samo prikaz (nema u_nap) i saveUpdate ga ne menja; bez predmera rucni unos radi', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; DATA.predmer.push({id:'pmC',gr:'g1',poz:'C',jm:'m',kol:4,cena:10,izv:1,zaduzen:null}); osveziNapredak('g1');");
+    const nap = a.run('grById.g1.napredak');
+    a.run("formUpdate('g1')");
+    const h = a.g.document.getElementById('modal').innerHTML;
+    if (h.includes('id="u_nap"')) throw new Error('forma nudi rucni napredak iako postoji predmer');
+    if (!h.includes('računa se iz')) throw new Error('nema objasnjenja da se napredak racuna iz predmera');
+    a.g.document.getElementById('u_nap').value = '99'; a.g.document.getElementById('u_st').value = 'u toku'; a.g.document.getElementById('u_faza').value = a.run('grById.g1.faza');
+    a.run("saveUpdate('g1')");
+    if (a.run('grById.g1.napredak') !== nap) throw new Error('saveUpdate je pregazio izvedeni napredak: ' + a.run('grById.g1.napredak') + ' != ' + nap);
+    const bez = a.run("DATA.gradilista.find(g=>!DATA.predmer.some(x=>x.gr===g.id)).id");
+    a.run(`formUpdate(${JSON.stringify(bez)})`);
+    if (!a.g.document.getElementById('modal').innerHTML.includes('id="u_nap"')) throw new Error('bez predmera forma mora imati rucni napredak');
+  });
+  await acheck('rukovodilac (cene null): izv ide na server, trigger racuna napredak, zdravlja_mojih ga vraca i klijent ga preuzme bez ponovnog slanja', async () => {
+    const DIR = { user: { id: 'u-dir', email: 'direktor@test' } }, RUK = { user: { id: 'u-ruk', email: 'petar@test' } };
+    const s0 = await boot({ supabase: true, seed: {}, session: DIR });
+    s0.run("DATA.predmer.push({id:'pmR1',gr:'g1',poz:'R1',jm:'m',kol:10,cena:100,izv:0,zaduzen:null},{id:'pmR2',gr:'g1',poz:'R2',jm:'m',kol:10,cena:300,izv:0,zaduzen:null});");
+    await s0.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    const a = await boot({ supabase: true, seed, session: RUK });
+    if (a.run("DATA.predmer.find(x=>x.id==='pmR2').cena") != null) throw new Error('priprema: rukovodilac vidi cenu');
+    a.run("setIzv('pmR2','5')");
+    if (a.run('grById.g1.napredak') === 38) throw new Error('rukovodilac ne sme lokalno da racuna (nema cene) — a napredak je vec 38');
+    await a.run('doSave()'); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    const srv = a.g.__mock._db.gradilista.find(g => g.id === 'g1').napredak;
+    if (srv !== 38) throw new Error('server (trigger) napredak = ' + srv + ', ocekivano 38');
+    if (a.run('grById.g1.napredak') !== 38) throw new Error('klijent nije preuzeo napredak sa servera: ' + a.run('grById.g1.napredak'));
+    a.g.__mock._log.length = 0;
+    await a.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    if (a.g.__mock._log.some(l => l.op === 'upsert' && l.table === 'gradilista')) throw new Error('preuzeti napredak je poslat nazad kao izmena (snapshot nije uskladjen)');
+  });
+
   /* ---- T29 novo gradiliste (2026-10-07): bez kontakt nadzora; projektovanje = ceklista svih faza/podfaza sa zaduzenim ---- */
   section('T29 novo gradiliste: ceklista faza');
   await acheck('formSite(): sve 3 faze i sve podfaze kao cekboksi + zaduzeni; cekirane postaju redovi specifikacije sa zaduzenim', async () => {

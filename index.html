@@ -882,8 +882,12 @@ async function osveziZdravlje(rerender){
   try{
     const {data,error}=await supa.rpc('zdravlja_mojih');
     if(error) throw new Error(error.message||String(error));
-    const novi={}; (data||[]).forEach(r=>{ if(r&&r.id!=null) novi[r.id]=r.zdravlje; });
-    const promena=JSON.stringify(novi)!==JSON.stringify(ZDR_SRV||{});
+    const novi={}; let napPromena=false;
+    (data||[]).forEach(r=>{ if(!r||r.id==null) return; novi[r.id]=r.zdravlje;
+      /* napredak racuna server (trigger na predmer); preuzmi ga i uskladi snapshot da diff ne salje isti broj nazad */
+      const g=grById[r.id]; if(g && r.napredak!=null && g.napredak!==r.napredak){ g.napredak=r.napredak; napPromena=true;
+        const red=rowsZa('gradilista',DATA).find(x=>x.id===g.id); if(red && PUSHED.gradilista) PUSHED.gradilista[g.id]=JSON.stringify(red); } });
+    const promena=napPromena || JSON.stringify(novi)!==JSON.stringify(ZDR_SRV||{});
     ZDR_SRV=novi;
     if(rerender && promena) render();
   }catch(e){ console.error('zdravlja_mojih:', e); }
@@ -2429,10 +2433,29 @@ function ubaciSablonNivoa(grId){
   if(!nove.length){ alert('Sve stavke šablona već postoje u specifikaciji.'); return; }
   const ts=Date.now();
   nove.forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:esc(niv+' — '+sv), jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
-  saveState(); render();
+  osveziNapredak(grId); saveState(); render();
 }
 let PRED_ID=null;
 function predmerZa(grId){ return (DATA.predmer||[]).filter(x=>x.gr===grId); }
+/* Napredak = ugovoreno × izvedeno (od 2026-10-07): vrednosno ponderisan udeo izvedenog iz
+   predmera; ako su sve cene 0 → po kolicinama. null = nema predmera (ostaje rucni napredak).
+   ISTA formula je na serveru (napredak_iz_predmera + trigger na predmer, migracija 13) —
+   server je izvor istine; direktor je racuna i lokalno radi trenutnog prikaza, rukovodilac
+   (cene null) je dobija iz zdravlja_mojih(). Menjati na OBA mesta. */
+function napredakIzPredmera(grId){
+  const l=predmerZa(grId); if(!l.length) return null;
+  const kol=r=>+r.kol||0, izv=r=>Math.min(Math.max(0,+r.izv||0), kol(r)), cena=r=>+r.cena||0;
+  const ugV=l.reduce((s,r)=>s+kol(r)*cena(r),0);
+  if(ugV>0) return Math.max(0,Math.min(100,Math.floor(100*l.reduce((s,r)=>s+izv(r)*cena(r),0)/ugV+0.5)));
+  const ugK=l.reduce((s,r)=>s+kol(r),0);
+  return ugK>0 ? Math.max(0,Math.min(100,Math.floor(100*l.reduce((s,r)=>s+izv(r),0)/ugK+0.5))) : 0;
+}
+function imaPredmer(grId){ return predmerZa(grId).length>0; }
+/* Posle svake promene predmera: direktor (ima cene) azurira napredak lokalno; rukovodilac ceka server. */
+function osveziNapredak(grId){
+  const g=grById[grId]; if(!g||!canFinance()) return;
+  const n=napredakIzPredmera(grId); if(n!==null && g.napredak!==n) g.napredak=n;
+}
 function jePro(g){ return (g.modul||'izvodjenje')==='projektovanje'; }
 function predNaslov(g){ return jePro(g)?'Specifikacija usluga':'Predmer i količine'; }
 function openPredmer(id){ if(!smemNa(id)) return; PRED_ID=id; current='predmer'; render(); window.scrollTo(0,0); closeDrawer(); }
@@ -2488,7 +2511,7 @@ function setIzv(pid,val){
   /* Klamp na ugovorenu kolicinu: prikaz je i ranije klampovao, ali CSV i kumulativ
      (osnov za fakturisanje) su izvozili sirovu vrednost. */
   x.izv=Math.min(+x.kol||0, Math.max(0, broj(val)));
-  saveState(); render();
+  osveziNapredak(x.gr); saveState(); render();
 }
 /* formPredmerRed(grId) = nova pozicija; formPredmerRed(grId,pid) = izmena postojece (samo direktor). */
 function formPredmerRed(grId,pid){
@@ -2525,10 +2548,10 @@ function savePredmerRed(grId,pid){
     x.izv=Math.min(x.izv||0, x.kol);                      // izvedeno ne sme preko nove ugovorene kolicine
     const ct=String(v('f_pm_cena')).trim(); if(canFinance()&&ct!==''&&Number.isFinite(+ct)) x.cena=+ct;
     x.zaduzen=v('f_pm_zad')||null;
-    saveState(); closeModal(); render(); return;
+    osveziNapredak(grId); saveState(); closeModal(); render(); return;
   }
   DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
-  saveState(); closeModal(); render();
+  osveziNapredak(grId); saveState(); closeModal(); render();
 }
 function formPredmerImport(grId){
   if(!isDirector()) return;
@@ -2555,7 +2578,7 @@ function savePredmerImport(grId){
     n++;
   });
   if(!n){ alert('Nijedna pozicija nije prepoznata — proveri da su kolone razdvojene tabom ili tačka-zarezom.'); return; }
-  saveState(); closeModal(); render();
+  osveziNapredak(grId); saveState(); closeModal(); render();
 }
 function izvozPredmer(grId){
   if(!isDirector()) return;
@@ -3134,7 +3157,9 @@ function formUpdate(id){
     <div class="m-b">
       <div style="font-size:13px;color:var(--muted);margin:-6px 0 14px">${g.naziv}</div>
       <div class="f-2">
-        <div class="f-row"><label>Napredak (%)</label><input id="u_nap" type="number" min="0" max="100" value="${g.napredak}"></div>
+        ${imaPredmer(id)
+          ?`<div class="f-row"><label>Napredak (%)</label><div style="font-size:13px;padding:7px 0"><b class="num">${g.napredak}%</b> <span style="color:var(--muted)">— računa se iz ${jePro(g)?'specifikacije':'predmera'} (ugovoreno × izvedeno)</span></div></div>`
+          :`<div class="f-row"><label>Napredak (%)</label><input id="u_nap" type="number" min="0" max="100" value="${g.napredak}"></div>`}
         <div class="f-row"><label>Status</label><select id="u_st">${Object.keys(STATUS).map(s=>`<option value="${s}" ${g.status===s?'selected':''}>${STATUS[s].t}</option>`).join('')}</select></div>
       </div>
       <div class="f-row"><label>Faza radova</label><select id="u_faza">${fazeOpts}</select></div>
@@ -3149,7 +3174,7 @@ function saveUpdate(id){
   const g=grById[id]; if(!g)return;
   if(!(isDirector()||g.rukovodilac===ROLE)) return;
   const el=x=>document.getElementById(x);
-  if(String(el('u_nap').value).trim()!=='') g.napredak=Math.round(Math.max(0,Math.min(100,+el('u_nap').value||0)));
+  if(!imaPredmer(id) && el('u_nap') && String(el('u_nap').value).trim()!=='') g.napredak=Math.round(Math.max(0,Math.min(100,+el('u_nap').value||0)));   // sa predmerom: napredak je izveden, ne rucni
   g.status=el('u_st').value; g.faza=el('u_faza').value;
   if(canFinance()&&el('u_pot')) g.potroseno=+el('u_pot').value||0;
   if(g.napredak===100&&(g.status==='u toku'||g.status==='kasni')) g.status='zavrseno';

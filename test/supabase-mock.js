@@ -31,6 +31,15 @@ const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v
 const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'] };
 
 /* Primarni ključ po tabeli — join tabele i profili nemaju `id`. */
+/* Migracija 13: trigger na predmer osvezava gradilista.napredak (ugovoreno × izvedeno) — ista formula kao napredak_iz_predmera. */
+function osveziNapredakMock(db, gr){
+  if (!gr || !db.gradilista) return;
+  const l = (db.predmer || []).filter(x => x.gr === gr); if (!l.length) return;
+  const kol = r => +r.kol || 0, izv = r => Math.min(Math.max(0, +r.izv || 0), kol(r)), cena = r => +r.cena || 0;
+  const ugV = l.reduce((s, r) => s + kol(r) * cena(r), 0), ugK = l.reduce((s, r) => s + kol(r), 0);
+  const n = ugV > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r) * cena(r), 0) / ugV + 0.5) : ugK > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r), 0) / ugK + 0.5) : 0;
+  const g = db.gradilista.find(x => x.id === gr); if (g) g.napredak = Math.max(0, Math.min(100, n));
+}
 function kljuc(t, r){
   if (t === 'zaposleni_gradiliste')  return r.zaposleni_id + '|' + r.gradiliste_id;
   if (t === 'podizvodjac_gradiliste') return r.podizvodjac_id + '|' + r.gradiliste_id;
@@ -132,6 +141,7 @@ class Query {
         const i = this.db[t].findIndex(x => kljuc(t, x) === k);
         /* kao PostgREST: kolone koje payload ne nosi ostaju netaknute pri update-u */
         if (i >= 0) this.db[t][i] = Object.assign({}, this.db[t][i], clone(r)); else this.db[t].push(clone(r));
+        if (t === 'predmer') osveziNapredakMock(this.db, r.gr);
       }
       /* log_koriscenja je append-only i van PUSH_TABLES — loguje se kao op:'log' da testovi koji broje upserte ostanu tacni */
       this.log.push({ op: t === 'log_koriscenja' ? 'log' : 'upsert', table: t, n: this._rows.length, keys: this._rows.map(r => kljuc(t, r)), cols: Object.keys(this._rows[0] || {}) });
@@ -149,6 +159,7 @@ class Query {
       }
       let n = 0;
       this.db[t] = this.db[t].map(r => { if (this._match(r)) { n++; return Object.assign({}, r, clone(this._patch)); } return r; });
+      if (t === 'predmer') { const grs = new Set(this.db[t].filter(r => this._match(r)).map(r => r.gr)); grs.forEach(gr => osveziNapredakMock(this.db, gr)); }
       /* log kao 'upsert' da stariji testovi (koji broje upserte po tabeli) ostanu validni */
       this.log.push({ op: 'upsert', via: 'update', table: t, n, keys: n ? [kljuc(t, this._patch)] : [], cols: Object.keys(this._patch) });
       return { data: null, error: null };
@@ -258,7 +269,8 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         const dir = ctx.isDir(), z = ctx.mojZ();
         const ids = (db.gradilista || []).filter(g => dir || g.rukovodilac === z).map(g => g.id).sort();
         const sk = faults.zdravlja || {};
-        return { data: ids.map(id => ({ id, zdravlje: sk[id] !== undefined ? sk[id] : 77 })), error: null };
+        /* migracija 13: + napredak (server ga racuna trigerom na predmer, v. osveziNapredakMock) */
+        return { data: ids.map(id => ({ id, zdravlje: sk[id] !== undefined ? sk[id] : 77, napredak: ((db.gradilista || []).find(g => g.id === id) || {}).napredak })), error: null };
       }
       return { data: null, error: { message: 'Could not find the function public.' + name } };
     },

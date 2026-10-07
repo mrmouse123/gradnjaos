@@ -64,7 +64,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   direktor → lista, sebi odbijeno, uklanjanje + log. Mock: `rpc` sve tri + `limit()`,
   insert u `log_koriscenja` se loguje kao `op:'log'` (ne `upsert`). T28.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..12.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..13.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -126,6 +126,15 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    praznog/`Number.isFinite`. `broj()` je za tekstualna polja i paste iz Excela.
 5. Izračunate vrednosti: potroseno(g) iz troskovi_st stavki (fallback g.potroseno),
    naplSum(g) iz situacija — ne uvoditi paralelne izvore istine.
+   **Napredak iz predmera** (od 2026-10-07, migracija 13): kad gradilište ima predmer,
+   `napredak` = Σ min(izv,kol)·cena / Σ kol·cena (bez cena: po količinama) — računa ga
+   SERVER trigerom na `predmer` (`napredak_iz_predmera`, radi kao vlasnik pa ima cene i
+   kad rukovodilac učita izvedeno); direktor isto računa lokalno (`napredakIzPredmera`,
+   `osveziNapredak` posle svake izmene predmera) radi trenutnog prikaza; rukovodilac
+   (cene null) ga dobija iz `zdravlja_mojih()` (`osveziZdravlje` ga upiše i uskladi
+   `PUSHED` da ga diff ne šalje nazad). Ručni napredak samo bez predmera (`formUpdate`
+   ga tada nudi, inače je samo prikaz). Formula na DVA mesta — menjati oba. T30.
+   Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije).
 6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` NE SME
    dobiti `null` kao default — default na smislen datum (isti kao u formi). Jedini
    null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string
