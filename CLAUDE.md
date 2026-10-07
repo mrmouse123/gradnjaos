@@ -72,6 +72,16 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `primeniIzvedeno` menja SAMO `izv` (trigger za ne-direktora ionako gazi ostalo) →
   `osveziNapredak`. Fixture `test/fixtures/izvedeno.xlsx` (openpyxl); stub prosleđuje
   `ReadableStream/DecompressionStream/Response/TextDecoder` iz Node-a. T31.
+- **Dokumenti, šifarnik, brisanje, tajmer** (2026-10-08, migracije 14–15): `dokumenti`
+  (data-URL u koloni `data` BEZ select granta — lista iz `dokumenti_v`, sadržaj kroz
+  `dokument_podaci(id)`; `pushAll` NE šalje `data` pri update-u; briše svoje autor,
+  sve super), `sifrarnik` (mere/pozicije; `sifrarnikZa(modul)`; demo = `sifrarnikDemo()`
+  iz `NIVOI_DOK` + `SIFRARNIK_IZV`, ISTI sadržaj kao seed u migraciji 14; `formSite`
+  ček-lista iz njega za oba modula), brisanje (`obrisiRed` = server PRVO pa lokalno,
+  poruka pri odbijanju, log `brisanje`; `obrisi_gradiliste` RPC + lokalno čišćenje
+  zavisnih tabela i `PUSHED`), `rad_na_zadatku` (tajmer: start/kraj, `minuta` računa
+  server trigerom; `angazovanost(od,do)` RPC za upravu; klijent loguje
+  `zadatak_start/zadatak_kraj`).
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
   helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..15.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
@@ -101,8 +111,9 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - test-rukovodilac: `petar@gradnjaos.test` → zaposleni `z1` (Petar Kovačević)
 - Lozinke su poslate Jovanu u chatu, NISU u repou. Promena: dugme "Lozinka" u sidebaru.
 - Novi korisnik: Supabase → Authentication → Users → Add user (email+lozinka,
-  auto confirm), pa u SQL editoru `select povezi_profil('mejl','rukovodilac','zNN');`
-  (ili `'direktor'` bez trećeg argumenta). Bez profila nalog vidi nula podataka.
+  auto confirm), pa u aplikaciji **Admin kokpit** → dodeli ulogu (uprava; admin ne
+  može da dodeli `direktor`). SQL alternativa: `povezi_profil(...)`. Bez profila nalog
+  vidi nula podataka. Dodela se loguje (`uloga_promena`).
 - Magic link ("Pošalji mi link") radi tek kad se u Auth → URL Configuration
   postavi Site URL na pravu adresu app-a (posle GitHub Pages deploya).
 
@@ -118,13 +129,26 @@ Izvođenje: 8 faza × zadaci po tipu visoko/niskogradnja, `primeniSablonFaza()`)
 finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine), profili (auth).
 
 ## Pravila koja NE kršiti
-1. Rukovodilac NIKAD ne vidi: marže, cene, jedinične cene, naplatu, kumulativ,
-   tabove Klijenti/Naplata. Direktor (ROLE==='all') vidi sve.
-2. SVAKA mutirajuća I čitajuća funkcija koja prima `grId` spolja ima na početku
-   `smemNa(grId)` (ili ekvivalentnu proveru) — funkcije su globalne, sakriveno
-   dugme nije zaštita. Server sprovodi isto pravilo RLS-om; UI guard ostaje
-   zbog lokalnog `DATA` keša i UX-a (bez njega bi red "postojao" do refresh-a,
-   a upis tiho pao).
+1. **Šest uloga (od 2026-10-07, migracija 14; odluka klijenta):** `direktor` (super:
+   sve + BRISANJE + dodela direktora), `admin` (sve bez brisanja; ne dira direktore),
+   `rukovodilac` (svoja gradilišta; finansije SAMO uz `vidi_finansije` = „Rukovodilac 1"),
+   `radnik` (gradilišta gde je u timu: čita, svoj dnevnik/zadaci/dokumenta), `spoljni`
+   (kao radnik, vezan za `podizvodjaci.id`). Finansije (marže, cene, naplata, kumulativ,
+   troškovi) vidi SAMO `canFinance()` = uprava ili rukovodilac sa zastavicom — nikad
+   radnik/spoljni. Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
+   gradilišta, rokovi, zadaci, dnevnik, magacin, trebovanje; `pay` samo `canFinance`).
+   Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
+   `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
+   Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati
+   sva 4. „Pogled kao": `setRole('all'|'admin'|'<z>'|'<z>:fin'|'radnik:<z>'|'spoljni:<p>')`.
+2. Dve provere, ne jedna: `smemNa(grId)` = VODIM (pisanje: uprava ili rukovodilac tog
+   gradilišta) i `vidimGr(grId)` = ČITAM (+ radnik u timu, spoljni na gradilištu).
+   SVAKA funkcija koja prima `grId`/id spolja počinje jednom od njih (ili `jeSuper()`
+   za brisanje, `t.zad===ROLE` za svoj zadatak, `autor===ROLE` za svoj unos) — funkcije
+   su globalne, sakriveno dugme nije zaštita. Server sprovodi isto: `vodim_gradiliste` /
+   `moje_gradiliste` / `je_super` / `moj_autor()` u polisama; UI guard ostaje zbog
+   lokalnog `DATA` keša (bez njega bi red „postojao" do refresha, a upis tiho pao).
+   Dugmad za pisanje (zadatak, trebovanje, magacin izlaz, tim) iza `mogaDaUpravljam()`.
 3. Svi korisnički unosi kroz `esc()` pre upisa u DATA (escape-on-write, ne
    escape-on-render — 800+ mesta u kodu se oslanja na to da je DATA već čist).
    Izlazi koji NISU HTML (CSV, telo mejla, ime fajla) moraju ići kroz `unesc()`.
@@ -149,12 +173,13 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string
    `''` ne sme u Postgres `date` kolonu (22007 je ranije tiho obarao upis).
    `adm[key].vazi_do` (važenje ugovora/prijave/polise) je drugi null-safe opcioni datum — svuda iza `if(st.vazi_do)`; `setAdmVazi` sa praznom vrednošću briše ključ (jsonb objekat se šalje ceo, pa je tu `delete` ispravan).
-7. **DATA je PARCIJALAN pogled** (od F4): rukovodilac ima samo svoja gradilišta,
-   ali SVE zaposlene i SVE veze — `z.grs`/`p.grs` sadrže id-jeve gradilišta koja
-   NISU u `grById`. Nikad `grById[x].naziv` bez zaštite: koristi
-   `grById[x]?grById[x].naziv:'—'` ili `.map(x=>grById[x]).filter(Boolean)`.
-   T18c to lovi u mock-u. Rukovodiocu se ne otkriva IME tuđeg gradilišta, samo
-   da postoji ("na drugom gradilištu").
+7. **DATA je PARCIJALAN pogled** (od F4): svako ko nije uprava ima samo gradilišta
+   koja vidi (rukovodilac svoja, radnik tim, spoljni svoja), ali SVE zaposlene i SVE
+   veze — `z.grs`/`p.grs` sadrže id-jeve gradilišta koja NISU u `grById`. Nikad
+   `grById[x].naziv` bez zaštite: `grById[x]?grById[x].naziv:'—'` ili
+   `.map(x=>grById[x]).filter(Boolean)`. T18c to lovi u mock-u. Ne otkriva se IME
+   tuđeg gradilišta, samo da postoji ("na drugom gradilištu"). Autor unosa može biti
+   i spoljni saradnik (`podizvodjaci.id`) — za ime uvek `osobaIme(id)`, nikad `zapById[id].ime`.
 8. Nikad ne dodavati kod koji gura celu tabelu u bazu — `pushAll` je diff.
    Nova tabela → dodaj u `TABLES` (id-tabela) ili `JOIN_TABELE` + `rowsZa`/
    `kljucReda`, i polisu u migraciji. Nova mutacija → prođe kroz `saveState()`.
@@ -173,10 +198,11 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
     keširati `new Date()` u konstantu — tab na telefonu živi danima, a
     `todayStr()` je datum NOVIH unosa. Server (`danas_bg()`) računa po
     Europe/Belgrade; klijent po satu uređaja. T21.
-9. Rukovodiočev `DATA` nema finansije NI KAO KOLONE (null) — `g.budzet`,
-   `x.cena`, `potroseno(g)`, `naplSum(g)` su 0/null za njega. Sve što ih
-   koristi mora biti iza `canFinance()` ili tolerantno na null; `zdravlje(g)`
-   za njega vraća `ZDR_SRV[g.id]` sa servera, a bez servera `null` → „—"
+9. `DATA` bez `canFinance()` (rukovodilac 2, radnik, spoljni) nema finansije NI KAO
+   KOLONE (null; view-ovi `CASE vidi_finansije()`) — `g.budzet`, `x.cena`,
+   `potroseno(g)`, `naplSum(g)` su 0/null. Sve što ih koristi mora biti iza
+   `canFinance()` ili tolerantno na null; `zdravlje(g)` za svakog ko nije uprava
+   dolazi iz `ZDR_SRV` (server, `zdravlja_mojih()` + napredak), a bez servera `null` → „—"
    (`zdrTekst`/`zdrBoja(null)`), NIKAD lokalnu formulu (nad null finansijama
    daje do 25 niži skor, tiho). Direktor u „Pogled kao" računa lokalno (pune
    kolone, jedan skor za sve). RLS-polisa NE MOŽE da sakrije

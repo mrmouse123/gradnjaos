@@ -151,7 +151,7 @@ const MUTATORS = [
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
   ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-i-01'"], ['obrisiSifrarnik', "'sf-i-01'"], ['saveIzSifarnika', "'g1'"],
-  ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
+  ['pocniZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
   ['obrisiSituaciju', "'s1'"], ['obrisiPredmerRed', "'pm1'"], ['obrisiResurs', "'r1'"], ['obrisiNarudzbu', "'n1'"],
   ['obrisiKlijenta', "'c1'"], ['obrisiZaposlenog', "'z2'"], ['obrisiPodizvodjaca', "'p1'"], ['obrisiGradiliste', "'g2'"],
 ];
@@ -461,6 +461,102 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
   });
 
+
+  /* ---- T36 tajmer zadatka (C4) i angazovanost (C5) ---- */
+  section('T36 tajmer i angazovanost');
+  const T36_ZID = "(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]))||{}).id";
+  const q36 = x => JSON.stringify(x);
+  const prep36 = a => {   // radnik zid na svom gradilistu gid: tri zadatka (dva njegova, jedan tudj)
+    const zid = a.run(T36_ZID), gid = a.run(`zapById[${q36(zid)}].grs.find(x=>grById[x])`);
+    const tudj = a.run(`DATA.zaposleni.find(z=>z.id!==${q36(zid)}).id`);
+    a.run(`DATA.zadaci.push({id:'tm1',naziv:'Tajmer A',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm2',naziv:'Tajmer tudji',gr:${q36(gid)},zad:${q36(tudj)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm3',naziv:'Tajmer B',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'});`);
+    return { zid, gid, tudj };
+  };
+  const viewZa36 = (a, role, cur) => { a.run(`setRole(${q36(role)}); MODUL='sve'; PODTIP='sve'; current=${q36(cur)}; render();`); return a.g.document.getElementById('view').innerHTML; };
+  const tabla36 = (a, role) => { a.run(`setRole(${q36(role)}); MODUL='sve'; PODTIP='sve'; current='tasks'; render();`); return a.g.document.getElementById('view').innerHTML; };
+  await acheck('a) radnik: Pocni na svom zadatku, tudji bez dugmeta, jedna otvorena sesija, Zavrsi zatvara i (uz potvrdu) zavrsava', async () => {
+    const a = await boot(); const { zid } = prep36(a);
+    let h = tabla36(a, 'radnik:' + zid);
+    if (!h.includes('▶ Počni zadatak')) throw new Error('nema dugmeta Počni');
+    if (!h.includes("pocniZadatak('tm1')")) throw new Error('nema dugmeta na svom zadatku');
+    if (h.includes("pocniZadatak('tm2')")) throw new Error('dugme na tudjem zadatku');
+    a.run("pocniZadatak('tm1')");
+    const ses = a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj)");
+    if (ses.length !== 1 || ses[0].osoba !== zid || ses[0].zadatak !== 'tm1') throw new Error('sesija: ' + JSON.stringify(ses));
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm1').kol") !== 'inprogress') throw new Error('kol nije inprogress');
+    const n0 = a.g._calls.alert.length;
+    a.run("pocniZadatak('tm3')");
+    if (a.g._calls.alert.length !== n0 + 1 || !/Već imaš započet/.test(a.g._calls.alert[n0])) throw new Error('nema alerta za drugu sesiju');
+    if (a.run('DATA.rad_na_zadatku.length') !== 1) throw new Error('druga sesija je upisana');
+    h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('■ Završi zadatak') || !h.includes('⏱')) throw new Error('nema Završi / ⏱ u prikazu');
+    a.run("zavrsiZadatak('tm1')");
+    const s = a.run('DATA.rad_na_zadatku[0]');
+    if (!s.kraj || typeof s.minuta !== 'number' || s.minuta < 0) throw new Error('sesija nije zatvorena: ' + JSON.stringify(s));
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm1').kol") !== 'done') throw new Error('kol nije done');
+    if (!a.g._calls.confirm.some(m => /završen/.test(m))) throw new Error('nije pitao za potvrdu');
+  });
+  await acheck('b) tudji zadatak: nista; rukovodilac svog gradilista: osoba = on; uprava: osoba "uprava"', async () => {
+    const a = await boot(); const { zid, gid } = prep36(a);
+    a.run(`setRole(${q36('radnik:' + zid)}); pocniZadatak('tm2');`);
+    if (a.run('DATA.rad_na_zadatku.length') !== 0) throw new Error('radnik je poceo tudji zadatak');
+    const ruk = a.run(`grById[${q36(gid)}].rukovodilac`);
+    if (ruk) {
+      a.run(`setRole(${q36(ruk)}); pocniZadatak('tm2');`);
+      const s = a.run('DATA.rad_na_zadatku');
+      if (s.length !== 1 || s[0].osoba !== ruk) throw new Error('rukovodilac: ' + JSON.stringify(s));
+      a.run("zavrsiZadatak('tm2')");
+    }
+    a.run("setRole('all'); pocniZadatak('tm1');");
+    const u = a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj)");
+    if (u.length !== 1 || u[0].osoba !== 'uprava') throw new Error('uprava: ' + JSON.stringify(u));
+  });
+  await acheck('c) minutaZadatka = zatvorene + proteklo otvorene; fmtTrajanje', async () => {
+    const a = await boot();
+    a.run(`DATA.rad_na_zadatku=[{id:'c1',zadatak:'tc',gr:'g1',osoba:'z1',start:new Date(Date.now()-3*3600000).toISOString(),kraj:new Date(Date.now()-3*3600000+90*60000).toISOString(),minuta:90,napomena:''},{id:'c2',zadatak:'tc',gr:'g1',osoba:'z1',start:new Date(Date.now()-30*60000).toISOString(),kraj:null,minuta:null,napomena:''}]`);
+    const m = a.run("minutaZadatka('tc')");
+    if (Math.abs(m - 120) > 1) throw new Error('minuta = ' + m);
+    if (a.run("fmtTrajanje(135)") !== '2 h 15 min' || a.run("fmtTrajanje(45)") !== '45 min') throw new Error('fmtTrajanje');
+  });
+  await acheck('d) stranica zaposlenog (Angazovanost) i Admin kokpit (red radnika + sajt + resursi)', async () => {
+    const a = await boot(); const { zid, gid } = prep36(a);
+    a.run(`DATA.resursi.push({id:'rT36',tip:'vozilo',naziv:'Kombi T36',oznaka:'',gr:null,zaduzen:${q36(zid)},istice:'2027-01-01',napomena:''});
+      DATA.rad_na_zadatku.push({id:'dT1',zadatak:'tm1',gr:${q36(gid)},osoba:${q36(zid)},start:new Date(Date.now()-2*86400000).toISOString(),kraj:new Date(Date.now()-2*86400000+150*60000).toISOString(),minuta:150,napomena:''});`);
+    a.run(`setRole('all'); openEmpPage(${q36(zid)});`);
+    let h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Angažovanost (30 dana)') || !h.includes('2 h 30 min')) throw new Error('stranica zaposlenog: nema angažovanosti/sati');
+    const nm = a.run(`grById[${q36(gid)}].naziv`);
+    h = viewZa36(a, 'all', 'nalozi');
+    if (!h.includes('Angažovanost radnika')) throw new Error('nema kartice u Admin kokpitu');
+    const kartica = h.slice(h.indexOf('Angažovanost radnika'), h.indexOf('Log korišćenja'));
+    const ime = a.run(`zapById[${q36(zid)}].ime`);
+    const red = kartica.split('<tr>').find(r => r.includes(ime));
+    if (!red || !red.includes(nm) || !red.includes('Kombi T36') || !red.includes('2,5')) throw new Error('red radnika: ' + red);
+    const th = (kartica.match(/<th>/g) || []).length;
+    if (th !== 6 || (red.match(/<td/g) || []).length !== th) throw new Error('th/td: ' + th + ' / ' + (red.match(/<td/g) || []).length);
+  });
+  await acheck('e) Supabase: sesija se salje, server racuna minute (ne klijent), log, angazovanost rpc', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    const sleep = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)); };
+    const tid = a.run('DATA.zadaci[0].id');
+    a.run(`pocniZadatak(${q36(tid)})`);
+    await a.run('doSave()'); await sleep();
+    let row = a.g.__mock._db.rad_na_zadatku.find(r => r.zadatak === tid);
+    if (!row || row.osoba !== 'uprava' || row.kraj) throw new Error('red nije na serveru: ' + JSON.stringify(row));
+    a.run(`DATA.rad_na_zadatku[0].start=new Date(Date.now()-10*60000).toISOString()`);
+    a.run(`zavrsiZadatak(${q36(tid)})`);
+    a.run('DATA.rad_na_zadatku[0].minuta=999');   // klijentova vrednost se ignorise
+    await a.run('doSave()'); await sleep();
+    row = a.g.__mock._db.rad_na_zadatku.find(r => r.zadatak === tid);
+    if (!row.kraj || ![9, 10].includes(row.minuta)) throw new Error('server minuta = ' + row.minuta);
+    const dog = (a.g.__mock._db.log_koriscenja || []).map(l => l.dogadjaj);
+    if (!dog.includes('zadatak_start') || !dog.includes('zadatak_kraj')) throw new Error('log: ' + dog.join(','));
+    a.g.__mock._log.length = 0;
+    a.run("NALOZI=null; ANGAZ=null; current='nalozi';");
+    await a.run('ucitajNaloge()'); await sleep();
+    if (!a.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'angazovanost')) throw new Error('nema rpc angazovanost: ' + JSON.stringify(a.g.__mock._log.slice(0, 6)));
+    if (!Array.isArray(a.run('ANGAZ')) || !a.run('ANGAZ').length) throw new Error('ANGAZ prazan');
+  });
 
   /* ---- T35 brisanje (C3): super brise sve, radnik/spoljni samo svoj unos dnevnika ---- */
   section('T35 brisanje (super)');
@@ -2701,7 +2797,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('prazna baza -> zaseje se demo u svih 13 tabela', async () => {
     const a = await boot({ supabase: true, seed: {} });
     if (a.run('mode') !== 'supabase') throw new Error("mode = " + a.run('mode'));
-    const prazne = a.run('TABLES').filter(t => t !== 'dokumenti' && a.g.__mock._count(t) === 0);   // dokumenti: demo nema priloge (namerno)
+    const prazne = a.run('TABLES').filter(t => t !== 'dokumenti' && t !== 'rad_na_zadatku' && a.g.__mock._count(t) === 0);   // dokumenti: demo nema priloge; rad_na_zadatku: demo nema sesije (namerno)
     if (prazne.length) throw new Error('nezasejane tabele: ' + prazne.join(', '));
   });
 

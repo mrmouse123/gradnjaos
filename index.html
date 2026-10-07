@@ -788,7 +788,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
    SLOJ ZA CUVANJE: supabase -> ugradjeno skladiste -> memorija
    ============================================================ */
 const SKEY = 'gradnjaos_v3';
-const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','resursi','magacin','mag_promene','dokumenti','sifrarnik'];
+const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','resursi','magacin','mag_promene','dokumenti','sifrarnik','rad_na_zadatku'];
 /* dokumenti.data (data-URL) NEMA select grant: lista ide iz dokumenti_v (bez data), sadrzaj po kliku
    kroz rpc dokument_podaci(id); insert nosi data, update ga NE salje (v. rowsZa). */
 let DATA = JSON.parse(JSON.stringify(DEMO));
@@ -1868,6 +1868,10 @@ function viewEmpPage(){
       <div style="text-align:right;align-self:center">${badge(g.status)}</div>
     </div>`;
 
+  const angSes=(DATA.rad_na_zadatku||[]).filter(s=>s.osoba===z.id && Date.now()-new Date(s.start)<=30*86400000);
+  const angMin=angSes.reduce((a,s)=>a+minSesije(s),0), angOtv=angSes.filter(s=>!s.kraj), angMap={};
+  angSes.forEach(s=>{ const x=angMap[s.gr]=angMap[s.gr]||{gr:s.gr, ses:0, min:0}; x.ses++; x.min+=minSesije(s); });
+  const angPoGr=Object.values(angMap).sort((a,b)=>b.min-a.min);
   const zRes=(DATA.resursi||[]).filter(r=>r.zaduzen===z.id);   // zaduženi resursi (istice je null-safe: resIstice)
   const resRow=r=>{
     const d=resIstice(r);
@@ -1951,6 +1955,12 @@ function viewEmpPage(){
         <div style="flex:1"><div class="nm">${g?g.naziv:''}</div>
         <div style="font-size:12.5px;color:var(--slate);margin-top:3px">${e.tekst.length>140?e.tekst.slice(0,139)+'…':e.tekst}</div></div></div>`;}).join(''):'<div class="empty">Nema unosa.</div>'}</div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="card-h" style="padding:12px 16px"><h3>Angažovanost (30 dana)</h3><span class="hint">${fmtTrajanje(angMin)} · ${angSes.length} ${angSes.length===1?'sesija':'sesija'}</span></div>
+    <div class="card-b tight" style="max-height:260px;overflow-y:auto">${angPoGr.length?angPoGr.map(x=>`<div class="dr-task" style="padding:10px 18px"><div class="lb">${grById[x.gr]?grById[x.gr].naziv:'—'}<div class="sub" style="font-size:11.5px">${x.ses} ${x.ses===1?'sesija':'sesija'}</div></div><span class="num">${fmtTrajanje(x.min)}</span></div>`).join(''):'<div class="empty" style="padding:24px 16px">Nema evidentiranog rada u poslednjih 30 dana.</div>'}
+      ${angOtv.map(s=>{ const tt=DATA.zadaci.find(x=>x.id===s.zadatak); return `<div class="dr-task" style="padding:10px 18px"><div class="lb">Trenutno radi: ${tt?tt.naziv:'—'}<div class="sub" style="font-size:11.5px">od ${hhmm(s.start)} · ${fmtTrajanje(minSesije(s))}</div></div></div>`; }).join('')}</div>
   </div>
 
   <div class="card" style="margin-top:18px">
@@ -2048,6 +2058,7 @@ function viewTasks(){
           ${jeSuper()?BRISI_DUGME('obrisiZadatak',t.id):''}
         </div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:8px">🗓 ${rokTxt}</div>
+        ${tajmerLinija(t)}
       </div>`;
     }).join('') || `<div style="text-align:center;color:var(--faint);font-size:12px;padding:18px 0">Prevuci zadatak ovde</div>`;
     return `<div class="col" ondragover="event.preventDefault()" ondrop="dropTask(event,'${col.id}')">
@@ -2070,6 +2081,58 @@ function dropTask(e,col){
   const t=DATA.zadaci.find(x=>x.id===id);
   if(!t || !(smemNa(t.gr) || (vidimGr(t.gr) && t.zad===ROLE))) return;   // radnik: samo svoj zadatak (server: trigger pusta samo kol)
   t.kol=col; saveState(); render();
+}
+
+/* ---------- TAJMER ZADATKA (C4) + ANGAZOVANOST (C5) ----------
+   Sesije u DATA.rad_na_zadatku; start/kraj su ISO (timestamptz). Minute na serveru racuna trigger iz start/kraj
+   (klijentova procena je samo za prikaz do prvog osvezavanja). Uprava belezi kao osoba 'uprava'. */
+function radZa(zadatakId){ return (DATA.rad_na_zadatku||[]).filter(s=>s.zadatak===zadatakId); }
+function otvorenaSesija(zadatakId, osoba){ return (DATA.rad_na_zadatku||[]).find(s=>s.zadatak===zadatakId && s.osoba===osoba && !s.kraj)||null; }
+function minSesije(s){ return s.kraj ? (s.minuta!=null?s.minuta:Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000))) : Math.max(0,Math.floor((Date.now()-new Date(s.start))/60000)); }
+function minutaZadatka(zadatakId){ return radZa(zadatakId).reduce((a,s)=>a+minSesije(s),0); }
+function fmtTrajanje(min){ min=Math.max(0,Math.round(+min||0)); const h=Math.floor(min/60), m=min%60; return h?(h+' h'+(m?' '+m+' min':'')):(m+' min'); }
+function hhmm(iso){ const d=new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function lokalniDatum(iso){ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function osobaTajmera(){ return ROLE==='all'?'uprava':ROLE; }
+function imeTajmera(o){ return o==='uprava'?'Uprava':osobaIme(o); }
+function mogaTajmer(t){ return !!t && vidimGr(t.gr) && (t.zad===ROLE || smemNa(t.gr)); }
+function pocniZadatak(id){
+  const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
+  const osoba=osobaTajmera();
+  const otv=(DATA.rad_na_zadatku||[]).find(s=>s.osoba===osoba && !s.kraj);
+  if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak); alert('Već imaš započet zadatak: '+(ot?unesc(ot.naziv):otv.zadatak)+'. Prvo ga završi.'); return; }
+  DATA.rad_na_zadatku.push({id:'rz'+Date.now(), zadatak:id, gr:t.gr, osoba, start:new Date().toISOString(), kraj:null, minuta:null, napomena:''});
+  if(t.kol==='todo') t.kol='inprogress';
+  beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), gr:t.gr});
+  saveState(); render();
+}
+function zavrsiZadatak(id){
+  const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
+  const s=otvorenaSesija(id, osobaTajmera()); if(!s) return;   // zatvara se samo SVOJA otvorena sesija
+  s.kraj=new Date().toISOString();
+  s.minuta=Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000));   // procena; server prepisuje (trigger)
+  if(confirm('Označiti zadatak kao završen?')) t.kol='done';
+  beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), gr:t.gr, minuta:s.minuta});
+  saveState(); render();
+}
+/* sesije -> [{osoba,gr,sesija,minuta,poslednji}] za period [od,do] (YYYY-MM-DD, ukljucivo); otvorena sesija se racuna do sada */
+function agregirajAngazovanost(rows, od, do_){
+  const a=new Date(od+'T00:00:00'), b=new Date(new Date(do_+'T00:00:00').getTime()+86400000);
+  const agg={};
+  (rows||[]).forEach(r=>{ const s=new Date(r.start); if(s<a || s>=b) return;
+    const k=r.osoba+'|'+r.gr, x=agg[k]=agg[k]||{osoba:r.osoba, gr:r.gr, sesija:0, minuta:0, poslednji:null};
+    x.sesija++; x.minuta+=minSesije(r); const p=r.kraj||r.start; if(!x.poslednji || new Date(p)>new Date(x.poslednji)) x.poslednji=p; });
+  return Object.values(agg).sort((x,y)=>(x.osoba+x.gr).localeCompare(y.osoba+y.gr));
+}
+function tajmerLinija(t){
+  const ses=radZa(t.id), tot=minutaZadatka(t.id);
+  const moze=mogaTajmer(t) && t.kol!=='done', moja=otvorenaSesija(t.id, osobaTajmera());
+  const tuda=ses.find(s=>!s.kraj && s.osoba!==osobaTajmera());
+  const dugme = !moze ? '' : moja
+    ? `<button class="btn" style="width:100%;min-height:38px;margin-top:8px" onclick="event.stopPropagation();zavrsiZadatak('${t.id}')">■ Završi zadatak</button><div style="font-size:11.5px;color:var(--muted);margin-top:4px">⏱ radi od ${hhmm(moja.start)} · ${fmtTrajanje(minSesije(moja))}</div>`
+    : `<button class="btn ghost" style="width:100%;min-height:38px;margin-top:8px" onclick="event.stopPropagation();pocniZadatak('${t.id}')">▶ Počni zadatak</button>`;
+  const info = (tot>0||tuda) ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">${tot>0?'⏱ ukupno '+fmtTrajanje(tot):''}${tuda?(tot>0?' · ':'')+'radi: '+imeTajmera(tuda.osoba):''}</div>` : '';
+  return dugme+info;
 }
 
 /* ---------- DNEVNIK RADOVA ---------- */
@@ -2267,7 +2330,41 @@ function saveResurs(rid){
    Uloge se dodeljuju POSTOJECIM auth nalozima (kreiranje korisnika ostaje u Supabase
    dashboardu dok Jovan ne podesi Site URL / self-signup). RPC-ovi iz migracije 12 su
    security definer sa sopstvenim guardom (je_direktor, ne sebi, ne poslednjem direktoru). */
-let NALOZI=null, LOG_K=null, NALOZI_MSG='';
+let NALOZI=null, LOG_K=null, NALOZI_MSG='', ANGAZ=null, ANG_OD='', ANG_DO='';
+function angazPeriod(){
+  const dan=d=>{ const x=new Date(d); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+  if(!ANG_DO) ANG_DO=dan(Date.now());
+  if(!ANG_OD) ANG_OD=dan(Date.now()-30*86400000);
+  return [ANG_OD, ANG_DO];
+}
+function angazovanostKartica(){
+  const [od,do_]=angazPeriod();
+  const rows = supa ? ANGAZ : agregirajAngazovanost(DATA.rad_na_zadatku, od, do_);
+  const tr=(rows||[]).map(r=>{
+    const res=(DATA.resursi||[]).filter(x=>x.zaduzen===r.osoba).map(x=>x.naziv).join(', ')||'—';
+    const kad=r.poslednji?fmtDate(lokalniDatum(r.poslednji))+' '+hhmm(r.poslednji):'—';
+    return `<tr><td class="strong">${imeTajmera(r.osoba)}</td><td>${grById[r.gr]?grById[r.gr].naziv:'—'}</td><td class="num">${r.sesija}</td><td class="num">${(r.minuta/60).toFixed(1).replace('.',',')}</td><td>${kad}</td><td class="sub">${res}</td></tr>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:18px">
+    <div class="card-h"><h3>Angažovanost radnika (30 dana)</h3><span class="hint">Sati rada na zadacima (tajmer) i resursi koje radnik koristi</span></div>
+    <div class="card-b tight">
+      <div class="tools" style="margin:12px 16px 4px">
+        <label class="sub">od <input type="date" id="ang_od" value="${od}"></label>
+        <label class="sub">do <input type="date" id="ang_do" value="${do_}"></label>
+        <button class="btn ghost" onclick="osveziAngaz()">Osveži</button>
+      </div>
+      <div style="overflow-x:auto"><table><thead><tr><th>Osoba</th><th>Gradilište</th><th>Sesija</th><th>Sati</th><th>Poslednji rad</th><th>Zaduženi resursi</th></tr></thead>
+      <tbody>${tr||`<tr><td colspan="6" class="empty">${rows===null?'Učitavam…':'Nema evidentiranog rada u periodu.'}</td></tr>`}</tbody></table></div>
+    </div>
+  </div>`;
+}
+function osveziAngaz(){
+  if(!isDirector()) return;
+  const v=id=>{ const e=document.getElementById(id); return e?String(e.value):''; };
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v('ang_od'))) ANG_OD=v('ang_od');
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v('ang_do'))) ANG_DO=v('ang_do');
+  if(supa){ ucitajNaloge(); } else render();
+}
 /* Sifarnik mera u Admin kokpitu (uprava: dodaj/aktivan; samo direktor brise). Nazivi/grupe idu kroz esc() pri upisu. */
 const SF_JM=['m³','m²','m','kom','kg','t','h','paušal'];
 function sifrarnikKartica(){
@@ -2316,7 +2413,7 @@ async function obrisiSifrarnik(id){
 function viewNalozi(){
   if(!isDirector()){ current='dash'; return viewDash(); }
   const h=head('Nalozi i log korišćenja','Ko ima pristup, sa kojom ulogom, i šta je ko radio u aplikaciji.');
-  if(!supa) return h+'<div class="card" style="margin-bottom:18px"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>'+sifrarnikKartica();
+  if(!supa) return h+'<div class="card" style="margin-bottom:18px"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>'+sifrarnikKartica()+angazovanostKartica();
   if(NALOZI===null && !NALOZI_MSG) ucitajNaloge();
   const zOpt=DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('');
   const sOpt=(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv}</option>`).join('');
@@ -2363,6 +2460,7 @@ function viewNalozi(){
     </div>
   </div>
   ${sifrarnikKartica()}
+  ${angazovanostKartica()}
   <div class="card">
     <div class="card-h"><h3>Log korišćenja</h3><span class="hint">poslednjih ${(LOG_K||[]).length} događaja · <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="ucitajNaloge()">↻ Osveži</button></span></div>
     <div class="card-b tight"><div style="overflow-x:auto"><table><thead><tr><th>Kada</th><th>Ko</th><th>Uloga</th><th>Događaj</th><th>Detalj</th></tr></thead>
@@ -2382,14 +2480,17 @@ async function ucitajNaloge(){
   if(!isDirector()||!supa) return;
   NALOZI_MSG='';
   try{
-    const [{data:n,error:e1},{data:l,error:e2}]=await Promise.all([
+    const [od,do_]=angazPeriod();
+    const [{data:n,error:e1},{data:l,error:e2},{data:a,error:e3}]=await Promise.all([
       supa.rpc('nalozi_pregled'),
-      supa.from('log_koriscenja').select('*').order('ts',{ascending:false}).limit(200)
+      supa.from('log_koriscenja').select('*').order('ts',{ascending:false}).limit(200),
+      supa.rpc('angazovanost',{p_od:od, p_do:do_})
     ]);
     if(e1) throw new Error(e1.message||String(e1));
     if(e2) throw new Error(e2.message||String(e2));
-    NALOZI=n||[]; LOG_K=l||[];
-  }catch(e){ NALOZI=NALOZI||[]; LOG_K=LOG_K||[]; NALOZI_MSG='Ne mogu da učitam naloge: '+esc(e.message||e); }
+    if(e3) throw new Error(e3.message||String(e3));
+    NALOZI=n||[]; LOG_K=l||[]; ANGAZ=a||[];
+  }catch(e){ NALOZI=NALOZI||[]; LOG_K=LOG_K||[]; ANGAZ=ANGAZ||[]; NALOZI_MSG='Ne mogu da učitam naloge: '+esc(e.message||e); }
   if(current==='nalozi') render();
 }
 async function dodeliUlogu(email, uid){
@@ -3894,7 +3995,7 @@ function openSite(id){
   const zadHtml = zad.length? zad.map(t=>`
     <div class="dr-task ${t.kol==='done'?'done':''}">
       <div class="tk">${t.kol==='done'?icon('check'):''}</div>
-      <div class="lb">${t.naziv}</div>
+      <div class="lb">${t.naziv}${minutaZadatka(t.id)>0?`<div class="sub">⏱ ${fmtTrajanje(minutaZadatka(t.id))}</div>`:''}</div>
       <span class="prio ${PRIO[t.prio].c}">${PRIO[t.prio].t}</span>
     </div>`).join('') : `<div style="color:var(--faint);font-size:13px">Nema zadataka za ovaj projekat.</div>`;
 
@@ -4165,6 +4266,7 @@ function normalizeData(){
   if(!DATA.magacin) DATA.magacin=[];
   if(!DATA.mag_promene) DATA.mag_promene=[];
   if(!DATA.dokumenti) DATA.dokumenti=[];
+  if(!DATA.rad_na_zadatku) DATA.rad_na_zadatku=[];
   if(!DATA.sifrarnik || !DATA.sifrarnik.length) DATA.sifrarnik=sifrarnikDemo();   // demo/memorija: isti sadrzaj kao migracija 14
   (DATA.gradilista||[]).forEach(g=>{
     if(!g.adm) g.adm={};
