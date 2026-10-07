@@ -147,7 +147,7 @@ const MUTATORS = [
   ['saveSite', ''], ['saveSite', "'g1'"], ['saveSub', ''], ['saveNarudzba', ''], ['saveTrosak', "'g1'"],
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
-  ['saveTask', ''], ['saveDiary', ''],
+  ['saveTask', ''], ['saveDiary', ''], ['obrisiDokument', "'dk_x'"],
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
 ];
@@ -455,6 +455,73 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     app.run(`ROLE='all'; savePredmerImport(${JSON.stringify(gid)});`);
     const kol = app.run('DATA.predmer[DATA.predmer.length-1].kol');
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
+  });
+
+
+  /* ---- T33 dokumenti gradilista (C1) ---- */
+  section('T33 dokumenti');
+  const T33_ZID = "(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]))||{}).id";
+  const T33_PID = "((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).some(x=>grById[x]))||{}).id";
+  const drawerZa = (a, role, gid) => { a.run(`setRole(${JSON.stringify(role)})`); const d = a.g.document.getElementById('drawer'); d.innerHTML = ''; a.run(`openSite(${JSON.stringify(gid)})`); return d.innerHTML; };
+  await acheck('fioka: "Dokumenti (0)" + dugme za dodavanje za direktora, rukovodioca, radnika u timu i spoljnog; radnik na tudjem gradilistu ne otvara fioku', async () => {
+    const a = await boot();
+    const zid = a.run(T33_ZID), pid = a.run(T33_PID);
+    const gR = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    const gS = a.run(`DATA.podizvodjaci.find(p=>p.id===${JSON.stringify(pid)}).grs.find(x=>grById[x])`);
+    const gRuk = a.run("DATA.gradilista.find(g=>g.rukovodilac==='z1').id");
+    for (const [role, gid] of [['all', gRuk], ['z1', gRuk], ['radnik:' + zid, gR], ['spoljni:' + pid, gS]]) {
+      const h = drawerZa(a, role, gid);
+      if (!h.includes('Dokumenti (0)')) throw new Error(role + ': nema "Dokumenti (0)"');
+      if (!h.includes("uploadDokument('" + gid + "')")) throw new Error(role + ': nema dugmeta za dodavanje');
+    }
+    const tudje = a.run(`visibleSites ? DATA.gradilista.map(g=>g.id).find(x=>!zapById[${JSON.stringify(zid)}].grs.includes(x)) : null`);
+    const h = drawerZa(a, 'radnik:' + zid, tudje);
+    if (h) throw new Error('radnik otvorio tudje gradiliste');
+  });
+  await acheck('brisanje: radnik samo svoj dokument, direktor sve, admin nista; obrisiDokument tudjeg = bez promene i bez confirm()', async () => {
+    const a = await boot();
+    const zid = a.run(T33_ZID);
+    const gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    a.run(`DATA.dokumenti.push({id:'dkA',gr:${JSON.stringify(gid)},autor:${JSON.stringify(zid)},datum:'2026-10-01',naziv:'moj.jpg',tip:'image/jpeg',velicina:2048,opis:'',data:'data:,'},{id:'dkB',gr:${JSON.stringify(gid)},autor:'uprava',datum:'2026-10-02',naziv:'uprava.pdf',tip:'application/pdf',velicina:0,opis:'',data:'data:,'})`);
+    const has = (h, id) => h.includes("obrisiDokument('" + id + "')");
+    let h = drawerZa(a, 'radnik:' + zid, gid);
+    if (!h.includes('Dokumenti (2)') || !has(h, 'dkA') || has(h, 'dkB')) throw new Error('radnik: pogresna dugmad za brisanje');
+    h = drawerZa(a, 'all', gid); if (!has(h, 'dkA') || !has(h, 'dkB')) throw new Error('direktor ne moze da brise sve');
+    h = drawerZa(a, 'admin', gid); if (has(h, 'dkA') || has(h, 'dkB')) throw new Error('admin ima dugme za brisanje');
+    a.run(`setRole('radnik:${zid}')`);
+    const c0 = a.g._calls.confirm.length;
+    await a.run("obrisiDokument('dkB')");
+    if (a.run('DATA.dokumenti.length') !== 2 || a.g._calls.confirm.length !== c0) throw new Error('radnik je obrisao ili pokusao da obrise tudji dokument');
+    await a.run("obrisiDokument('dkA')");
+    if (a.run('DATA.dokumenti.length') !== 1 || a.run('DATA.dokumenti[0].id') !== 'dkB') throw new Error('svoj dokument nije obrisan');
+  });
+  await acheck('otvoriDokument bez lokalnog data (supabase): view ne vraca data, sadrzaj preko rpc dokument_podaci, otvara se u novom tabu', async () => {
+    const a0 = await boot({ supabase: true, seed: {} });
+    const seed = JSON.parse(JSON.stringify(a0.g.__mock._db)); delete seed.log_koriscenja;
+    const gid = seed.gradilista[0].id;
+    seed.dokumenti = [{ id: 'dkS', gr: gid, autor: 'uprava', autor_uid: 'u-dir', datum: '2026-10-03', naziv: 'x.txt', tip: 'text/plain', velicina: 3, opis: '', data: 'data:,abc' }];
+    const a = await boot({ supabase: true, seed });
+    if (a.run('DATA.dokumenti.length') !== 1) throw new Error('dokument nije ucitan');
+    if (a.run('DATA.dokumenti[0].data') !== undefined) throw new Error('view je vratio data');
+    a.g.__mock._log.length = 0; const o0 = a.g._calls.open.length;
+    await a.run("otvoriDokument('dkS')");
+    if (!a.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'dokument_podaci' && l.args.p_id === 'dkS')) throw new Error('nema rpc dokument_podaci');
+    if (a.g._calls.open.length !== o0 + 1) throw new Error('dokument nije otvoren');
+  });
+  await acheck('upload: slika od 1 KB postaje dokument (autor = ROLE, data iz FileReader-a), 3 MB se odbija alertom', async () => {
+    const a = await boot();
+    const zid = a.run(T33_ZID);
+    const gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    a.run(`setRole('radnik:${zid}')`);
+    const radi = f => { a.run(`uploadDokument(${JSON.stringify(gid)})`); const inp = a.g.document._created.filter(c => c.tagName === 'INPUT').pop(); inp.files = [f]; inp.onchange({ target: inp }); };
+    radi({ name: 'slika.jpg', type: 'image/jpeg', size: 1000 });
+    const d = a.run('DATA.dokumenti[0]');
+    if (!d || d.naziv !== 'slika.jpg' || d.autor !== a.run('ROLE') || d.data !== 'data:,' || d.gr !== gid) throw new Error('los dokument: ' + JSON.stringify(d));
+    const al = a.g._calls.alert.length;
+    radi({ name: 'velika.pdf', type: 'application/pdf', size: 3 * 1024 * 1024 });
+    if (a.run('DATA.dokumenti.length') !== 1 || a.g._calls.alert.length !== al + 1) throw new Error('3 MB nije odbijen');
+    a.run("setRole('all')"); radi({ name: 'u.pdf', type: 'application/pdf', size: 10 });
+    if (a.run('DATA.dokumenti[DATA.dokumenti.length-1].autor') !== 'uprava') throw new Error('uprava autor');
   });
 
 

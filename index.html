@@ -2950,6 +2950,55 @@ function ukloniTrosakPrilog(trId){
   t.prilog=null; saveState(); render(); openSite(t.gr);
 }
 
+/* ---------- DOKUMENTI GRADILISTA (migracija 14): svako ko vidi gradiliste dodaje, brise svoje; super brise sve ---------- */
+function dokumentiZa(grId){ return (DATA.dokumenti||[]).filter(d=>d.gr===grId).sort((a,b)=>dParse(b.datum)-dParse(a.datum)); }
+function smemObrisatiDokument(d){ return !!d && (jeSuper() || (ROLE!=='all' && d.autor===ROLE)); }
+function uploadDokument(grId){
+  if(!vidimGr(grId)) return;
+  try{
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='image/*,.pdf,.doc,.docx,.xls,.xlsx';
+    inp.onchange=e=>{
+      const f=e.target.files&&e.target.files[0]; if(!f) return;
+      if(f.size>2.5*1024*1024){ alert('Dokument je veći od 2.5MB — u pilotu važi taj limit (veći fajlovi stižu uz Supabase Storage).'); return; }
+      const r=new FileReader();
+      r.onload=()=>{
+        const opis=prompt('Kratak opis (opciono)');
+        DATA.dokumenti.push({ id:'dk'+Date.now(), gr:grId, autor:isDirector()?'uprava':ROLE, datum:todayStr(), naziv:esc(f.name), tip:f.type||'', velicina:f.size, opis:opis==null?'':esc(String(opis).trim()), data:r.result });
+        saveState(); openSite(grId);
+      };
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  }catch(e){}
+}
+async function otvoriDokument(id){
+  const d=(DATA.dokumenti||[]).find(x=>x.id===id); if(!d||!vidimGr(d.gr)) return;
+  let data=d.data;
+  if(!data && typeof supa!=='undefined' && supa){
+    try{ const r=await supa.rpc('dokument_podaci',{p_id:id}); if(!r.error) data=r.data; }catch(e){}
+  }
+  if(!data){ alert(typeof supa!=='undefined' && supa ? 'Sadržaj dokumenta nije dostupan.' : 'Sadržaj nije dostupan u demo režimu.'); return; }
+  try{
+    const i=String(data).indexOf(','), head=String(data).slice(0,i), body=String(data).slice(i+1);
+    const mime=(head.match(/data:([^;,]*)/)||[])[1]||d.tip||'application/octet-stream';
+    let blob;
+    if(/;base64/.test(head)){
+      const bin=atob(body), arr=new Uint8Array(bin.length);
+      for(let k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k);
+      blob=new Blob([arr],{type:mime});
+    } else blob=new Blob([decodeURIComponent(body)],{type:mime});
+    window.open(URL.createObjectURL(blob),'_blank');
+  }catch(e){}
+}
+async function obrisiDokument(id){
+  const d=(DATA.dokumenti||[]).find(x=>x.id===id);
+  if(!d||!smemObrisatiDokument(d)) return;
+  if(!confirm('Obrisati dokument "'+unesc(d.naziv)+'"?')) return;
+  const ok=await obrisiRed('dokumenti', id, unesc(d.naziv));
+  if(ok!==false) openSite(d.gr);
+}
+
 /* ---------- PODIZVODJACI ---------- */
 function viewSubs(){
   const ids=visibleSiteIds();
@@ -3756,6 +3805,11 @@ function openSite(id){
         <h4>${jePro(g)?'Spoljni saradnici':'Podizvođači'} (${subs.length})</h4>
         ${subs.map(x=>`<div class="dr-kv"><span class="k">${x.naziv}<div class="sub" style="font-size:11.5px">${x.delatnost} · ${x.osoba} · ${x.tel}</div></span><span class="v" style="font-weight:500">${canFinance()?'<span class="num">'+fmtEur(x.cena||0)+'</span> ':''}${x.status==='zavrsen'?'<span class="badge b-gray">Završen</span>':'<span class="badge b-green">Aktivan</span>'}</span></div>`).join('')}
       </div>`:''}
+      <div class="dr-sec">
+        <h4>Dokumenti (${dokumentiZa(id).length})</h4>
+        ${dokumentiZa(id).map(d=>`<div class="dr-kv"><span class="k">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span><div class="sub" style="font-size:11.5px">${fmtDate(d.datum)} · ${osobaIme(d.autor)}${d.velicina?' · '+Math.round(d.velicina/1024)+' KB':''}${d.opis?' · '+d.opis:''}</div></span><span class="v">${smemObrisatiDokument(d)?`<span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</span></div>`).join('')}
+        ${vidimGr(id)?`<div style="margin-top:8px"><button class="btn ghost" onclick="uploadDokument('${id}')">⬆ Dodaj dokument / fotografiju</button></div>`:''}
+      </div>
       <div class="dr-sec">
         <h4>Zadaci (${zad.length})</h4>
         ${zadHtml}
