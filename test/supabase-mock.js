@@ -101,7 +101,7 @@ class Query {
         return { data: null, error: { message: this.faults.selectFail[this.requested] } };
       if (this.view && this.ctx.pisanjeUView) { /* no-op: view je samo za citanje */ }
       let rows = clone(this.db[t]).filter(r => this._match(r));
-      if (this.view && !this.ctx.isDir()) {
+      if (this.view && !this.ctx.vidiFin()) {   // finansijske kolone NULL bez vidi_finansije (migracija 14)
         const cols = FIN_COLS[t] || [];
         rows = rows.map(r => { const o = { ...r }; cols.forEach(c => { if (c in o) o[c] = null; }); return o; });
       }
@@ -215,7 +215,9 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
   const auth = makeAuth(authOpts, log);
   const profil = () => { const s = auth._session(); if (!s) return null; return (db.profili || []).find(p => p.user_id === s.user.id) || null; };
   const ctx = {
-    isDir: () => { const p = profil(); return !!p && p.uloga === 'direktor'; },
+    isDir: () => { const p = profil(); return !!p && (p.uloga === 'direktor' || p.uloga === 'admin'); },   // uprava (migracija 14)
+    isSuper: () => { const p = profil(); return !!p && p.uloga === 'direktor'; },
+    vidiFin: () => { const p = profil(); return !!p && (p.uloga === 'direktor' || p.uloga === 'admin' || !!p.vidi_finansije); },
     mojZ: () => { const p = profil(); return p ? p.zaposleni_id : null; },
   };
   const client = {
@@ -239,20 +241,25 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       const upisiLog = (dogadjaj, detalj) => { db.log_koriscenja = db.log_koriscenja || []; db.log_koriscenja.push({ id: db.log_koriscenja.length + 1, ts: new Date().toISOString(), user_id: ja && ja.id, email: ja && ja.email, uloga: 'direktor', dogadjaj, detalj }); };
       if (name === 'nalozi_pregled') {
         if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor vidi naloge.' } };
-        const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
+        const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, saradnik_id: p ? (p.saradnik_id || null) : null, vidi_finansije: !!(p && (p.vidi_finansije || p.uloga === 'direktor' || p.uloga === 'admin')), ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
         return { data: rows, error: null };
       }
-      if (name === 'dodeli_ulogu') {
-        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor dodeljuje uloge.' } };
+      if (name === 'dodeli_ulogu') {   // migracija 14: 5 uloga, vidi_finansije, saradnik; admin ne dira direktore
+        if (!ctx.isDir()) return { data: null, error: { message: 'Samo uprava dodeljuje uloge.' } };
         const uid = idOd(args.p_email); if (!uid) return { data: null, error: { message: `Nema naloga ${args.p_email}.` } };
         if (ja && uid === ja.id) return { data: null, error: { message: 'Sopstvenu ulogu ne možeš da menjaš — zamoli drugog direktora.' } };
-        if (!['direktor', 'rukovodilac'].includes(args.p_uloga)) return { data: null, error: { message: 'Nepoznata uloga: ' + args.p_uloga } };
-        if (args.p_uloga === 'rukovodilac' && !(db.zaposleni || []).some(z => z.id === args.p_zaposleni_id)) return { data: null, error: { message: 'Rukovodilac mora biti vezan za postojećeg zaposlenog.' } };
+        if (!['direktor', 'admin', 'rukovodilac', 'radnik', 'spoljni'].includes(args.p_uloga)) return { data: null, error: { message: 'Nepoznata uloga: ' + args.p_uloga } };
         db.profili = db.profili || []; const p = db.profili.find(x => x.user_id === uid); const stara = p ? p.uloga : null;
+        if (!ctx.isSuper() && (args.p_uloga === 'direktor' || stara === 'direktor')) return { data: null, error: { message: 'Samo direktor može da dodeli ili promeni ulogu direktora.' } };
+        let zid = args.p_zaposleni_id || null, sid = args.p_saradnik_id || null, fin = !!args.p_vidi_finansije;
+        if (['rukovodilac', 'radnik'].includes(args.p_uloga) && !(db.zaposleni || []).some(z => z.id === zid)) return { data: null, error: { message: (args.p_uloga === 'rukovodilac' ? 'Rukovodilac' : 'Radnik') + ' mora biti vezan za postojećeg zaposlenog.' } };
+        if (args.p_uloga === 'spoljni' && !(db.podizvodjaci || []).some(x => x.id === sid)) return { data: null, error: { message: 'Spoljni saradnik mora biti vezan za postojećeg podizvođača/saradnika.' } };
+        if (['direktor', 'admin'].includes(args.p_uloga)) { zid = null; sid = null; fin = true; }
+        if (args.p_uloga !== 'spoljni') sid = null; if (args.p_uloga === 'spoljni') zid = null; if (['radnik', 'spoljni'].includes(args.p_uloga)) fin = false;
         if (stara === 'direktor' && args.p_uloga !== 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor — prvo dodeli ulogu direktora nekom drugom.' } };
-        const zid = args.p_uloga === 'direktor' ? null : args.p_zaposleni_id; const z = (db.zaposleni || []).find(x => x.id === zid);
-        if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.ime = z ? z.ime : args.p_email; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, ime: z ? z.ime : args.p_email });
-        upisiLog('uloga_promena', { email: args.p_email, stara, nova: args.p_uloga, zaposleni_id: zid });
+        const z = (db.zaposleni || []).find(x => x.id === zid), s = (db.podizvodjaci || []).find(x => x.id === sid); const ime = z ? z.ime : s ? s.naziv : args.p_email;
+        if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.saradnik_id = sid; p.vidi_finansije = fin; p.ime = ime; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin, ime });
+        upisiLog('uloga_promena', { email: args.p_email, stara, nova: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin });
         return { data: stara ? 'izmenjeno' : 'dodeljeno', error: null };
       }
       if (name === 'ukloni_pristup') {

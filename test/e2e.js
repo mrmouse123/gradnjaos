@@ -216,12 +216,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T3 + T4 pogledi × uloge × moduli ---- */
   section('T3/T4 pogledi × uloge × moduli');
-  const roles = ['all', ...app.run('DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)')];
+  /* 6 uloga (migracija 14): 'all' direktor, 'admin', '<z>' rukovodilac 2, '<z>:fin' rukovodilac 1, 'radnik:<z>', 'spoljni:<p>' — preko setRole() */
+  const rukIds = app.run('DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)');
+  const radnikId = app.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
+  const spoljniId = app.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
+  const roles = ['all', 'admin', ...rukIds, ...rukIds.map(z => z + ':fin'), ...(radnikId ? ['radnik:' + radnikId] : []), ...(spoljniId ? ['spoljni:' + spoljniId] : [])];
   let combos = 0;
   const asymm = [];
   for (const role of roles) {
     for (const m of MODULI) {
-      app.run(`ROLE=${JSON.stringify(role)}; MODUL=${JSON.stringify(m.modul)}; PODTIP=${JSON.stringify(m.podtip)};`);
+      app.run(`setRole(${JSON.stringify(role)}); MODUL=${JSON.stringify(m.modul)}; PODTIP=${JSON.stringify(m.podtip)};`);
       // tabovi vidljivi ovoj ulozi
       const visible = app.run('tabs().map(t=>t.id)');
       for (const v of VIEWS) {
@@ -453,6 +457,118 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
   });
 
+
+  /* ---- T32 sest uloga (migracija 14): tabovi, vidljivost gradilista, finansije, pisanje po ulozi ---- */
+  section('T32 sest uloga');
+  await acheck('tabovi po ulozi: uprava sve; rukovodilac 1 +naplata; rukovodilac 2 / radnik / spoljni bez naplate, bez klijenata/zaposlenih/resursa', async () => {
+    const a = await boot();
+    const tabs = r => { a.run(`setRole(${JSON.stringify(r)})`); return a.run('tabs().map(t=>t.id)'); };
+    const svi = tabs('all');
+    for (const t of ['clients', 'emps', 'resursi', 'subs', 'pay', 'nalozi']) if (!svi.includes(t)) throw new Error('direktor nema ' + t);
+    const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi)) throw new Error('admin nema iste tabove kao direktor: ' + adm);
+    const r1 = tabs('z1:fin'), r2 = tabs('z1');
+    const ocekR = ['dash', 'sites', 'time', 'tasks', 'diary', 'magacin', 'nabavka'];
+    if (JSON.stringify(r1) !== JSON.stringify([...ocekR.slice(0, 6), 'pay', 'nabavka'].sort()) && !(r1.includes('pay') && ocekR.every(t => r1.includes(t)) && r1.length === ocekR.length + 1)) throw new Error('rukovodilac 1: ' + r1);
+    if (JSON.stringify([...r2].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error('rukovodilac 2: ' + r2);
+    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
+    const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
+    for (const r of ['radnik:' + zid, 'spoljni:' + pid]) { const t = tabs(r); if (JSON.stringify([...t].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error(r + ': ' + t); }
+    a.run("setRole('z1'); current='pay'; renderNav();");
+    if (a.run('current') !== 'dash') throw new Error('rukovodilac 2 na nedozvoljenom tabu nije vracen na dash');
+  });
+  await acheck('vidljivost: radnik vidi samo gradilista svog tima, spoljni samo svoja; finansije samo uprava i rukovodilac 1', async () => {
+    const a = await boot();
+    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
+    const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
+    a.run(`setRole('radnik:${zid}')`);
+    const vis = a.run('visibleSites().map(g=>g.id).sort()'), ocek = a.run(`[...zapById[${JSON.stringify(zid)}].grs].filter(x=>grById[x]).sort()`);
+    if (JSON.stringify(vis) !== JSON.stringify(ocek)) throw new Error('radnik vidi ' + vis + ' a treba ' + ocek);
+    if (a.run('canFinance()')) throw new Error('radnik vidi finansije');
+    if (a.run('vrstaUloge()') !== 'radnik' || a.run('mogaDaUpravljam()')) throw new Error('radnik ima prava upravljanja');
+    a.run(`setRole('spoljni:${pid}')`);
+    const vs = a.run('visibleSites().map(g=>g.id).sort()'), ocekS = a.run(`[...DATA.podizvodjaci.find(p=>p.id===${JSON.stringify(pid)}).grs].filter(x=>grById[x]).sort()`);
+    if (JSON.stringify(vs) !== JSON.stringify(ocekS)) throw new Error('spoljni vidi ' + vs + ' a treba ' + ocekS);
+    if (a.run('canFinance()')) throw new Error('spoljni vidi finansije');
+    a.run("setRole('z1:fin')"); if (!a.run('canFinance()') || a.run('isDirector()')) throw new Error('rukovodilac 1: canFinance treba true, isDirector false');
+    a.run("current='dash'; render();"); const h = a.g.document.getElementById('view').innerHTML;
+    if (!FIN_TERMS.some(t => h.includes(t))) throw new Error('rukovodilac 1 ne vidi finansijske termine na tabli');
+    a.run("setRole('z1')"); if (a.run('canFinance()')) throw new Error('rukovodilac 2 vidi finansije');
+    a.run("setRole('admin')"); if (!a.run('isDirector()') || a.run('jeSuper()') || !a.run('canFinance()')) throw new Error('admin: uprava da, super ne, finansije da');
+    a.run("setRole('all')"); if (!a.run('jeSuper()')) throw new Error('direktor nije super');
+  });
+  await acheck('radnik: citanje svog gradilista (fioka, predmer bez cena, izvestaj), dnevnik pod svojim imenom, pomera samo svoj zadatak; tudje ne; bez dugmadi za pisanje', async () => {
+    const a = await boot();
+    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
+    a.run(`setRole('radnik:${zid}')`);
+    const moje = a.run('visibleSites().map(g=>g.id)'), tudje = a.run('DATA.gradilista.find(g=>!visibleSiteIds().has(g.id)).id');
+    const drawer = a.g.document.getElementById('drawer');
+    drawer.innerHTML = ''; a.run(`openSite(${JSON.stringify(moje[0])})`); if (!drawer.innerHTML) throw new Error('radnik ne moze da otvori svoje gradiliste');
+    for (const t of FIN_TERMS) if (drawer.innerHTML.includes(t)) throw new Error('radnik vidi "' + t + '" u fioci');
+    if (drawer.innerHTML.includes('Izmeni podatke') || drawer.innerHTML.includes("formUpdate(")) throw new Error('radnik ima dugmad za izmenu gradilista');
+    drawer.innerHTML = ''; a.run(`openSite(${JSON.stringify(tudje)})`); if (drawer.innerHTML) throw new Error('radnik otvorio tudje gradiliste');
+    a.run(`openPredmer(${JSON.stringify(moje[0])})`); if (a.run('current') !== 'predmer') throw new Error('radnik ne moze da vidi predmer svog gradilista');
+    const hp = a.g.document.getElementById('view').innerHTML;
+    if (hp.includes('Jed. cena') || hp.includes("formIzvedeno(")) throw new Error('radnik vidi cene ili ucitavanje izvedenog');
+    a.run("current='tasks'; render();"); if (a.g.document.getElementById('view').innerHTML.includes('onclick="formTask()"')) throw new Error('radnik ima dugme Novi zadatak');
+    a.run("current='nabavka'; render();"); if (a.g.document.getElementById('view').innerHTML.includes('onclick="formNarudzba()"')) throw new Error('radnik ima dugme Novo trebovanje');
+    /* dnevnik pod svojim imenom */
+    const n0 = a.run('DATA.dnevnik.length');
+    a.run('formDiary()'); const doc = a.g.document;
+    if (doc.getElementById('modal').innerHTML.includes('id="f_dautor"')) throw new Error('radnik bira autora');
+    doc.getElementById('f_dgr').value = moje[0]; doc.getElementById('f_dtekst').value = 'radnik T32'; doc.getElementById('f_ddatum').value = '';
+    a.run('saveDiary()');
+    if (a.run('DATA.dnevnik.length') !== n0 + 1 || a.run('DATA.dnevnik[DATA.dnevnik.length-1].autor') !== zid) throw new Error('unos u dnevnik nije pod imenom radnika');
+    doc.getElementById('f_dgr').value = tudje; doc.getElementById('f_dtekst').value = 'x'; a.run('saveDiary()');
+    if (a.run('DATA.dnevnik.length') !== n0 + 1) throw new Error('radnik upisao dnevnik na tudje gradiliste');
+    /* zadaci: svoj da, tudji ne */
+    a.run(`DATA.zadaci.push({id:'t_r32',gr:${JSON.stringify(moje[0])},naziv:'moj',zad:${JSON.stringify(zid)},prio:'mid',kol:'todo',rok:todayStr()},{id:'t_r33',gr:${JSON.stringify(moje[0])},naziv:'tudji',zad:'z1',prio:'mid',kol:'todo',rok:todayStr()});`);
+    a.run("dragId='t_r32'; dropTask({preventDefault(){}}, 'done'); dragId='t_r33'; dropTask({preventDefault(){}}, 'done');");
+    if (a.run("DATA.zadaci.find(t=>t.id==='t_r32').kol") !== 'done') throw new Error('radnik ne moze da pomeri svoj zadatak');
+    if (a.run("DATA.zadaci.find(t=>t.id==='t_r33').kol") === 'done') throw new Error('radnik pomerio tudji zadatak');
+  });
+  await acheck('spoljni saradnik: dnevnik pod imenom saradnika, prikaz ne puca (osobaIme), vidi podizvodjace svog gradilista bez cena', async () => {
+    const a = await boot();
+    const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
+    a.run(`setRole('spoljni:${pid}')`);
+    const g = a.run('visibleSites()[0].id');
+    a.run('formDiary()'); const doc = a.g.document;
+    doc.getElementById('f_dgr').value = g; doc.getElementById('f_dtekst').value = 'spoljni T32'; doc.getElementById('f_ddatum').value = '';
+    a.run('saveDiary()');
+    const e = a.run('DATA.dnevnik[DATA.dnevnik.length-1]');
+    if (e.autor !== pid) throw new Error('autor nije saradnik: ' + e.autor);
+    for (const v of ['diary', 'dash', 'sites']) { a.run(`current=${JSON.stringify(v)}; render();`); const h = a.g.document.getElementById('view').innerHTML; if (!h.length) throw new Error(v + ' prazan'); if (v === 'diary' && !h.includes(a.run(`DATA.podizvodjaci.find(p=>p.id===${JSON.stringify(pid)}).naziv`))) throw new Error('dnevnik ne prikazuje ime saradnika kao autora'); }
+    a.run("setRole('all'); current='diary'; render();");
+    if (/\bnull\b|undefined/.test(a.g.document.getElementById('view').innerHTML)) throw new Error('direktorov dnevnik puca na unos spoljnog saradnika');
+  });
+  await acheck('Admin kokpit: 5 uloga u listi, admin ne vidi opciju direktor; dodela radnika/spoljnog/rukovodioca 1 prolazi; admin ne menja direktora', async () => {
+    const USERS = { 'direktor@test': { id: 'u-dir', password: 'dir' }, 'admin@test': { id: 'u-adm', password: 'a' }, 'petar@test': { id: 'u-ruk', password: 'ruk' }, 'r@test': { id: 'u-r', password: 'x' }, 's@test': { id: 'u-s', password: 'x' } };
+    const profili = [{ user_id: 'u-dir', uloga: 'direktor', zaposleni_id: null, ime: 'D' }, { user_id: 'u-adm', uloga: 'admin', zaposleni_id: null, ime: 'A' }, { user_id: 'u-ruk', uloga: 'rukovodilac', zaposleni_id: 'z1', ime: 'P' }];
+    /* direktor prvo zaseje demo (ne-direktor na praznoj bazi ne seje), pa admin radi nad tim seed-om */
+    const s0 = await boot({ supabase: true, seed: { profili }, session: { user: { id: 'u-dir', email: 'direktor@test' } }, users: USERS });
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    const a = await boot({ supabase: true, seed, session: { user: { id: 'u-adm', email: 'admin@test' } }, users: USERS });
+    if (a.run('mode') !== 'supabase' || !a.run('isDirector()')) throw new Error('priprema: admin mode=' + a.run('mode') + ' isDirector=' + a.run('isDirector()'));
+    if (!a.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('admin nema Admin kokpit');
+    a.run("go('nalozi')"); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (/<option value="direktor"/.test(h)) throw new Error('admin vidi opciju direktor');
+    if (!h.includes('menja samo direktor')) throw new Error('red direktora nije zakljucan za admina');
+    for (const u of ['admin', 'rukovodilac', 'radnik', 'spoljni']) if (!h.includes(`<option value="${u}"`)) throw new Error('nema uloge ' + u);
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
+    set('n_email', 'r@test'); set('n_uloga', 'radnik'); set('n_zap', 'z2'); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    set('n_email', 's@test'); set('n_uloga', 'spoljni'); set('n_sar', pid); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    set('n_email', 'petar@test'); set('n_uloga', 'rukovodilac'); set('n_zap', 'z1'); doc.getElementById('n_fin').checked = true; await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const prof = a.g.__mock._db.profili;
+    const r = prof.find(p => p.user_id === 'u-r'), s = prof.find(p => p.user_id === 'u-s'), p = prof.find(p => p.user_id === 'u-ruk');
+    if (!r || r.uloga !== 'radnik' || r.zaposleni_id !== 'z2') throw new Error('radnik nije dodeljen: ' + JSON.stringify(r));
+    if (!s || s.uloga !== 'spoljni' || s.saradnik_id !== pid) throw new Error('spoljni nije dodeljen: ' + JSON.stringify(s));
+    if (!p || p.uloga !== 'rukovodilac' || p.vidi_finansije !== true) throw new Error('rukovodilac 1 (finansije) nije dodeljen: ' + JSON.stringify(p));
+    const preAlert = a.g._calls.alert.length;
+    set('n_email', 'direktor@test'); set('n_uloga', 'admin'); await a.run('dodeliUlogu()');
+    if (!a.g._calls.alert.slice(preAlert).some(m => /Samo direktor/.test(m))) throw new Error('admin je promenio direktora');
+    if (prof.find(x => x.user_id === 'u-dir').uloga !== 'direktor') throw new Error('direktor degradiran od strane admina');
+  });
 
   /* ---- T31 ucitavanje izvedenog iz Excela: .xlsx parser bez biblioteke, uparivanje, klamp, samo izv, napredak ---- */
   section('T31 izvedeno iz Excela');

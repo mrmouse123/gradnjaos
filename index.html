@@ -825,10 +825,10 @@ const PUSH_TABLES=[...TABLES, ...JOIN_TABELE];
 /* Rukovodilac cita iz view-ova (finansijske kolone su NULL), pa ih ne sme ni slati
    nazad — server ih svakako drzi trigerom, ovo je da diff ne salje NULL. */
 const FIN_KOLONE={gradilista:['budzet','troskovi','potroseno','naplaceno'], predmer:['cena'], podizvodjaci:['cena']};
-function jeRukovodilacNalog(){ return !!(PROFIL && PROFIL.uloga!=='direktor'); }
+function jeRukovodilacNalog(){ return !!(PROFIL && PROFIL.uloga!=='direktor' && PROFIL.uloga!=='admin'); }   // = nije uprava: skor sa servera, bez pisanja fin kolona
 /* Uloge koje aplikacija poznaje (isti skup kao check constraint na profili.uloga).
    Admin / zaposleni / rukovodilac-sa-finansijama cekaju odluku klijenta (ponedeljak). */
-const ULOGE=[['direktor','Direktor'],['rukovodilac','Rukovodilac gradilišta']];
+const ULOGE=[['direktor','Direktor / IT super admin'],['admin','Admin'],['rukovodilac','Rukovodilac'],['radnik','Radnik'],['spoljni','Spoljni saradnik']];   // = check constraint profili.uloga (migracija 14)
 function uredjajTip(){ try{ return window.matchMedia&&window.matchMedia('(max-width:900px)').matches?'mobilni':'desktop'; }catch(e){ return '?'; } }
 /* Log koriscenja (migracija 12): append-only tabela VAN PUSH_TABLES (izuzetak od pravila 8 —
    nikad se ne cita u DATA, nikad ne ide kroz diff). Upis je fire-and-forget i ne dira saveErr.
@@ -954,7 +954,7 @@ async function loadState(){
       const ruk=jeRukovodilacNalog();
       /* Sve tabele odjednom (HTTP/2): serijski je bilo ~200 ms x 16 = 3 s po prijavi. */
       const poslovi = PUSH_TABLES.map(async t=>{
-        if(ruk && FIN_TABELE.includes(t)){ out[t]=[]; return; }
+        if(!canFinance() && FIN_TABELE.includes(t)){ out[t]=[]; return; }   // bez finansija server ne daje ni jedan red
         const q=supa.from(CITAJ_IZ[t]||t).select('*');
         const {data,error}=await (JOIN_TABELE.includes(t) ? q : q.order('id'));
         if(error) throw new Error(t+': '+(error.message||error));
@@ -1105,7 +1105,34 @@ const MESECI_PUN = ['januar','februar','mart','april','maj','jun','jul','avgust'
 /* ============================================================
    ULOGE (simulacija više korisnika)
    ============================================================ */
-let ROLE = 'all'; // 'all' = direktor; inače id rukovodioca
+let ROLE = 'all'; // 'all' = uprava (direktor|admin); inače id osobe (zaposleni ili spoljni saradnik)
+/* Sest uloga (2026-10-07): ULOGA = 'direktor'|'admin'|'rukovodilac'|'radnik'|'spoljni',
+   VIDI_FIN = finansije (uprava uvek; rukovodilac po zastavici = "Rukovodilac 1"),
+   JA = id zaposlenog (rukovodilac/radnik) ili podizvodjaca (spoljni). ROLE ostaje zbog
+   17+ provera `g.rukovodilac===ROLE`. Server sprovodi isto (migracija 14). */
+let ULOGA='direktor', VIDI_FIN=true, JA=null;
+/* Koju vrstu pristupa ima trenutni pogled: 'uprava' | 'rukovodilac' | 'radnik' | 'spoljni'.
+   Testovi i stari kod postavljaju samo ROLE='z1' — to je rukovodilac. */
+function vrstaUloge(){ if(ROLE==='all') return 'uprava'; return (ULOGA==='radnik'||ULOGA==='spoljni')?ULOGA:'rukovodilac'; }
+function jeSuper(){ return ROLE==='all' && ULOGA!=='admin'; }   // direktor: brisanje, dodela direktora
+function primeniUlogu(uloga, ja, fin){
+  ULOGA=uloga||'direktor'; JA=ja||null;
+  const uprava=(ULOGA==='direktor'||ULOGA==='admin');
+  VIDI_FIN = uprava ? true : (ULOGA==='rukovodilac' && !!fin);
+  ROLE = uprava ? 'all' : (JA||'all');
+}
+/* Tabovi po ulozi (odluka klijenta 2026-10-07): uprava sve; rukovodilac: naplata (samo sa
+   finansijama), gradilišta, rokovi, zadaci, dnevnik, magacin, trebovanje; radnik/spoljni isto bez naplate. */
+const TABOVI_UPRAVA=null;   // null = svi
+const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','pay'];
+function tabDozvoljen(id){
+  if(vrstaUloge()==='uprava') return true;
+  if(id==='pay') return canFinance();
+  return TABOVI_OSTALI.includes(id);
+}
+/* Ime osobe po id-u: zaposleni ili spoljni saradnik (dnevnik.autor / zadaci.zad / dokumenti.autor). */
+function osobaIme(id){ if(!id) return '—'; if(id==='direkcija') return 'Direkcija'; const z=zapById[id]; if(z) return z.ime; const p=(DATA.podizvodjaci||[]).find(x=>x.id===id); return p?p.naziv:'—'; }
+function ulogaLabela(u, fin){ return ({direktor:'direktor',admin:'admin',rukovodilac:fin?'rukovodilac (sa finansijama)':'rukovodilac',radnik:'radnik',spoljni:'spoljni saradnik'})[u]||u; }
 let MODUL = 'sve';  // 'sve' | 'projektovanje' | 'izvodjenje'
 let PODTIP = 'sve'; // samo za izvodjenje: 'sve' | 'visokogradnja' | 'niskogradnja'
 const MODUL_BOJA = {projektovanje:'var(--purple)', izvodjenje:'var(--blue)'};
@@ -1124,15 +1151,40 @@ function modulSeg(){
   }
   return '<div class="modul-wrap">'+h+'</div>';
 }
-function setRole(r){ if(PROFIL && PROFIL.uloga!=='direktor') return; ROLE=r; if(r!=='all' && ['cena','marza','naplata'].includes(dashSort.key)) dashSort={key:'smart',dir:-1}; renderNav(); render(); closeDrawer(); }
+/* "Pogled kao" (demo + simulacija za upravu). Vrednost: 'all' | 'admin' | '<zid>' (rukovodilac 2) |
+   '<zid>:fin' (rukovodilac 1) | 'radnik:<zid>' | 'spoljni:<pid>' */
+function setRole(r){
+  if(PROFIL && PROFIL.uloga!=='direktor' && PROFIL.uloga!=='admin') return;
+  r=String(r||'all');
+  if(r==='all') primeniUlogu(PROFIL&&PROFIL.uloga==='admin'?'admin':'direktor', null, true);
+  else if(r==='admin') primeniUlogu('admin', null, true);
+  else if(r.startsWith('radnik:')) primeniUlogu('radnik', r.slice(7), false);
+  else if(r.startsWith('spoljni:')) primeniUlogu('spoljni', r.slice(8), false);
+  else if(r.endsWith(':fin')) primeniUlogu('rukovodilac', r.slice(0,-4), true);
+  else primeniUlogu('rukovodilac', r, false);
+  if(ROLE!=='all' && ['cena','marza','naplata'].includes(dashSort.key)) dashSort={key:'smart',dir:-1};
+  if(!tabDozvoljen(current)) current='dash';
+  renderNav(); render(); closeDrawer();
+}
+function roleValue(){ const v=vrstaUloge(); return v==='uprava'?(ULOGA==='admin'?'admin':'all'):v==='radnik'?'radnik:'+ROLE:v==='spoljni'?'spoljni:'+ROLE:(VIDI_FIN?ROLE+':fin':ROLE); }
 function roleOptions(){
   const vodji=new Set(DATA.gradilista.map(g=>g.rukovodilac));
   const ruks = DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||vodji.has(z.id));
-  return `<option value="all" ${ROLE==='all'?'selected':''}>Direktor — svi projekti</option>` +
-    ruks.map(z=>`<option value="${z.id}" ${ROLE===z.id?'selected':''}>${z.ime} — rukovodilac</option>`).join('');
+  const radnici = DATA.zaposleni.filter(z=>!vodji.has(z.id)).slice(0,6);
+  const sar = (DATA.podizvodjaci||[]).filter(p=>(p.grs||[]).length).slice(0,4);
+  const cur=roleValue(), o=(v,t)=>`<option value="${v}" ${cur===v?'selected':''}>${t}</option>`;
+  return o('all','Direktor — sve') + o('admin','Admin — sve, bez brisanja')
+    + ruks.map(z=>o(z.id+':fin', z.ime+' — rukovodilac 1 (finansije)')).join('')
+    + ruks.map(z=>o(z.id, z.ime+' — rukovodilac 2')).join('')
+    + radnici.map(z=>o('radnik:'+z.id, z.ime+' — radnik')).join('')
+    + sar.map(p=>o('spoljni:'+p.id, p.naziv+' — spoljni saradnik')).join('');
 }
 function visibleSites(){
-  let l = ROLE==='all' ? DATA.gradilista : DATA.gradilista.filter(g=>g.rukovodilac===ROLE);
+  const v=vrstaUloge();
+  let l = v==='uprava' ? DATA.gradilista
+        : v==='radnik' ? DATA.gradilista.filter(g=>((zapById[ROLE]||{}).grs||[]).includes(g.id))
+        : v==='spoljni' ? DATA.gradilista.filter(g=>(((DATA.podizvodjaci||[]).find(p=>p.id===ROLE)||{}).grs||[]).includes(g.id))
+        : DATA.gradilista.filter(g=>g.rukovodilac===ROLE);
   if(MODUL!=='sve') l = l.filter(g=>(g.modul||'izvodjenje')===MODUL);
   if(MODUL==='izvodjenje' && PODTIP!=='sve') l = l.filter(g=>(g.tip||'visokogradnja')===PODTIP);
   return l;
@@ -1142,7 +1194,9 @@ function isDirector(){ return ROLE==='all'; }
 /* Vlasnistvo gradilista: direktor sve, rukovodilac samo svoje.
    Koristiti u SVAKOJ funkciji koja prima grId spolja — funkcije su globalne,
    pa sakriveno dugme nije zastita (CLAUDE.md pravilo 2). */
-function smemNa(grId){ const g=grById[grId]; return !!g && (isDirector() || g.rukovodilac===ROLE); }
+function smemNa(grId){ const g=grById[grId]; return !!g && (isDirector() || (vrstaUloge()==='rukovodilac' && g.rukovodilac===ROLE)); }   // VODIM: uprava | rukovodilac gradilista (pisanje)
+function vidimGr(grId){ return visibleSiteIds().has(grId); }   // CITANJE: + radnik u timu, spoljni na gradilistu
+function mogaDaUpravljam(){ const v=vrstaUloge(); return v==='uprava'||v==='rukovodilac'; }   // zadaci, trebovanje, magacin izlaz, tim
 
 /* ============================================================
    POMOĆNE
@@ -1171,7 +1225,7 @@ function ostvMarzaPct(g){ return g.budzet ? Math.round((g.budzet - potroseno(g))
 function sitZa(id){ return (DATA.situacije||[]).filter(s=>s.gr===id); }
 function naplSum(g){ const s=sitZa(g.id); return s.length? s.filter(x=>x.status==='placeno').reduce((a,b)=>a+b.iznos,0) : (g.naplaceno||0); }
 function naplataPct(g){ return g.budzet?Math.round(naplSum(g)/g.budzet*100):0; }
-function canFinance(){ return isDirector(); }
+function canFinance(){ return isDirector() || (ULOGA==='rukovodilac' && VIDI_FIN && ROLE!=='all'); }   // uprava uvek; "Rukovodilac 1" po zastavici (ULOGA eksplicitno rukovodilac); radnik/spoljni nikad
 function sitKasni(s){ return s.status==='kasni' || (s.status==='ceka' && daysBetween(TODAY,dParse(s.valuta))<0); }
 function troskoviZa(grId){ return (DATA.troskovi_st||[]).filter(t=>t.gr===grId).sort((a,b)=>dParse(a.datum)-dParse(b.datum)); }
 function potroseno(g){ const l=troskoviZa(g.id); return l.length ? l.reduce((a,b)=>a+(+b.iznos||0),0) : (g.potroseno||0); }
@@ -1232,14 +1286,14 @@ function tabs(){
     {id:'emps', naziv:'Zaposleni', ic:'emp', cnt:DATA.zaposleni.filter(z=>(isDirector()&&MODUL==='sve')||(z.grs||[]).some(x=>ids.has(x))).length},
     {id:'time', naziv:'Rokovi', ic:'time'},
     {id:'tasks', naziv:'Zadaci', ic:'task', cnt:DATA.zadaci.filter(t=>(isDirector()&&MODUL==='sve')||ids.has(t.gr)).length},
-    {id:'pay', naziv:'Naplata', ic:'money', cnt:(DATA.situacije||[]).filter(s=>s.status!=='placeno'&&ids.has(s.gr)).length, dirOnly:true},
+    {id:'pay', naziv:'Naplata', ic:'money', cnt:(DATA.situacije||[]).filter(s=>s.status!=='placeno'&&ids.has(s.gr)).length, finOnly:true},
     {id:'diary', naziv:'Dnevnik radova', ic:'book', cnt:DATA.dnevnik.filter(d=>(isDirector()&&MODUL==='sve')||ids.has(d.gr)).length},
     {id:'resursi', naziv:'Resursi', ic:'truck', cnt:(DATA.resursi||[]).filter(r=>r.istice&&daysBetween(TODAY,dParse(r.istice))<=30).length},
     {id:'magacin', naziv:'Magacin', ic:'box', cnt:0},
     {id:'subs', naziv:(MODUL==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&((isDirector()&&MODUL==='sve')||(x.grs||[]).some(i=>ids.has(i)))).length},
     {id:'nabavka', naziv:'Trebovanje', ic:'cart', cnt:(DATA.narudzbe||[]).filter(n=>n.status==='poslato'&&((isDirector()&&MODUL==='sve')||ids.has(n.gr))).length},
-    {id:'nalozi', naziv:'Nalozi i log', ic:'client', dirOnly:true},
-  ].filter(t=>!t.dirOnly || isDirector());
+    {id:'nalozi', naziv:'Admin kokpit', ic:'client', dirOnly:true},
+  ].filter(t=>(!t.dirOnly || isDirector()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
 }
 function renderNav(){
   const t=tabs();
@@ -1411,8 +1465,8 @@ function dashSorted(sites){
 function brzeAkcije(){
   return `<div class="qa">
     <button class="btn" onclick="formDiary()">＋ Dnevnik</button>
-    <button class="btn ghost" onclick="formTask()">＋ Zadatak</button>
-    <button class="btn ghost" onclick="formNarudzba()">＋ Trebovanje</button>
+    ${mogaDaUpravljam()?`<button class="btn ghost" onclick="formTask()">＋ Zadatak</button>
+    <button class="btn ghost" onclick="formNarudzba()">＋ Trebovanje</button>`:''}
   </div>`;
 }
 function viewDash(){
@@ -1476,7 +1530,7 @@ function viewDash(){
   // poslednji unosi u dnevnik
   const diaryEntries = DATA.dnevnik.filter(d=>ids.has(d.gr)).sort((a,b)=>dParse(b.datum)-dParse(a.datum)).slice(0,3);
   const diaryHtml = diaryEntries.map(e=>{
-    const z=zapById[e.autor]||{ime:'\u2014'}, g=grById[e.gr]||{naziv:'\u2014'};
+    const z={ime:osobaIme(e.autor)}, g=grById[e.gr]||{naziv:'\u2014'};   // autor moze biti i spoljni saradnik
     return `<div class="dl">
       <div class="av" style="margin-top:2px">${initials(z.ime)}</div>
       <div style="flex:1">
@@ -1993,7 +2047,7 @@ function viewTasks(){
   }).join('');
   return head('Zadaci','Tabla zadataka po statusu — prevuci karticu da promeniš status.') +
   `<div class="tools">
-    <button class="btn" onclick="formTask()">${icon('plus')} Novi zadatak</button>
+    ${mogaDaUpravljam()?`<button class="btn" onclick="formTask()">${icon('plus')} Novi zadatak</button>`:'<span class="sub">Zadatke dodeljuje rukovodilac — svoje možeš da pomeraš.</span>'}
   </div>
   <div class="kanban">${cols}</div>`;
 }
@@ -2004,7 +2058,7 @@ function dropTask(e,col){
   const id=dragId; dragId=null;
   if(!id || !KOLONE.some(k=>k.id===col)) return;
   const t=DATA.zadaci.find(x=>x.id===id);
-  if(!t || !smemNa(t.gr)) return;
+  if(!t || !(smemNa(t.gr) || (vidimGr(t.gr) && t.zad===ROLE))) return;   // radnik: samo svoj zadatak (server: trigger pusta samo kol)
   t.kol=col; saveState(); render();
 }
 
@@ -2019,9 +2073,9 @@ function viewDiary(){
     <div class="diary-day">
       <h3>${fmtDate(day)}</h3>
       ${byDay[day].map(e=>{
-        const z=zapById[e.autor], g=grById[e.gr];
+        const z={ime:osobaIme(e.autor)}, g=grById[e.gr];   // autor: zaposleni ili spoljni saradnik
         return `<div class="card entry">
-          <div class="av">${z?initials(z.ime):'?'}</div>
+          <div class="av">${z.ime!=='—'?initials(z.ime):'?'}</div>
           <div style="flex:1">
             <div class="hd"><b>${z?z.ime:'—'}</b><span class="gr-link" onclick="openSite('${e.gr}')">${g?g.naziv:''}</span></div>
             <p>${e.tekst}</p>
@@ -2210,24 +2264,30 @@ function viewNalozi(){
   if(!supa) return h+'<div class="card"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>';
   if(NALOZI===null && !NALOZI_MSG) ucitajNaloge();
   const zOpt=DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('');
-  const ulOpt=(sel)=>ULOGE.map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
+  const sOpt=(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv}</option>`).join('');
+  /* admin ne moze da dodeli 'direktor' niti da dira direktore (server to sprovodi; UI ne nudi) */
+  const ulOpt=(sel)=>ULOGE.filter(([v])=>v!=='direktor'||jeSuper()||sel==='direktor').map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
   const mojEmail=(SESIJA&&SESIJA.user&&SESIJA.user.email||'').toLowerCase();
   const redovi=(NALOZI||[]).map(n=>{
-    const moj=(n.email||'').toLowerCase()===mojEmail;
+    const moj=(n.email||'').toLowerCase()===mojEmail, zakljucan=n.uloga==='direktor'&&!jeSuper();
     const kad=n.poslednja_prijava?fmtDate(String(n.poslednja_prijava).slice(0,10))+' '+String(n.poslednja_prijava).slice(11,16):'—';
     const st=n.bez_profila?'<span class="badge b-amber">bez uloge</span>':moj?'<span class="badge b-blue">ti</span>':'<span class="badge b-green">aktivan</span>';
-    const kontrole = moj ? `<span class="sub">${ULOGE.find(u=>u[0]===n.uloga)?.[1]||n.uloga}</span>` :
-      `<select id="nu_${esc(n.user_id)}" onchange="naloziTogglZap('${esc(n.user_id)}')">${n.bez_profila?'<option value="">— izaberi —</option>':''}${ulOpt(n.uloga)}</select>
-       <select id="nz_${esc(n.user_id)}" style="${n.uloga==='rukovodilac'||n.bez_profila?'':'display:none'}"><option value="">— zaposleni —</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${n.zaposleni_id===z.id?'selected':''}>${z.ime}</option>`).join('')}</select>
-       <button class="btn ghost" style="padding:4px 10px;font-size:12px" onclick="dodeliUlogu('${esc(n.email)}','${esc(n.user_id)}')">Sačuvaj</button>
+    const u=esc(n.user_id), ul=n.uloga||'';
+    const kontrole = (moj||zakljucan) ? `<span class="sub">${ulogaLabela(n.uloga, n.vidi_finansije)}${zakljucan?' · menja samo direktor':''}</span>` :
+      `<select id="nu_${u}" onchange="naloziTogglZap('${u}')">${n.bez_profila?'<option value="">— izaberi —</option>':''}${ulOpt(ul)}</select>
+       <select id="nz_${u}" style="${ul==='rukovodilac'||ul==='radnik'||n.bez_profila?'':'display:none'}"><option value="">— zaposleni —</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${n.zaposleni_id===z.id?'selected':''}>${z.ime}</option>`).join('')}</select>
+       <select id="ns_${u}" style="${ul==='spoljni'?'':'display:none'}"><option value="">— saradnik —</option>${(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}" ${n.saradnik_id===p.id?'selected':''}>${p.naziv}</option>`).join('')}</select>
+       <label class="chk" id="nfl_${u}" style="margin:0;${ul==='rukovodilac'?'':'display:none'}"><input type="checkbox" id="nf_${u}" ${n.vidi_finansije?'checked':''}> vidi finansije</label>
+       <button class="btn ghost" style="padding:4px 10px;font-size:12px" onclick="dodeliUlogu('${esc(n.email)}','${u}')">Sačuvaj</button>
        ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
     return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
   }).join('');
-  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen'};
+  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
     else if(l.dogadjaj==='uloga_promena') det=(d.email||'')+': '+(d.stara||'—')+' → '+(d.nova||'')+(d.zaposleni_id?' ('+d.zaposleni_id+')':'');
     else if(l.dogadjaj==='pristup_uklonjen') det=(d.email||'')+' ('+(d.stara||'')+')';
+    else if(l.dogadjaj==='brisanje') det=(d.tabela||'')+' '+(d.naziv||d.id||'');
     else det=[d.uredjaj,d.verzija].filter(Boolean).join(' · ');
     const ts=String(l.ts||''); return `<tr><td class="num">${fmtDate(ts.slice(0,10))} ${ts.slice(11,16)}</td><td>${esc(l.email||'')}</td><td>${esc(l.uloga||'')}</td><td>${DOG[l.dogadjaj]||esc(l.dogadjaj)}</td><td class="sub">${esc(det)}</td></tr>`; };
   return h+`
@@ -2239,8 +2299,10 @@ function viewNalozi(){
       <tbody>${redovi||`<tr><td colspan="5" class="empty">${NALOZI===null?'Učitavam…':'Nema naloga.'}</td></tr>`}</tbody></table></div>
       <div class="tools" style="margin:14px 16px 4px">
         <input id="n_email" placeholder="email postojećeg naloga" style="min-width:220px">
-        <select id="n_uloga" onchange="document.getElementById('n_zap').style.display=this.value==='rukovodilac'?'':'none'">${ulOpt('rukovodilac')}</select>
+        <select id="n_uloga" onchange="naloziTogglZap('')">${ulOpt('rukovodilac')}</select>
         <select id="n_zap"><option value="">— zaposleni —</option>${zOpt}</select>
+        <select id="n_sar" style="display:none"><option value="">— saradnik —</option>${sOpt}</select>
+        <label class="chk" id="n_finl" style="margin:0"><input type="checkbox" id="n_fin"> vidi finansije</label>
         <button class="btn" onclick="dodeliUlogu()">Dodeli ulogu</button>
       </div>
     </div>
@@ -2251,7 +2313,15 @@ function viewNalozi(){
       <tbody>${(LOG_K||[]).map(logRed).join('')||`<tr><td colspan="5" class="empty">${LOG_K===null?'Učitavam…':'Još nema zapisa.'}</td></tr>`}</tbody></table></div></div>
   </div>`;
 }
-function naloziTogglZap(uid){ const u=document.getElementById('nu_'+uid), z=document.getElementById('nz_'+uid); if(u&&z) z.style.display=u.value==='rukovodilac'?'':'none'; }
+/* prikazi polja koja uloga trazi: zaposleni (rukovodilac/radnik), saradnik (spoljni), finansije (rukovodilac). uid='' = forma za novi */
+function naloziTogglZap(uid){
+  const g=id=>document.getElementById(uid?id+'_'+uid:{nu:'n_uloga',nz:'n_zap',ns:'n_sar',nfl:'n_finl'}[id]);
+  const u=g('nu'); if(!u) return; const v=u.value;
+  const z=g('nz'), s=g('ns'), f=g('nfl');
+  if(z) z.style.display=(v==='rukovodilac'||v==='radnik')?'':'none';
+  if(s) s.style.display=v==='spoljni'?'':'none';
+  if(f) f.style.display=v==='rukovodilac'?'':'none';
+}
 async function ucitajNaloge(){
   if(!isDirector()||!supa) return;
   NALOZI_MSG='';
@@ -2270,11 +2340,13 @@ async function dodeliUlogu(email, uid){
   if(!isDirector()||!supa) return;
   const v=id=>{ const e=document.getElementById(id); return e?e.value:''; };
   email=(email||v('n_email')).trim().toLowerCase();
-  const uloga=uid?v('nu_'+uid):v('n_uloga'), zap=(uid?v('nz_'+uid):v('n_zap'))||null;
+  const uloga=uid?v('nu_'+uid):v('n_uloga'), zap=(uid?v('nz_'+uid):v('n_zap'))||null, sar=(uid?v('ns_'+uid):v('n_sar'))||null;
+  const finEl=document.getElementById(uid?'nf_'+uid:'n_fin'), fin=uloga==='rukovodilac'&&!!(finEl&&finEl.checked);
   if(!email||!/@/.test(email)){ alert('Unesi email naloga.'); return; }
   if(!ULOGE.some(u=>u[0]===uloga)){ alert('Izaberi ulogu.'); return; }
-  if(uloga==='rukovodilac'&&!zap){ alert('Rukovodilac mora biti vezan za zaposlenog.'); return; }
-  const {data,error}=await supa.rpc('dodeli_ulogu',{p_email:email, p_uloga:uloga, p_zaposleni_id:uloga==='rukovodilac'?zap:null});
+  if((uloga==='rukovodilac'||uloga==='radnik')&&!zap){ alert((uloga==='rukovodilac'?'Rukovodilac':'Radnik')+' mora biti vezan za zaposlenog.'); return; }
+  if(uloga==='spoljni'&&!sar){ alert('Spoljni saradnik mora biti vezan za podizvođača / saradnika.'); return; }
+  const {data,error}=await supa.rpc('dodeli_ulogu',{p_email:email, p_uloga:uloga, p_zaposleni_id:(uloga==='rukovodilac'||uloga==='radnik')?zap:null, p_vidi_finansije:fin, p_saradnik_id:uloga==='spoljni'?sar:null});
   if(error){ alert('Nije uspelo: '+(error.message||error)); return; }
   NALOZI_MSG='✓ '+esc(email)+': uloga '+(data==='dodeljeno'?'dodeljena':'izmenjena')+'. Korisnik je vidi pri sledećem otvaranju aplikacije.';
   await ucitajNaloge();
@@ -2297,7 +2369,7 @@ function viewMagacin(){
       <td class="sub">${posl?`${posl.tip==='ulaz'?'⬆ ulaz':'⬇ izlaz'} ${posl.kol} ${m.jm} · ${fmtDate(posl.datum)}${posl.gr&&grById[posl.gr]?' → '+grById[posl.gr].naziv:''}`:'—'}</td>
       <td class="r">
         ${isDirector()?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','ulaz')">⬆ Ulaz</button>`:''}
-        <button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','izlaz')">⬇ Izlaz</button>
+        ${mogaDaUpravljam()?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','izlaz')">⬇ Izlaz</button>`:''}
       </td>
     </tr>`;
   }).join('');
@@ -2458,12 +2530,12 @@ function osveziNapredak(grId){
 }
 function jePro(g){ return (g.modul||'izvodjenje')==='projektovanje'; }
 function predNaslov(g){ return jePro(g)?'Specifikacija usluga':'Predmer i količine'; }
-function openPredmer(id){ if(!smemNa(id)) return; PRED_ID=id; current='predmer'; render(); window.scrollTo(0,0); closeDrawer(); }
+function openPredmer(id){ if(!vidimGr(id)) return; PRED_ID=id; current='predmer'; render(); window.scrollTo(0,0); closeDrawer(); }
 function zaduzenIme(zid){ if(!zid) return '—'; const z=zapById[zid]; if(z) return z.ime; const p=(DATA.podizvodjaci||[]).find(x=>x.id===zid); return p?p.naziv+' (spolj.)':'—'; }
 function viewPredmer(){
   const g=grById[PRED_ID]; if(!g) { current='sites'; return viewSites(); }
-  const smem = isDirector()||g.rukovodilac===ROLE;
-  if(!smem){ current='dash'; return viewDash(); }
+  if(!vidimGr(g.id)){ current='dash'; return viewDash(); }
+  const smem = smemNa(g.id);   // vodim: ucitavanje izvedenog; radnik/spoljni samo gledaju
   const fin=canFinance(), pro=jePro(g);
   const list=predmerZa(g.id);
   const ugUk=list.reduce((a,b)=>a+b.kol*b.cena,0);
@@ -2912,7 +2984,7 @@ function saveSub(){
 /* ---------- IZVESTAJ ZA INVESTITORA ---------- */
 function openIzvestaj(id){
   const g=grById[id]; if(!g) return;
-  if(!smemNa(id)) return;
+  if(!vidimGr(id)) return;   // izvestaj za investitora nema finansije — sme i radnik
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const od=new Date(TODAY); od.setDate(od.getDate()-7);
   const unosi=DATA.dnevnik.filter(d=>d.gr===id && dParse(d.datum)>=od).sort((a,b)=>dParse(b.datum)-dParse(a.datum));
@@ -2941,7 +3013,7 @@ function openIzvestaj(id){
       </div>
       <div class="bar" style="height:10px;margin-bottom:26px"><span style="width:${g.napredak}%;background:${g.status==='kasni'?'var(--red)':'var(--blue)'}"></span></div>
       <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:0 0 10px">Aktivnosti u proteklih 7 dana</h3>
-      ${unosi.length?unosi.map(e=>{const z=zapById[e.autor];return `<div style="padding:9px 0;border-bottom:1px solid var(--line);font-size:13px"><b>${fmtDate(e.datum)}</b> — ${e.tekst} <span style="color:var(--faint)">(${z?z.ime:''})</span></div>`;}).join(''):'<div style="font-size:13px;color:var(--muted);padding:6px 0">Nema unosa u dnevnik za protekli period.</div>'}
+      ${unosi.length?unosi.map(e=>`<div style="padding:9px 0;border-bottom:1px solid var(--line);font-size:13px"><b>${fmtDate(e.datum)}</b> — ${e.tekst} <span style="color:var(--faint)">(${osobaIme(e.autor)})</span></div>`).join(''):'<div style="font-size:13px;color:var(--muted);padding:6px 0">Nema unosa u dnevnik za protekli period.</div>'}
       <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:24px 0 10px">Predstojeće aktivnosti</h3>
       ${sledece.length?sledece.map(t=>`<div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;display:flex;justify-content:space-between"><span>${t.naziv}</span><b class="num" style="color:var(--muted)">${fmtDate(t.rok)}</b></div>`).join(''):'<div style="font-size:13px;color:var(--muted)">Nema otvorenih zadataka.</div>'}
       <div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--faint);display:flex;justify-content:space-between">
@@ -3079,7 +3151,7 @@ function viewNabavka(){
   }).join('') || '<div class="card"><div class="empty">Jo\u0161 nema trebovanja materijala.</div></div>';
   return head('Trebovanje materijala','Poru\u010di materijal za gradili\u0161te \u2014 \u010duvanjem se otvara gotov mejl za slu\u017ebu nabavke.') +
   `<div class="banner blue">${icon('warn')}<div>Mejl slu\u017ebe nabavke: <b>${NABAVKA_EMAIL}</b> \u2014 \u010duvanjem trebovanja otvara se popunjen mejl, ostaje samo klik \u201ePo\u0161alji\u201c. Adresa se menja u konfiguraciji na vrhu fajla.</div></div>
-  <div class="tools"><button class="btn" onclick="formNarudzba()">${icon('plus')} Novo trebovanje</button></div>
+  <div class="tools">${mogaDaUpravljam()?`<button class="btn" onclick="formNarudzba()">${icon('plus')} Novo trebovanje</button>`:'<span class="sub">Trebovanje šalje rukovodilac gradilišta.</span>'}</div>
   ${cards}`;
 }
 let stavkaSeq=1;
@@ -3517,7 +3589,9 @@ function formDiary(){
     <div class="m-b">
       <div class="f-2">
         <div class="f-row"><label>Gradilište</label><select id="f_dgr">${sites.map(g=>`<option value="${g.id}">${g.naziv}</option>`).join('')}</select></div>
-        <div class="f-row"><label>Autor</label><select id="f_dautor">${autori.map(z=>`<option value="${z.id}" ${z.id===ROLE?'selected':''}>${z.ime}</option>`).join('')}</select></div>
+        ${isDirector()
+          ?`<div class="f-row"><label>Autor</label><select id="f_dautor">${autori.map(z=>`<option value="${z.id}" ${z.id===ROLE?'selected':''}>${z.ime}</option>`).join('')}</select></div>`
+          :`<div class="f-row"><label>Autor</label><div style="padding:8px 0;font-size:13.5px;font-weight:600">${osobaIme(ROLE)}</div></div>`}
       </div>
       <div class="f-row"><label>Datum</label><input id="f_ddatum" type="date" value="${todayStr()}"></div>
       <div class="f-row"><label>Izveštaj</label><textarea id="f_dtekst" placeholder="Šta je urađeno danas, šta je zapelo, šta se čeka…"></textarea></div>
@@ -3529,9 +3603,9 @@ function formDiary(){
 }
 function saveDiary(){
   const v=id=>document.getElementById(id).value;
-  if(!smemNa(v('f_dgr'))){ alert('Dnevnik mozes da vodis samo za svoje gradiliste.'); return; }
+  if(!vidimGr(v('f_dgr'))){ alert('Dnevnik mozes da vodis samo za svoje gradiliste.'); return; }
   const tekst=esc(v('f_dtekst').trim()); if(!tekst){ alert('Unesi tekst izveštaja.'); return; }
-  /* Rukovodilac ne moze da potpise unos tudjim imenom. */
+  /* Niko osim uprave ne moze da potpise unos tudjim imenom (server: autor = moj_autor()). */
   const autor = isDirector() ? v('f_dautor') : ROLE;
   DATA.dnevnik.push({ id:'d'+Date.now(), datum:v('f_ddatum')||todayStr(), gr:v('f_dgr'), autor, tekst });
   saveState(); closeModal(); renderNav(); render();
@@ -3544,7 +3618,7 @@ function saveDiary(){
 function investKontakt(k){ const p=[k.osoba,k.tel,k.mail].filter(x=>x&&x!=='—'); return p.length?' — '+p.join(', '):''; }
 function openSite(id){
   const g=grById[id]; if(!g)return;
-  if(!smemNa(id)) return;
+  if(!vidimGr(id)) return;   // citanje: i radnik/spoljni na svom gradilistu; akcije unutra su iza smemNa/canFinance
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const tim=timNa(id);
   const zad=DATA.zadaci.filter(t=>t.gr===id);
@@ -3748,7 +3822,7 @@ async function initAuth(){
       return false;
     }
     PROFIL=prof;
-    ROLE = prof.uloga==='direktor' ? 'all' : prof.zaposleni_id;
+    primeniUlogu(prof.uloga, prof.zaposleni_id||prof.saradnik_id||null, !!prof.vidi_finansije);
     return true;
   }catch(e){
     console.error('Auth:', e);
@@ -3805,8 +3879,8 @@ async function promeniLozinku(){
 function renderNalog(){
   const box=document.getElementById('roleBox'); if(!box) return;
   if(!PROFIL){ box.innerHTML='<label>Prijavljen kao</label><select id="roleSel" onchange="setRole(this.value)"></select>'; return; }
-  const dir=PROFIL.uloga==='direktor';
-  box.innerHTML='<label>Nalog</label><div class="acc"><b>'+esc(PROFIL.ime||'')+'</b><small>'+esc((SESIJA&&SESIJA.user&&SESIJA.user.email)||'')+' · '+(dir?'direktor':'rukovodilac')+'</small></div>'
+  const dir=PROFIL.uloga==='direktor'||PROFIL.uloga==='admin';
+  box.innerHTML='<label>Nalog</label><div class="acc"><b>'+esc(PROFIL.ime||'')+'</b><small>'+esc((SESIJA&&SESIJA.user&&SESIJA.user.email)||'')+' · '+ulogaLabela(PROFIL.uloga, PROFIL.vidi_finansije)+'</small></div>'
     +(dir?'<label style="margin-top:10px">Pogled kao</label><select id="roleSel" onchange="setRole(this.value)"></select>':'')
     +'<div class="acc-btns"><button onclick="promeniLozinku()">Lozinka</button><button onclick="odjava()">Odjavi se</button></div>';
 }
