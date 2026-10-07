@@ -2265,10 +2265,55 @@ function saveResurs(rid){
    dashboardu dok Jovan ne podesi Site URL / self-signup). RPC-ovi iz migracije 12 su
    security definer sa sopstvenim guardom (je_direktor, ne sebi, ne poslednjem direktoru). */
 let NALOZI=null, LOG_K=null, NALOZI_MSG='';
+/* Sifarnik mera u Admin kokpitu (uprava: dodaj/aktivan; samo direktor brise). Nazivi/grupe idu kroz esc() pri upisu. */
+const SF_JM=['m³','m²','m','kom','kg','t','h','paušal'];
+function sifrarnikKartica(){
+  const sve=(DATA.sifrarnik||[]).slice().sort((a,b)=>String(a.modul||'~').localeCompare(String(b.modul||'~'))||(a.redosled||0)-(b.redosled||0));
+  const grupe=[...new Set(sve.map(s=>s.grupa).filter(Boolean))];
+  const rows=sve.map(s=>`<tr${s.aktivan===false?' style="opacity:.55"':''}><td>${s.modul==='projektovanje'?'Projektovanje':s.modul==='izvodjenje'?'Izvođenje':'Oba'}</td><td>${s.grupa||'—'}</td><td class="strong">${s.naziv}</td><td>${s.jm||'—'}</td>
+    <td><label class="chk" style="margin:0"><input type="checkbox" ${s.aktivan===false?'':'checked'} onchange="toggleSifrarnik('${s.id}')"> ${s.aktivan===false?'ne':'da'}</label></td>
+    <td class="r">${jeSuper()?`<button class="btn ghost" style="padding:2px 8px;font-size:11px;color:var(--red)" onclick="obrisiSifrarnik('${s.id}')">✕</button>`:''}</td></tr>`).join('');
+  return `<div class="card" style="margin-bottom:18px">
+    <div class="card-h"><h3>Šifarnik mera (${sve.length})</h3><span class="hint">Bira se pri kreiranju gradilišta · neaktivne stavke se ne nude</span></div>
+    <div class="card-b tight">
+      <div style="overflow-x:auto;max-height:340px;overflow-y:auto"><table><thead><tr><th>Modul</th><th>Grupa</th><th>Naziv</th><th>JM</th><th>Aktivan</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" class="empty">Šifarnik je prazan.</td></tr>'}</tbody></table></div>
+      <div class="tools" style="margin:14px 16px 4px">
+        <input id="sf_naziv" placeholder="naziv pozicije" style="min-width:200px">
+        <select id="sf_jm">${SF_JM.map(j=>`<option value="${j}">${j}</option>`).join('')}</select>
+        <input id="sf_grupa" list="sf_grupe" placeholder="grupa"><datalist id="sf_grupe">${grupe.map(x=>`<option value="${x}">`).join('')}</datalist>
+        <select id="sf_modul"><option value="izvodjenje">Izvođenje</option><option value="projektovanje">Projektovanje</option></select>
+        <button class="btn" onclick="saveSifrarnik()">Dodaj</button>
+      </div>
+    </div>
+  </div>`;
+}
+function saveSifrarnik(){
+  if(!isDirector()) return;
+  const v=id=>{ const e=document.getElementById(id); return e?String(e.value):''; };
+  const naziv=esc(v('sf_naziv').trim()); if(!naziv){ alert('Unesi naziv pozicije.'); return; }
+  const modul=v('sf_modul')==='projektovanje'?'projektovanje':'izvodjenje';
+  DATA.sifrarnik=DATA.sifrarnik||[];
+  const max=DATA.sifrarnik.reduce((m,s)=>Math.max(m,s.redosled||0),0);
+  DATA.sifrarnik.push({id:'sf'+Date.now(), naziv, jm:v('sf_jm')||'kom', grupa:esc(v('sf_grupa').trim())||null, modul, redosled:max+1, aktivan:true});
+  saveState(); render();
+}
+function toggleSifrarnik(id){
+  if(!isDirector()) return;
+  const s=(DATA.sifrarnik||[]).find(x=>x.id===id); if(!s) return;
+  s.aktivan=(s.aktivan===false); saveState(); render();
+}
+async function obrisiSifrarnik(id){
+  if(!jeSuper()) return;
+  const s=(DATA.sifrarnik||[]).find(x=>x.id===id); if(!s) return;
+  if(!confirm('Obrisati iz šifarnika "'+unesc(s.naziv)+'"?')) return;
+  const ok=await obrisiRed('sifrarnik', id, unesc(s.naziv));
+  if(ok!==false) render();
+}
 function viewNalozi(){
   if(!isDirector()){ current='dash'; return viewDash(); }
   const h=head('Nalozi i log korišćenja','Ko ima pristup, sa kojom ulogom, i šta je ko radio u aplikaciji.');
-  if(!supa) return h+'<div class="card"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>';
+  if(!supa) return h+'<div class="card" style="margin-bottom:18px"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>'+sifrarnikKartica();
   if(NALOZI===null && !NALOZI_MSG) ucitajNaloge();
   const zOpt=DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('');
   const sOpt=(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv}</option>`).join('');
@@ -2314,6 +2359,7 @@ function viewNalozi(){
       </div>
     </div>
   </div>
+  ${sifrarnikKartica()}
   <div class="card">
     <div class="card-h"><h3>Log korišćenja</h3><span class="hint">poslednjih ${(LOG_K||[]).length} događaja · <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="ucitajNaloge()">↻ Osveži</button></span></div>
     <div class="card-b tight"><div style="overflow-x:auto"><table><thead><tr><th>Kada</th><th>Ko</th><th>Uloga</th><th>Događaj</th><th>Detalj</th></tr></thead>
@@ -2523,13 +2569,47 @@ function ubaciSablonFaza(grId){
 function ubaciSablonNivoa(grId){
   if(!isDirector()) return;
   const g=grById[grId]; if(!g||!jePro(g)||!g.nivo) return;
-  const niv=g.nivo, sab=NIVOI_DOK[niv]||[];
+  const niv=g.nivo, sab=sifrarnikZa('projektovanje').filter(s=>s.grupa===niv);   // iz sifrarnika (naziv je vec esc-ovan pri upisu)
   const ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
-  const nove=sab.filter(sv=>!ima.has((niv+' — '+sv).toLowerCase())&&!ima.has(sv.toLowerCase()));
+  const nove=sab.filter(s=>!ima.has((niv+' — '+unesc(s.naziv)).toLowerCase())&&!ima.has(unesc(s.naziv).toLowerCase()));
   if(!nove.length){ alert('Sve stavke šablona već postoje u specifikaciji.'); return; }
   const ts=Date.now();
-  nove.forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:esc(niv+' — '+sv), jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
+  nove.forEach((s,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:null}));
   osveziNapredak(grId); saveState(); render();
+}
+/* Izvodjenje: ceklirane pozicije iz sifrarnika (sifrarnikChecklist('izvodjenje')) → redovi predmera.
+   Preskace nazive koji vec postoje na gradilistu. Vraca broj dodatih. Poziva ga saveSite (novo) i saveIzSifarnika (postojece). */
+function dodajIzSifarnika(grId){
+  const ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
+  const ts=Date.now(); let n=0;
+  sifrarnikZa('izvodjenje').forEach((s,idx)=>{
+    const c=document.getElementById('f_sf_'+idx); if(!c||!c.checked) return;
+    const kljuc=unesc(s.naziv).trim().toLowerCase(); if(ima.has(kljuc)) return;
+    const z=document.getElementById('f_sfz_'+idx), ko=document.getElementById('f_sfk_'+idx);
+    const raw=ko?String(ko.value).trim():''; let kol=raw===''?1:+raw; if(!Number.isFinite(kol)||kol<=0) kol=1;   // type=number: kanonicna vrednost (pravilo 4)
+    DATA.predmer.push({id:'pm'+ts+'-s'+(n++), gr:grId, poz:s.naziv, jm:s.jm||'kom', kol, cena:0, izv:0, zaduzen:(z&&z.value)||null});
+    ima.add(kljuc);
+  });
+  return n;
+}
+function formIzSifarnika(grId){
+  if(!isDirector()) return;
+  const g=grById[grId]; if(!g||jePro(g)) return;
+  openModal(`
+    <div class="m-h"><h3>Pozicije iz šifarnika — ${g.naziv}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-b">
+      ${sifrarnikChecklist('izvodjenje')}
+      <div class="m-foot">
+        <button class="btn ghost" onclick="closeModal()">Otkaži</button>
+        <button class="btn" onclick="saveIzSifarnika('${grId}')">Dodaj u predmer</button>
+      </div>
+    </div>`);
+}
+function saveIzSifarnika(grId){
+  if(!isDirector()) return;
+  const g=grById[grId]; if(!g||jePro(g)) return;
+  const n=dodajIzSifarnika(grId);
+  osveziNapredak(grId); saveState(); closeModal(); render();
 }
 let PRED_ID=null;
 function predmerZa(grId){ return (DATA.predmer||[]).filter(x=>x.gr===grId); }
@@ -2594,7 +2674,8 @@ function viewPredmer(){
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
     <button class="btn ghost" onclick="izvozPredmer('${g.id}')">⇩ Izvoz izvedenih (CSV)</button>
     <button class="btn ghost" onclick="openKumulativ('${g.id}')">Kumulativni pregled</button>
-    ${pro&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}`:''}
+    ${pro&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}
+    ${!pro?`<button class="btn ghost" onclick="formIzSifarnika('${g.id}')">＋ Iz šifarnika</button>`:''}`:''}
   </div>
   <div class="card"><div style="overflow-x:auto"><table>
     <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${fin?'<th class="r">Jed. cena</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
@@ -3494,7 +3575,8 @@ function formSite(id){
         <div class="f-row" id="tipRadovaBox"><label>Tip izvođenja</label><select id="f_tip"><option value="visokogradnja">Visokogradnja</option><option value="niskogradnja">Niskogradnja</option></select></div>
         <div class="f-row" id="nivoBox" style="display:none"><label>Trenutni nivo (faza)</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
-      <div id="nivoFillBox" style="display:none">${nivoiChecklist()}</div>
+      <div id="nivoFillBox" style="display:none">${sifrarnikChecklist('projektovanje')}</div>
+      <div id="mereFillBox">${sifrarnikChecklist('izvodjenje')}</div>
       <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>`}
       <div class="f-2">
         <div class="f-row"><label>Klijent</label><select id="f_kli"${ed?'':' onchange="toggleNoviKlijent(this.value)"'}>${DATA.clijenti.map(c=>`<option value="${c.id}"${sel(g&&g.klijent,c.id)}>${c.naziv}</option>`).join('')}${ed?'':'<option value="__novi__">＋ Novi klijent…</option>'}</select></div>
@@ -3528,16 +3610,25 @@ function formSite(id){
 /* Projektovanje pri kreiranju: sve 3 faze (IDR / IDP-PGD / PZI) sa svim podfazama,
    svaka sa čekboksom (ukloni ako ne treba) i zaduženim (zaposleni ili spoljni saradnik).
    Čekirane postaju redovi Specifikacije usluga sa `zaduzen`. Indeks je globalan kroz nivoe. */
-function nivoiChecklist(){
+/* Ceklista iz sifrarnika (DATA.sifrarnik) za oba modula. Indeks k = pozicija u sifrarnikZa(modul)
+   (globalan kroz grupe) — saveSite/saveIzSifarnika iteriraju ISTU listu.
+   projektovanje: f_nd_k + f_ndz_k (podrazumevano cekirano); izvodjenje: f_sf_k + f_sfk_k (kolicina) + f_sfz_k (podrazumevano necekirano). */
+function sifrarnikPoz(s, modul){ return modul==='projektovanje' ? (s.grupa?s.grupa+' — ':'')+s.naziv : s.naziv; }
+function sifrarnikChecklist(modul){
+  const pro=modul==='projektovanje';
   const opcije=[...DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv} (spoljni)</option>`)].join('');
-  let i=0;
-  return `<div class="f-row"><label>Specifikacija usluga — faze i podfaze (odčekiraj što ne treba, dodeli zaduženog)</label>
-    <div class="chk-list" style="max-height:260px;overflow-y:auto">${Object.entries(NIVOI_DOK).map(([niv,lista])=>`
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">${niv}</div>
-      ${lista.map(sv=>{ const k=i++; return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <label class="chk" style="flex:1;min-width:0;margin:0"><input type="checkbox" id="f_nd_${k}" data-nivo="${niv}" data-naziv="${sv}" checked> ${sv}</label>
-        <select id="f_ndz_${k}" style="width:46%;min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
-      </div>`; }).join('')}`).join('')}
+  const lista=sifrarnikZa(modul), grupe=[];
+  lista.forEach((s,k)=>{ let gr=grupe.find(x=>x.naziv===s.grupa); if(!gr){ gr={naziv:s.grupa,red:[]}; grupe.push(gr); } gr.red.push([s,k]); });
+  const cid=pro?'f_nd_':'f_sf_', zid=pro?'f_ndz_':'f_sfz_';
+  const label=pro?'Specifikacija usluga — faze i podfaze (odčekiraj što ne treba, dodeli zaduženog)':'Predmer — pozicije iz šifarnika (čekiraj što ulazi, upiši količinu)';
+  return `<div class="f-row"><label>${label}</label>
+    <div class="chk-list" style="max-height:260px;overflow-y:auto">${grupe.map(gr=>`
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">${gr.naziv||'—'}</div>
+      ${gr.red.map(([s,k])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <label class="chk" style="flex:1;min-width:0;margin:0"><input type="checkbox" id="${cid}${k}" data-naziv="${s.naziv}" data-jm="${s.jm||''}" data-grupa="${s.grupa||''}"${pro?' checked':''}> ${s.naziv}${pro?'':` <span class="sub">(${s.jm||'kom'})</span>`}</label>
+        ${pro?'':`<input type="number" id="f_sfk_${k}" placeholder="količina" style="width:84px;font-size:12px;padding:5px 6px">`}
+        <select id="${zid}${k}" style="width:${pro?'46%':'34%'};min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
+      </div>`).join('')}`).join('')}
     </div></div>`;
 }
 function toggleTipRadova(val){
@@ -3545,6 +3636,7 @@ function toggleTipRadova(val){
   const b=document.getElementById('tipRadovaBox'); if(b) b.style.display = pro?'none':'block';
   const n=document.getElementById('nivoBox'); if(n) n.style.display = pro?'block':'none';
   const f=document.getElementById('nivoFillBox'); if(f) f.style.display = pro?'block':'none';
+  const m=document.getElementById('mereFillBox'); if(m) m.style.display = pro?'none':'block';
   const z=document.getElementById('fazeFillBox'); if(z) z.style.display = pro?'none':'block';
 }
 function toggleNoviKlijent(val){
@@ -3584,14 +3676,15 @@ function saveSite(grId){
     budzet:cena, troskovi:tro, potroseno:0, naplaceno:0
   });
   if(jeProNovi){
-    /* Čeklista svih faza/podfaza (nivoiChecklist): čekirane → redovi specifikacije sa zaduženim */
-    const ts=Date.now(); let k=0, n=0;
-    Object.entries(NIVOI_DOK).forEach(([niv,lista])=>lista.forEach(sv=>{
-      const idx=k++; const c=document.getElementById('f_nd_'+idx); if(!c||!c.checked) return;
+    /* Čeklista iz šifarnika (sifrarnikChecklist): čekirane → redovi specifikacije sa zaduženim */
+    const ts=Date.now(); let n=0;
+    sifrarnikZa('projektovanje').forEach((s,idx)=>{
+      const c=document.getElementById('f_nd_'+idx); if(!c||!c.checked) return;
       const z=document.getElementById('f_ndz_'+idx); const zad=(z&&z.value)||null;
-      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad});
-    }));
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+    });
   } else {
+    dodajIzSifarnika(gid);
     const fz=document.getElementById('f_faze_fill');
     rebuildMaps();                      // primeniSablonFaza cita grById
     if(fz&&fz.checked) primeniSablonFaza(gid);

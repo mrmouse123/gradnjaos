@@ -41,6 +41,12 @@ function osveziNapredakMock(db, gr){
   const n = ugV > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r) * cena(r), 0) / ugV + 0.5) : ugK > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r), 0) / ugK + 0.5) : 0;
   const g = db.gradilista.find(x => x.id === gr); if (g) g.napredak = Math.max(0, Math.min(100, n));
 }
+/* Migracija 15: trigger rad_minuta — minuta se racuna na serveru iz start/kraj (klijentov broj se ignorise). */
+function radMinutaMock(r){
+  if (!r) return;
+  if (r.kraj) { const s = new Date(r.start).getTime(), k = Math.max(new Date(r.kraj).getTime(), s); r.minuta = Math.max(0, Math.floor((k - s) / 60000)); }
+  else r.minuta = null;
+}
 function kljuc(t, r){
   if (t === 'zaposleni_gradiliste')  return r.zaposleni_id + '|' + r.gradiliste_id;
   if (t === 'podizvodjac_gradiliste') return r.podizvodjac_id + '|' + r.gradiliste_id;
@@ -144,6 +150,7 @@ class Query {
         /* kao PostgREST: kolone koje payload ne nosi ostaju netaknute pri update-u */
         if (i >= 0) this.db[t][i] = Object.assign({}, this.db[t][i], clone(r)); else this.db[t].push(clone(r));
         if (t === 'predmer') osveziNapredakMock(this.db, r.gr);
+        if (t === 'rad_na_zadatku') radMinutaMock(this.db[t].find(x => x.id === r.id));
       }
       /* log_koriscenja je append-only i van PUSH_TABLES — loguje se kao op:'log' da testovi koji broje upserte ostanu tacni */
       this.log.push({ op: t === 'log_koriscenja' ? 'log' : 'upsert', table: t, n: this._rows.length, keys: this._rows.map(r => kljuc(t, r)), cols: Object.keys(this._rows[0] || {}) });
@@ -162,6 +169,7 @@ class Query {
       let n = 0;
       this.db[t] = this.db[t].map(r => { if (this._match(r)) { n++; return Object.assign({}, r, clone(this._patch)); } return r; });
       if (t === 'predmer') { const grs = new Set(this.db[t].filter(r => this._match(r)).map(r => r.gr)); grs.forEach(gr => osveziNapredakMock(this.db, gr)); }
+      if (t === 'rad_na_zadatku') this.db[t].filter(r => this._match(r)).forEach(radMinutaMock);
       /* log kao 'upsert' da stariji testovi (koji broje upserte po tabeli) ostanu validni */
       this.log.push({ op: 'upsert', via: 'update', table: t, n, keys: n ? [kljuc(t, this._patch)] : [], cols: Object.keys(this._patch) });
       return { data: null, error: null };
@@ -241,6 +249,15 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       const idOd = email => ((authOpts.users || {})[String(email || '').toLowerCase()] || {}).id || null;
       const ja = auth._session() && auth._session().user;
       const upisiLog = (dogadjaj, detalj) => { db.log_koriscenja = db.log_koriscenja || []; db.log_koriscenja.push({ id: db.log_koriscenja.length + 1, ts: new Date().toISOString(), user_id: ja && ja.id, email: ja && ja.email, uloga: 'direktor', dogadjaj, detalj }); };
+      if (name === 'angazovanost') {   // migracija 15: uprava — sati po osobi i gradilistu u periodu (otvorena sesija se racuna do sada)
+        if (!ctx.isDir()) return { data: null, error: { message: 'Samo uprava vidi angažovanost.' } };
+        const od = args && args.p_od ? new Date(args.p_od) : new Date(Date.now() - 30 * 86400000), dod = args && args.p_do ? new Date(args.p_do) : new Date();
+        const agg = {};
+        (db.rad_na_zadatku || []).forEach(r => { const s = new Date(r.start); if (s < od || s > new Date(dod.getTime() + 86400000)) return;
+          const k = r.osoba + '|' + r.gr; const a = agg[k] = agg[k] || { osoba: r.osoba, gr: r.gr, sesija: 0, minuta: 0, poslednji: null };
+          a.sesija++; a.minuta += r.minuta != null ? r.minuta : Math.max(0, Math.floor((Date.now() - s.getTime()) / 60000)); const p = r.kraj || r.start; if (!a.poslednji || p > a.poslednji) a.poslednji = p; });
+        return { data: Object.values(agg).sort((x, y) => (x.osoba + x.gr).localeCompare(y.osoba + y.gr)), error: null };
+      }
       if (name === 'dokument_podaci') {   // data-URL dokumenta po id-u (RLS: moje_gradiliste) — mock ne filtrira redove, samo vraca data
         const d = (db.dokumenti || []).find(x => x.id === args.p_id);
         return { data: d ? (d.data || null) : null, error: null };

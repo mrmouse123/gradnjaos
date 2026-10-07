@@ -150,6 +150,7 @@ const MUTATORS = [
   ['saveTask', ''], ['saveDiary', ''], ['obrisiDokument', "'dk_x'"],
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
+  ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-i-01'"], ['obrisiSifrarnik', "'sf-i-01'"], ['saveIzSifarnika', "'g1'"],
 ];
 
 /* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
@@ -457,6 +458,121 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
   });
 
+
+  /* ---- T34 sifarnik mera (C2) ---- */
+  section('T34 sifarnik');
+  await acheck('a) DATA.sifrarnik: 60 redova, unikatni id, 36 projektovanje / 24 izvodjenje, sifrarnikZa sortiran po redosledu', async () => {
+    const a = await boot();
+    if (a.run('DATA.sifrarnik.length') !== 60) throw new Error('ukupno ' + a.run('DATA.sifrarnik.length'));
+    if (a.run('new Set(DATA.sifrarnik.map(s=>s.id)).size') !== 60) throw new Error('id-jevi nisu unikatni');
+    const p = a.run("DATA.sifrarnik.filter(s=>s.modul==='projektovanje').length"), i = a.run("DATA.sifrarnik.filter(s=>s.modul==='izvodjenje').length");
+    if (p !== 36 || i !== 24) throw new Error('projektovanje ' + p + ', izvodjenje ' + i);
+    for (const m of ['izvodjenje', 'projektovanje'])
+      if (!a.run(`(()=>{const l=sifrarnikZa('${m}');return l.length>0&&l.every((s,k)=>k===0||l[k-1].redosled<=s.redosled)})()`)) throw new Error('nije sortirano: ' + m);
+  });
+  await acheck('b) formSite(): mereFillBox (24 izv.) + nivoFillBox (36 proj.); toggleTipRadova prebacuje prikaz', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite();");
+    const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
+    if (!html.includes('id="mereFillBox"') || !html.includes('id="nivoFillBox"')) throw new Error('nema kontejnera');
+    const c = re => (html.match(re) || []).length;
+    if (c(/id="f_sf_\d+"/g) !== 24 || c(/id="f_sfk_\d+"/g) !== 24 || c(/id="f_sfz_\d+"/g) !== 24) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
+    if (c(/id="f_nd_\d+"/g) !== 36) throw new Error('f_nd_ ' + c(/id="f_nd_\d+"/g));
+    if (!/id="f_sfk_0"[^>]*type="number"|type="number"[^>]*id="f_sfk_0"/.test(html)) throw new Error('kolicina nije type=number');
+    a.run("toggleTipRadova('izvodjenje')");
+    if (doc.getElementById('mereFillBox').style.display !== 'block' || doc.getElementById('nivoFillBox').style.display !== 'none') throw new Error('izvodjenje: pogresan prikaz');
+    a.run("toggleTipRadova('projektovanje')");
+    if (doc.getElementById('mereFillBox').style.display !== 'none' || doc.getElementById('nivoFillBox').style.display !== 'block') throw new Error('projektovanje: pogresan prikaz');
+  });
+  await acheck('c) novo IZVODJENJE gradiliste: cekirane pozicije iz sifarnika → predmer (kol, jm, zaduzen)', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite();");
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    const kli = a.run('DATA.clijenti[0].id');
+    set('f_naziv', 'Izv T34'); set('f_lok', 'NS'); set('f_modul', 'izvodjenje'); set('f_kli', kli); set('f_ruk', 'z1');
+    set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
+    doc.getElementById('f_sf_0').checked = true; set('f_sfk_0', '180'); set('f_sfz_0', 'z2');
+    doc.getElementById('f_sf_3').checked = true; set('f_sfk_3', '');
+    a.run('saveSite()');
+    const g = a.run('DATA.gradilista[DATA.gradilista.length-1]');
+    if (g.naziv !== 'Izv T34' || g.modul !== 'izvodjenje') throw new Error('gradiliste: ' + JSON.stringify(g));
+    const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
+    if (rows.length !== 2) throw new Error('redova ' + rows.length);
+    const s0 = a.run("sifrarnikZa('izvodjenje')[0]"), s3 = a.run("sifrarnikZa('izvodjenje')[3]");
+    if (rows[0].poz !== s0.naziv || rows[0].jm !== s0.jm || rows[0].kol !== 180 || rows[0].zaduzen !== 'z2' || rows[0].cena !== 0 || rows[0].izv !== 0) throw new Error('red 1: ' + JSON.stringify(rows[0]));
+    if (rows[1].poz !== s3.naziv || rows[1].jm !== s3.jm || rows[1].kol !== 1 || rows[1].zaduzen !== null) throw new Error('red 2: ' + JSON.stringify(rows[1]));
+    /* formIzSifarnika / saveIzSifarnika: dodaje samo nove, preskace postojece; rukovodilac nista */
+    a.run(`formIzSifarnika(${JSON.stringify(g.id)})`);
+    doc.getElementById('f_sf_0').checked = true; doc.getElementById('f_sf_5').checked = true; set('f_sfk_5', '40');
+    a.run(`ROLE='z1'; saveIzSifarnika(${JSON.stringify(g.id)}); ROLE='all';`);
+    if (a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)}).length`) !== 2) throw new Error('rukovodilac je dodao iz sifarnika');
+    a.run(`saveIzSifarnika(${JSON.stringify(g.id)})`);
+    const r2 = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
+    if (r2.length !== 3 || r2[2].kol !== 40) throw new Error('posle saveIzSifarnika: ' + JSON.stringify(r2.map(r => [r.poz, r.kol])));
+    a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='all';`);
+    if (!a.run('viewPredmer()').includes('formIzSifarnika')) throw new Error('nema dugmeta u viewPredmer (izvodjenje)');
+    if (a.run("PRED_ID='g8'; viewPredmer()").includes('formIzSifarnika')) throw new Error('dugme na projektovanju');
+    if (a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='z1'; viewPredmer()`).includes('formIzSifarnika')) throw new Error('rukovodilac vidi dugme');
+    a.run("ROLE='all';");
+  });
+  await acheck('e) ubaciSablonNivoa iz sifarnika: dodaje samo nedostajuce, drugi poziv 0 + alert', async () => {
+    const a = await boot();
+    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
+    const niv = JSON.stringify(a.run('grById.g8.nivo'));
+    const tpl = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).length`);
+    if (!(tpl > 2)) throw new Error('sablon ' + tpl);
+    const prvi = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv})[0].naziv`);
+    a.run(`DATA.predmer.push({id:'pm-t34', gr:'g8', poz:${niv}+' — '+${JSON.stringify(prvi)}, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null});`);
+    /* koliko stavki sablona vec postoji u g8 (pod punim ili golim imenom) */
+    const vec = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).filter(s=>predmerZa('g8').some(r=>r.poz===${niv}+' — '+s.naziv||r.poz===s.naziv)).length`);
+    if (vec < 1) throw new Error('pm-t34 nije prepoznat');
+    const n0 = cnt('g8');
+    a.run("ubaciSablonNivoa('g8');");
+    if (cnt('g8') - n0 !== tpl - vec) throw new Error(`dodato ${cnt('g8') - n0}, ocekivano ${tpl - vec}`);
+    if (a.run("predmerZa('g8').filter(r=>r.id==='pm-t34').length") !== 1) throw new Error('pm-t34 dupliran');
+    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
+    a.run("ubaciSablonNivoa('g8');");
+    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
+    if (a.g._calls.alert.length !== alerts + 1) throw new Error('nema alert-a');
+  });
+  await acheck('f) saveSifrarnik / toggleSifrarnik / obrisiSifrarnik: guardovi po ulozi', async () => {
+    const a = await boot();
+    const doc = a.g.document, N = () => a.run('DATA.sifrarnik.length');
+    a.run("ROLE='all'; current='nalozi'; render();");
+    const set = (id, v) => { doc.getElementById(id).value = v; };
+    set('sf_naziv', '<b>Nova poz</b>'); set('sf_jm', 'm²'); set('sf_grupa', 'Zemljani radovi'); set('sf_modul', 'izvodjenje');
+    a.run("ROLE='z1'; saveSifrarnik(); ROLE='all';");
+    if (N() !== 60) throw new Error('rukovodilac je dodao u sifarnik');
+    const maxR = a.run('Math.max(...DATA.sifrarnik.map(s=>s.redosled))');
+    a.run('saveSifrarnik()');
+    if (N() !== 61) throw new Error('direktor nije dodao: ' + N());
+    const nov = a.run('DATA.sifrarnik[DATA.sifrarnik.length-1]');
+    if (nov.naziv.includes('<b>') || nov.redosled !== maxR + 1 || nov.aktivan !== true || nov.jm !== 'm²' || nov.modul !== 'izvodjenje' || nov.grupa !== 'Zemljani radovi') throw new Error('red: ' + JSON.stringify(nov));
+    a.run("ROLE='z1'; toggleSifrarnik('sf-i-01'); ROLE='all';");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== true) throw new Error('rukovodilac je promenio aktivan');
+    a.run("toggleSifrarnik('sf-i-01')");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== false) throw new Error('toggle nije prebacio na false');
+    if (a.run("sifrarnikZa('izvodjenje').some(s=>s.id==='sf-i-01')")) throw new Error('neaktivan se i dalje nudi');
+    a.run("toggleSifrarnik('sf-i-01')");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== true) throw new Error('toggle nazad');
+    a.run("setRole('admin')");
+    await a.run("obrisiSifrarnik('sf-i-01')");
+    if (N() !== 61) throw new Error('admin je obrisao');
+    if (a.run("viewNalozi()").includes('obrisiSifrarnik')) throw new Error('admin vidi dugme brisanja');
+    a.run("setRole('all')");
+    await a.run("obrisiSifrarnik('sf-i-01')");
+    if (N() !== 60 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-i-01')")) throw new Error('direktor nije obrisao');
+  });
+  await acheck('g) Admin kokpit u demo rezimu: kartica "Šifarnik mera (60)" + polja za dodavanje', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; current='nalozi'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Šifarnik mera (60)')) throw new Error('nema kartice');
+    for (const id of ['sf_naziv', 'sf_jm', 'sf_grupa', 'sf_modul', 'saveSifrarnik()']) if (!h.includes(id)) throw new Error('nema ' + id);
+    if (!h.includes("obrisiSifrarnik('sf-i-01')")) throw new Error('direktor nema dugme za brisanje');
+    const th = (h.match(/<th/g) || []).length, td = (h.match(/<td/g) || []).length;
+    if (!(th > 0 && td > 0)) throw new Error('prazna tabela');
+  });
 
   /* ---- T33 dokumenti gradilista (C1) ---- */
   section('T33 dokumenti');
