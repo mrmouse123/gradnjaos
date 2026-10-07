@@ -454,6 +454,35 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T29 novo gradiliste (2026-10-07): bez kontakt nadzora; projektovanje = ceklista svih faza/podfaza sa zaduzenim ---- */
+  section('T29 novo gradiliste: ceklista faza');
+  await acheck('formSite(): sve 3 faze i sve podfaze kao cekboksi + zaduzeni; cekirane postaju redovi specifikacije sa zaduzenim', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite();");
+    const html = a.g.document.getElementById('modal').innerHTML;
+    const ukupno = a.run("Object.values(NIVOI_DOK).reduce((s,l)=>s+l.length,0)");
+    const n = (html.match(/id="f_nd_\d+"/g) || []).length, nz = (html.match(/id="f_ndz_\d+"/g) || []).length;
+    if (n !== ukupno || nz !== ukupno) throw new Error(`cekboksa ${n}, zaduzenih ${nz}, ocekivano ${ukupno}`);
+    for (const niv of ['IDR', 'IDP/PGD', 'PZI']) if (!html.includes('>' + niv + '<')) throw new Error('nema naslova faze ' + niv);
+    if (!html.includes('(spoljni)')) throw new Error('zaduzeni ne nude spoljne saradnike');
+    if (html.includes('f_nivo_fill') || html.includes('f_nadzor')) throw new Error('stari cekboks sablona / polje nadzora jos postoje');
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    const kli = a.run('DATA.clijenti[0].id'), nPre = a.run('DATA.predmer.length');
+    set('f_naziv', 'Pro T29'); set('f_lok', 'NS'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDP/PGD'); set('f_kli', kli); set('f_ruk', 'z1');
+    set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
+    /* stub ne parsira HTML -> cekboksi su podrazumevano false; cekiramo 0 (IDR/PDR) i 6 (IDP-PGD/1.0 Arhitektura) */
+    doc.getElementById('f_nd_0').checked = true; doc.getElementById('f_ndz_0').value = 'z2';
+    doc.getElementById('f_nd_6').checked = true; doc.getElementById('f_ndz_6').value = '';
+    a.run('saveSite()');
+    const g = a.run("DATA.gradilista[DATA.gradilista.length-1]");
+    if (g.naziv !== 'Pro T29' || g.modul !== 'projektovanje' || g.nivo !== 'IDP/PGD') throw new Error('gradiliste nije kreirano kako treba: ' + JSON.stringify(g));
+    if (g.nadzor !== '') throw new Error('nadzor treba da bude prazan');
+    const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
+    if (rows.length !== 2) throw new Error('redova specifikacije: ' + rows.length + ' (ocekivano 2 cekirana), ukupno pre ' + nPre);
+    if (rows[0].poz !== 'IDR — PDR' || rows[0].zaduzen !== 'z2') throw new Error('prvi red: ' + JSON.stringify(rows[0]));
+    if (rows[1].poz !== 'IDP/PGD — 1.0 Arhitektura' || rows[1].zaduzen !== null) throw new Error('drugi red: ' + JSON.stringify(rows[1]));
+  });
+
   /* ---- T28 nalozi i log (migracija 12): tab samo direktor, RPC guardovi, log dogadjaji, log van PUSH_TABLES ---- */
   section('T28 nalozi i log');
   const DIR_S28 = { user: { id: 'u-dir', email: 'direktor@test' } }, RUK_S28 = { user: { id: 'u-ruk', email: 'petar@test' } };
@@ -664,16 +693,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!new RegExp('<option value="' + g.klijent + '" selected>').test(html)) throw new Error('klijent nije selektovan');
     if (!new RegExp('<option value="' + g.rukovodilac + '" selected>').test(html)) throw new Error('rukovodilac nije selektovan');
     if (!new RegExp('<option value="' + g.tip + '" selected>').test(html)) throw new Error('tip nije selektovan');
-    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nivo_fill', 'noviKlijentBox', '__novi__']) if (html.includes(x)) throw new Error('u izmeni ne sme biti: ' + x);
+    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nd_0', 'noviKlijentBox', '__novi__', 'f_nadzor']) if (html.includes(x)) throw new Error('u izmeni ne sme biti: ' + x);
     if (!html.includes("saveSite('" + gid + "')")) throw new Error('dugme ne zove saveSite(id)');
-    if (!html.includes('Kontakt nadzora (ime, telefon)')) throw new Error('labela nadzora');
   });
   await acheck('A1b formSite() (novo): neizmenjeno — modul selektor, sablon, novi klijent, saveSite()', async () => {
     const a = await boot();
     a.run('ROLE=\'all\'; formSite();');
     const html = a.g.document.getElementById('modal').innerHTML;
-    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nivo_fill', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"', 'Kontakt nadzora (ime, telefon)'])
+    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nd_0', 'f_ndz_0', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"'])
       if (!html.includes(x)) throw new Error('create forma nema: ' + x);
+    if (html.includes('f_nadzor')) throw new Error('polje kontakt nadzora je uklonjeno iz forme (2026-10-07)');
   });
   await acheck('A1c formSite(id) kao rukovodilac ne otvara modal', async () => {
     const a = await boot();

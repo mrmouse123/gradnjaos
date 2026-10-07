@@ -3178,10 +3178,7 @@ function formSite(id){
     <div class="m-b">
       <div class="f-row"><label>Naziv projekta</label><input id="f_naziv" placeholder="npr. Stambena zgrada Vračar"${va(g&&g.naziv)}></div>
       <div class="f-row"><label>Lokacija</label><input id="f_lok" placeholder="Grad, deo grada"${va(g&&(g.lok==='—'?'':g.lok))}></div>
-      <div class="f-2">
-        <div class="f-row"><label>Površina (m²)</label><input id="f_povrsina" type="number" placeholder="npr. 1200"${va(g&&(g.povrsina||''))}></div>
-        <div class="f-row"><label>Kontakt nadzora (ime, telefon)</label><input id="f_nadzor" placeholder="npr. Ing. M. Petrović, 06x…"${va(g&&g.nadzor)}></div>
-      </div>
+      <div class="f-row"><label>Površina (m²)</label><input id="f_povrsina" type="number" placeholder="npr. 1200"${va(g&&(g.povrsina||''))}></div>
       ${ed?`<div class="f-2">
         <div class="f-row"><label>Modul</label><div style="padding:8px 0;font-size:13.5px;font-weight:600">${jePro(g)?'Projektovanje':'Izvođenje radova'}</div></div>
         ${jePro(g)
@@ -3190,9 +3187,9 @@ function formSite(id){
       </div>`:`<div class="f-2">
         <div class="f-row"><label>Modul</label><select id="f_modul" onchange="toggleTipRadova(this.value)"><option value="izvodjenje">Izvođenje radova</option><option value="projektovanje">Projektovanje</option></select></div>
         <div class="f-row" id="tipRadovaBox"><label>Tip izvođenja</label><select id="f_tip"><option value="visokogradnja">Visokogradnja</option><option value="niskogradnja">Niskogradnja</option></select></div>
-        <div class="f-row" id="nivoBox" style="display:none"><label>Nivo dokumentacije</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
+        <div class="f-row" id="nivoBox" style="display:none"><label>Trenutni nivo (faza)</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
-      <div class="f-row" id="nivoFillBox" style="display:none"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_nivo_fill" checked> Popuni Specifikaciju usluga sveskama izabranog nivoa (šablon)</label></div>
+      <div id="nivoFillBox" style="display:none">${nivoiChecklist()}</div>
       <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>`}
       <div class="f-2">
         <div class="f-row"><label>Klijent</label><select id="f_kli"${ed?'':' onchange="toggleNoviKlijent(this.value)"'}>${DATA.clijenti.map(c=>`<option value="${c.id}"${sel(g&&g.klijent,c.id)}>${c.naziv}</option>`).join('')}${ed?'':'<option value="__novi__">＋ Novi klijent…</option>'}</select></div>
@@ -3223,6 +3220,21 @@ function formSite(id){
       </div>
     </div>`);
 }
+/* Projektovanje pri kreiranju: sve 3 faze (IDR / IDP-PGD / PZI) sa svim podfazama,
+   svaka sa čekboksom (ukloni ako ne treba) i zaduženim (zaposleni ili spoljni saradnik).
+   Čekirane postaju redovi Specifikacije usluga sa `zaduzen`. Indeks je globalan kroz nivoe. */
+function nivoiChecklist(){
+  const opcije=[...DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv} (spoljni)</option>`)].join('');
+  let i=0;
+  return `<div class="f-row"><label>Specifikacija usluga — faze i podfaze (odčekiraj što ne treba, dodeli zaduženog)</label>
+    <div class="chk-list" style="max-height:260px;overflow-y:auto">${Object.entries(NIVOI_DOK).map(([niv,lista])=>`
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">${niv}</div>
+      ${lista.map(sv=>{ const k=i++; return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <label class="chk" style="flex:1;min-width:0;margin:0"><input type="checkbox" id="f_nd_${k}" data-nivo="${niv}" data-naziv="${sv}" checked> ${sv}</label>
+        <select id="f_ndz_${k}" style="width:46%;min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
+      </div>`; }).join('')}`).join('')}
+    </div></div>`;
+}
 function toggleTipRadova(val){
   const pro = val==='projektovanje';
   const b=document.getElementById('tipRadovaBox'); if(b) b.style.display = pro?'none':'block';
@@ -3240,7 +3252,7 @@ function saveSite(grId){
   if(grId){   // IZMENA postojećeg: modul/napredak/status/potroseno/naplaceno/adm se ne diraju; prazan datum/rukovodilac/klijent = zadrži staro (pravilo 6, RLS)
     const g=grById[grId]; if(!g) return;
     const nazivE=esc(String(v('f_naziv')).trim()); if(!nazivE){ alert('Unesi naziv projekta.'); return; }
-    g.naziv=nazivE; g.lok=esc(String(v('f_lok')).trim())||'—'; g.povrsina=+v('f_povrsina')||null; g.nadzor=esc(String(v('f_nadzor')).trim())||'';
+    g.naziv=nazivE; g.lok=esc(String(v('f_lok')).trim())||'—'; g.povrsina=+v('f_povrsina')||null;   // nadzor: polje uklonjeno iz forme (2026-10-07), kolona ostaje za stare podatke
     g.klijent=v('f_kli')||g.klijent; g.rukovodilac=v('f_ruk')||g.rukovodilac;
     g.pocetak=v('f_poc')||g.pocetak; g.rok=v('f_rok')||g.rok;
     const tipPre=g.tip, nivoPre=g.nivo;
@@ -3262,17 +3274,18 @@ function saveSite(grId){
   const gid='g'+Date.now();
   const jeProNovi = v('f_modul')==='projektovanje';
   DATA.gradilista.push({
-    id:gid, naziv, modul:v('f_modul')||'izvodjenje', tip:(v('f_modul')==='projektovanje'?null:(v('f_tip')||'visokogradnja')), lok:esc(v('f_lok').trim())||'—', povrsina:+v('f_povrsina')||null, nadzor:esc(v('f_nadzor').trim())||'', adm:{}, nivo:(jeProNovi?(v('f_nivo')||'IDR'):null), klijent:klijentId, rukovodilac:v('f_ruk'),
+    id:gid, naziv, modul:v('f_modul')||'izvodjenje', tip:(v('f_modul')==='projektovanje'?null:(v('f_tip')||'visokogradnja')), lok:esc(v('f_lok').trim())||'—', povrsina:+v('f_povrsina')||null, nadzor:'', adm:{}, nivo:(jeProNovi?(v('f_nivo')||'IDR'):null), klijent:klijentId, rukovodilac:v('f_ruk'),
     pocetak:v('f_poc')||todayStr(), rok:v('f_rok')||plusDays(180), napredak:0, status:'planirano', faza:(jeProNovi?'Idejno rešenje':'Priprema terena'),
     budzet:cena, troskovi:tro, potroseno:0, naplaceno:0
   });
   if(jeProNovi){
-    const fill=document.getElementById('f_nivo_fill');
-    const niv=v('f_nivo')||'IDR';
-    if(fill&&fill.checked&&NIVOI_DOK[niv]){
-      const ts=Date.now();
-      NIVOI_DOK[niv].forEach((sv,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null}));
-    }
+    /* Čeklista svih faza/podfaza (nivoiChecklist): čekirane → redovi specifikacije sa zaduženim */
+    const ts=Date.now(); let k=0, n=0;
+    Object.entries(NIVOI_DOK).forEach(([niv,lista])=>lista.forEach(sv=>{
+      const idx=k++; const c=document.getElementById('f_nd_'+idx); if(!c||!c.checked) return;
+      const z=document.getElementById('f_ndz_'+idx); const zad=(z&&z.value)||null;
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:niv+' — '+sv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+    }));
   } else {
     const fz=document.getElementById('f_faze_fill');
     rebuildMaps();                      // primeniSablonFaza cita grById
