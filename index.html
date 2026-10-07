@@ -788,7 +788,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
    SLOJ ZA CUVANJE: supabase -> ugradjeno skladiste -> memorija
    ============================================================ */
 const SKEY = 'gradnjaos_v3';
-const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','resursi','magacin','mag_promene'];
+const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','resursi','magacin','mag_promene','dokumenti','sifrarnik'];
+/* dokumenti.data (data-URL) NEMA select grant: lista ide iz dokumenti_v (bez data), sadrzaj po kliku
+   kroz rpc dokument_podaci(id); insert nosi data, update ga NE salje (v. rowsZa). */
 let DATA = JSON.parse(JSON.stringify(DEMO));
 let supa=null, mode='memorija', saveTimer=null;
 let saving=false, dirty=false, saveErr=null;
@@ -873,7 +875,7 @@ function zapamtiSnapshot(d){
 /* Citanje ide iz view-ova: isti redovi kao tabela (isto pravilo kao RLS), ali finansijske
    kolone su NULL osim direktoru — na samim tabelama te kolone NEMAJU select grant.
    Pisanje ide u tabele. */
-const CITAJ_IZ={gradilista:'gradilista_v', predmer:'predmer_v', podizvodjaci:'podizvodjaci_v'};
+const CITAJ_IZ={gradilista:'gradilista_v', predmer:'predmer_v', podizvodjaci:'podizvodjaci_v', dokumenti:'dokumenti_v'};
 const FIN_TABELE=['troskovi_st','situacije'];   // rukovodiocu server ne daje ni jedan red — ne trazimo ih
 /* Rukovodilac nema finansijske redove, pa zdravlje(g) ne moze da racuna lokalno —
    skor dolazi sa servera (zdravlje_gradilista = ista formula). Jedan poziv za sva gradilista. */
@@ -921,7 +923,8 @@ async function pushAll(d, opt){
         /* postojeci -> UPDATE (upsert bi pao na INSERT WITH CHECK za rukovodioca), novi -> INSERT */
         const novi=izmenjeni.filter(r=>!(kljucReda(t,r) in prev)), stari=izmenjeni.filter(r=>kljucReda(t,r) in prev);
         if(novi.length) await posalji(supa.from(t).insert(novi), novi);
-        const azuriraj=r=>posalji(filtriraj(supa.from(t).update(r),r), [r]);
+        /* dokumenti: update nikad ne salje data (2.5 MB po kliku; posle reload-a kljuc ni ne postoji) */
+        const azuriraj=r=>{ const u = t==='dokumenti' ? (({data,...o})=>o)(r) : r; return posalji(filtriraj(supa.from(t).update(u),r), [r]); };
         if(opt.sve) await Promise.all(stari.map(azuriraj));      // seed/reset: nezavisni redovi, paralelno
         else for(const r of stari) await azuriraj(r);            // redovno cuvanje: redom, prva greska staje
       }
@@ -934,15 +937,19 @@ async function pushAll(d, opt){
 
 /* Brisanje reda je EKSPLICITNA operacija, ne posledica diff-a.
    (Diff-brisanje bi u vise-korisnickom radu obrisalo tudje redove.) */
-async function obrisiRed(tabela, id){
+/* Brisanje: PRVO server (RLS: super, ili radnik svoj dnevnik/dokument), pa lokalno — ako server
+   odbije, red ostaje i korisnik dobija poruku (ranije je saveErr brisao sledeci doSave, pa je
+   red "nestajao" do refresha). Svako brisanje ide u log koriscenja. Vraca true/false. */
+async function obrisiRed(tabela, id, opis){
   const list=DATA[tabela]; if(!Array.isArray(list)) return false;
   const i=list.findIndex(r=>r.id===id); if(i<0) return false;
+  if(mode==='supabase'){
+    try{ const {error}=await supa.from(tabela).delete().eq('id',id); if(error) throw new Error(error.message||String(error)); }
+    catch(e){ console.error('Supabase delete:', e); alert('Brisanje nije uspelo: '+(e.message||e)); return false; }
+  }
   list.splice(i,1);
   if(PUSHED[tabela]) delete PUSHED[tabela][id];
-  if(mode==='supabase'){
-    try{ const {error}=await supa.from(tabela).delete().eq('id',id); if(error) throw new Error(error.message); }
-    catch(e){ saveErr='brisanje: '+(e.message||e); console.error('Supabase delete:', e); }
-  }
+  beleziLog('brisanje',{tabela, id, naziv:opis||''});
   rebuildMaps(); saveState(); updateFoot();
   return true;
 }
@@ -2434,6 +2441,23 @@ function saveMagPromena(mid,tip){
 }
 
 /* ---------- PREDMER / SPECIFIKACIJA USLUGA ---------- */
+/* Sifrarnik mera/pozicija (tabela `sifrarnik`, migracija 14): projektovanje = nivoi dokumentacije
+   (grupa = nivo), izvodjenje = tipicne pozicije po grupama radova. Uprava ga uredjuje u Admin kokpitu;
+   pri kreiranju gradilista se bira iz njega (ceklista). DEMO se generise iz NIVOI_DOK + ove liste —
+   ISTI sadrzaj kao seed u migraciji 14 (menjati oba). */
+const SIFRARNIK_IZV=[['Zemljani radovi',[['Iskop temelja','m³'],['Nasipanje i nabijanje','m³'],['Odvoz viška zemlje','m³']]],
+  ['Betonski i AB radovi',[['Temelji AB','m³'],['AB zidovi','m³'],['AB ploča','m³'],['Armatura','kg'],['Oplata','m²']]],
+  ['Zidarski radovi',[['Zidanje blokom','m²'],['Malterisanje','m²']]],
+  ['Krov',[['Krovna konstrukcija','m²'],['Pokrivanje','m²'],['Hidroizolacija','m²']]],
+  ['Instalacije',[['Vodovod i kanalizacija','paušal'],['Elektroinstalacije','paušal'],['Grejanje i klimatizacija','paušal']]],
+  ['Završni radovi',[['Fasada','m²'],['Stolarija','kom'],['Podovi','m²'],['Keramika','m²'],['Moleraj','m²']]],
+  ['Niskogradnja',[['Asfaltiranje','m²'],['Ivičnjaci','m'],['Kolovozna konstrukcija','m³']]]];
+function sifrarnikDemo(){ const out=[];   // lazy: NIVOI_DOK je const ispod (TDZ pri ucitavanju skripte)
+  const baza=[0,10,30];   // IDR 01-06, IDP/PGD 11-27, PZI 31-43 — isti id-jevi kao migracija 14
+  Object.entries(NIVOI_DOK).forEach(([niv,l],gi)=>l.forEach((naziv,i)=>{ const n=baza[gi]+i+1; out.push({id:'sf-p-'+String(n).padStart(2,'0'), naziv, jm:'kom', grupa:niv, modul:'projektovanje', redosled:n, aktivan:true}); }));
+  SIFRARNIK_IZV.forEach(([grupa,l],gi)=>l.forEach(([naziv,jm],i)=>{ const n=gi*10+i+1; out.push({id:'sf-i-'+String(n).padStart(2,'0'), naziv, jm, grupa, modul:'izvodjenje', redosled:100+n, aktivan:true}); }));
+  return out; }
+function sifrarnikZa(modul){ return (DATA.sifrarnik||[]).filter(s=>s.aktivan!==false && (!s.modul || s.modul===modul)).sort((a,b)=>(a.redosled||0)-(b.redosled||0)); }
 const NIVOI_DOK={
   'IDR':['PDR','UP','KTP','Elaborat posebnih delova','Konceptualno rešenje','IDR'],
   'IDP/PGD':['1.0 Arhitektura','2.0 Konstrukcija','3.0 ViK','4.0 Elektroenergetika','5.1 Telekomunikacije i signalne inst.','5.2 Dojava požara','5.3 Video nadzor','6.0 Mašinske instalacije','7.0 Tehnologija','8.0 Saobraćaj i saobraćajna sign.','9.0 Parterno uređenje','10.0 Pripremni radovi','Elaborat energetske efikasnosti','Elaborat o geotehničkim uslovima','Elaborat zaštite od požara','Plan upravljanja otpadom','Energetski pasoš'],
@@ -3897,6 +3921,8 @@ function normalizeData(){
   if(!DATA.resursi) DATA.resursi=[];
   if(!DATA.magacin) DATA.magacin=[];
   if(!DATA.mag_promene) DATA.mag_promene=[];
+  if(!DATA.dokumenti) DATA.dokumenti=[];
+  if(!DATA.sifrarnik || !DATA.sifrarnik.length) DATA.sifrarnik=sifrarnikDemo();   // demo/memorija: isti sadrzaj kao migracija 14
   (DATA.gradilista||[]).forEach(g=>{
     if(!g.adm) g.adm={};
     Object.keys(g.adm).forEach(k=>{

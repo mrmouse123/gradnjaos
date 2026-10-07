@@ -27,8 +27,9 @@ function clone(x){ return JSON.parse(JSON.stringify(x)); }
 const DATE_COLS = new Set(['pocetak', 'rok', 'datum', 'izdato', 'valuta', 'istice']);
 
 /* view -> osnovna tabela; kolone koje view NULL-uje ne-direktoru */
-const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci' };
+const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci', dokumenti_v: 'dokumenti' };
 const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'] };
+const SKRIVENE_KOLONE = { dokumenti: ['data'] };   // migracija 14: dokumenti.data nema SELECT grant — view ga nema ni za koga
 
 /* Primarni ključ po tabeli — join tabele i profili nemaju `id`. */
 /* Migracija 13: trigger na predmer osvezava gradilista.napredak (ugovoreno × izvedeno) — ista formula kao napredak_iz_predmera. */
@@ -105,6 +106,7 @@ class Query {
         const cols = FIN_COLS[t] || [];
         rows = rows.map(r => { const o = { ...r }; cols.forEach(c => { if (c in o) o[c] = null; }); return o; });
       }
+      if (this.view && SKRIVENE_KOLONE[t]) rows = rows.map(r => { const o = { ...r }; SKRIVENE_KOLONE[t].forEach(c => { delete o[c]; }); return o; });
       if (this._order) rows.sort((a, b) => String(a[this._order]).localeCompare(String(b[this._order])));
       if (this._range) rows = rows.slice(this._range[0], this._range[1] + 1);
       else if (this.faults.maxRows) rows = rows.slice(0, this.faults.maxRows);
@@ -239,6 +241,10 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       const idOd = email => ((authOpts.users || {})[String(email || '').toLowerCase()] || {}).id || null;
       const ja = auth._session() && auth._session().user;
       const upisiLog = (dogadjaj, detalj) => { db.log_koriscenja = db.log_koriscenja || []; db.log_koriscenja.push({ id: db.log_koriscenja.length + 1, ts: new Date().toISOString(), user_id: ja && ja.id, email: ja && ja.email, uloga: 'direktor', dogadjaj, detalj }); };
+      if (name === 'dokument_podaci') {   // data-URL dokumenta po id-u (RLS: moje_gradiliste) — mock ne filtrira redove, samo vraca data
+        const d = (db.dokumenti || []).find(x => x.id === args.p_id);
+        return { data: d ? (d.data || null) : null, error: null };
+      }
       if (name === 'nalozi_pregled') {
         if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor vidi naloge.' } };
         const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, saradnik_id: p ? (p.saradnik_id || null) : null, vidi_finansije: !!(p && (p.vidi_finansije || p.uloga === 'direktor' || p.uloga === 'admin')), ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });

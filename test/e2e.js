@@ -2389,7 +2389,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('prazna baza -> zaseje se demo u svih 13 tabela', async () => {
     const a = await boot({ supabase: true, seed: {} });
     if (a.run('mode') !== 'supabase') throw new Error("mode = " + a.run('mode'));
-    const prazne = a.run('TABLES').filter(t => a.g.__mock._count(t) === 0);
+    const prazne = a.run('TABLES').filter(t => t !== 'dokumenti' && a.g.__mock._count(t) === 0);   // dokumenti: demo nema priloge (namerno)
     if (prazne.length) throw new Error('nezasejane tabele: ' + prazne.join(', '));
   });
 

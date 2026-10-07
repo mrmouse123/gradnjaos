@@ -15,11 +15,16 @@ delete), zadaci (svoj: kol), dokumenti (svoj). Nove tabele: dokumenti(gr, autor,
 tip, data, opis), sifrarnik(naziv, jm, grupa, modul) — uprava uredjuje.
 
 ## Faze
-- [ ] A. migracija 14 + schema.sql + set local role provera za 6 uloga
-- [ ] B. Klijent jezgro: ULOGA/JA, uprava/jeSuper/canFinance/vidim/vodim, visibleSites,
+- [x] A. migracija 14 + schema.sql + set local role provera za 6 uloga (f81987a)
+- [x] B. Klijent jezgro (de86224, 916/916): ULOGA/JA, uprava/jeSuper/canFinance/vidim/vodim, visibleSites,
       "Pogled kao" za 6 uloga (demo), Nalozi tab sa 5 uloga + finansije + saradnik, matrica testova
 - [ ] C. Dokumenti (fioka: upload/preuzmi/obrisi svoje; super sve), brisanje za super
       (redovi + gradiliste kroz RPC), sifarnik (Admin kokpit) + ceklista mera pri kreiranju
+- [ ] C4. Tajmer zadatka (zahtev 2026-10-08): radnik na svom zadatku "Počni" / "Završi";
+      sesije rada u tabeli rad_na_zadatku (migracija 15: osoba, zadatak, gr, start, kraj, minuta)
+      + log_koriscenja (zadatak_start/zadatak_kraj); kartica zadatka pokazuje stanje i utroseno
+- [ ] C5. Angazovanost: direktor dodeljuje resurse radnicima (formResurs.zaduzen postoji) +
+      pregled u Admin kokpitu: po radniku sati rada (iz rad_na_zadatku) i zaduzeni resursi
 - [ ] D. Docs (CLAUDE.md pravila 1/2/7/9 → uloge), README, memorija, commit po fazi
 
 # Novo gradiliste + napredak iz predmera + izvedeno iz Excela (2026-10-07) — GOTOVO
