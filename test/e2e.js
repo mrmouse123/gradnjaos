@@ -151,6 +151,9 @@ const MUTATORS = [
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
   ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-i-01'"], ['obrisiSifrarnik', "'sf-i-01'"], ['saveIzSifarnika', "'g1'"],
+  ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
+  ['obrisiSituaciju', "'s1'"], ['obrisiPredmerRed', "'pm1'"], ['obrisiResurs', "'r1'"], ['obrisiNarudzbu', "'n1'"],
+  ['obrisiKlijenta', "'c1'"], ['obrisiZaposlenog', "'z2'"], ['obrisiPodizvodjaca', "'p1'"], ['obrisiGradiliste', "'g2'"],
 ];
 
 /* ---------- finansijski termini koji ne smeju u rukovodiočev DOM ---------- */
@@ -458,6 +461,132 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (kol !== 1250) throw new Error('kol = ' + kol + ', očekivano 1250');
   });
 
+
+  /* ---- T35 brisanje (C3): super brise sve, radnik/spoljni samo svoj unos dnevnika ---- */
+  section('T35 brisanje (super)');
+  const T35_ZID = "(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]))||{}).id";
+  const drawerT35 = (a, role, gid) => { a.run(`setRole(${JSON.stringify(role)})`); const d = a.g.document.getElementById('drawer'); d.innerHTML = ''; a.run(`openSite(${JSON.stringify(gid)})`); return d.innerHTML; };
+  const T35_G = "(DATA.predmer.find(p=>grById[p.gr])||{}).gr";   // gradiliste sa predmerom
+  const viewZa = (a, role, cur) => { a.run(`setRole(${JSON.stringify(role)}); MODUL='sve'; PODTIP='sve'; current=${JSON.stringify(cur)}; render();`); return a.g.document.getElementById('view').innerHTML; };
+  await acheck('a) dugmad za brisanje: samo direktor (admin i rukovodilac ih ne vide) — zadaci, troskovi, situacije, resursi, predmer, klijenti, zaposleni, podizvodjaci, trebovanje, fioka', async () => {
+    const a = await boot();
+    const gid = a.run(T35_G);
+    const slucajevi = [['tasks', 'obrisiZadatak('], ['pay', 'obrisiSituaciju('], ['resursi', 'obrisiResurs('], ['clients', 'obrisiKlijenta('], ['emps', 'obrisiZaposlenog('], ['subs', 'obrisiPodizvodjaca('], ['nabavka', 'obrisiNarudzbu(']];
+    for (const [cur, fn] of slucajevi) {
+      if (!viewZa(a, 'all', cur).includes(fn)) throw new Error('direktor nema ' + fn + ' u ' + cur);
+      for (const r of ['admin', 'z1', 'z1:fin']) if (viewZa(a, r, cur).includes(fn)) throw new Error(r + ' ima ' + fn + ' u ' + cur);
+    }
+    a.run(`setRole('all'); PRED_ID=${JSON.stringify(gid)}; current='predmer'; render();`);
+    if (!a.g.document.getElementById('view').innerHTML.includes('obrisiPredmerRed(')) throw new Error('direktor nema obrisiPredmerRed');
+    a.run(`setRole('admin'); PRED_ID=${JSON.stringify(gid)}; current='predmer'; render();`);
+    if (a.g.document.getElementById('view').innerHTML.includes('obrisiPredmerRed(')) throw new Error('admin ima obrisiPredmerRed');
+    const trG = a.run("DATA.troskovi_st[0].gr"), modal = a.g.document.getElementById('modal');
+    for (const [r, ocek] of [['all', true], ['admin', false], ['z1:fin', false]]) {
+      a.run(`setRole(${JSON.stringify(r)})`); modal.innerHTML = ''; a.run(`openTroskovi(${JSON.stringify(trG)})`);
+      const h = modal.innerHTML; if (!h) { if (ocek) throw new Error('modal prazan'); continue; }
+      if (h.includes('obrisiTrosak(') !== ocek) throw new Error(r + ': obrisiTrosak ocekivano ' + ocek);
+      const th = (h.match(/<th[ >]/g) || []).length, tr1 = h.slice(h.indexOf('<tbody>')).split('<tr>')[1] || '', td = (tr1.match(/<td[ >]/g) || []).length;
+      if (th !== td) throw new Error(r + ': troskovi th=' + th + ' td=' + td);
+    }
+    const dr = drawerT35(a, 'all', 'g1'); if (!dr.includes('Obriši gradilište')) throw new Error('direktor nema Obrisi gradiliste');
+    for (const r of ['admin', 'z1']) if (drawerT35(a, r, 'g1').includes('Obriši gradilište')) throw new Error(r + ' ima Obrisi gradiliste');
+  });
+  await acheck('b) obrisiZadatak: direktor brise (confirm), admin i rukovodilac ne mogu (bez confirm-a)', async () => {
+    const a = await boot();
+    const n0 = a.run('DATA.zadaci.length'), c0 = a.g._calls.confirm.length;
+    for (const r of ['admin', 'z1']) { a.run(`setRole(${JSON.stringify(r)})`); await a.run("obrisiZadatak('t1')"); }
+    if (a.run('DATA.zadaci.length') !== n0 || a.g._calls.confirm.length !== c0) throw new Error('admin/rukovodilac je obrisao ili pitao');
+    a.run("setRole('all')"); const ok = await a.run("obrisiZadatak('t1')");
+    if (ok !== true || a.run('DATA.zadaci.length') !== n0 - 1 || a.run("DATA.zadaci.some(t=>t.id==='t1')") || a.g._calls.confirm.length !== c0 + 1) throw new Error('direktor nije obrisao');
+    if (!/Betoniranje/.test(a.g._calls.confirm[a.g._calls.confirm.length - 1])) throw new Error('confirm ne imenuje red');
+  });
+  await acheck('c) dnevnik: radnik brise samo svoj unos (✕ samo uz svoj); tudji = bez promene i bez confirm-a', async () => {
+    const a = await boot();
+    const zid = a.run(T35_ZID), gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    a.run(`DATA.dnevnik.push({id:'dnA',gr:${JSON.stringify(gid)},autor:${JSON.stringify(zid)},datum:'2026-10-05',tekst:'moj'},{id:'dnB',gr:${JSON.stringify(gid)},autor:'uprava',datum:'2026-10-05',tekst:'tudji'})`);
+    const h = viewZa(a, 'radnik:' + zid, 'diary');
+    if (!h.includes("obrisiUnosDnevnika('dnA')") || h.includes("obrisiUnosDnevnika('dnB')")) throw new Error('radnik: pogresna dugmad');
+    const c0 = a.g._calls.confirm.length, n0 = a.run('DATA.dnevnik.length');
+    await a.run("obrisiUnosDnevnika('dnB')");
+    if (a.run('DATA.dnevnik.length') !== n0 || a.g._calls.confirm.length !== c0) throw new Error('radnik je dirao tudji unos');
+    await a.run("obrisiUnosDnevnika('dnA')");
+    if (a.run('DATA.dnevnik.length') !== n0 - 1 || a.run("DATA.dnevnik.some(d=>d.id==='dnA')")) throw new Error('svoj unos nije obrisan');
+    const ha = viewZa(a, 'admin', 'diary'); if (ha.includes('obrisiUnosDnevnika(')) throw new Error('admin ima dugme za dnevnik');
+    const hd = viewZa(a, 'all', 'diary'); if (!hd.includes("obrisiUnosDnevnika('dnB')")) throw new Error('direktor nema dugme');
+  });
+  await acheck('d) obrisiZaposlenog: rukovodilac gradilista = alert i bez promene; bez gradilista = obrisan', async () => {
+    const a = await boot();
+    a.run("setRole('all')");
+    const al = a.g._calls.alert.length, n0 = a.run('DATA.zaposleni.length');
+    await a.run("obrisiZaposlenog('z1')");
+    if (a.run('DATA.zaposleni.length') !== n0 || a.g._calls.alert.length !== al + 1 || !/Prvo dodeli drugog rukovodioca/.test(a.g._calls.alert[al])) throw new Error('rukovodilac nije odbijen');
+    a.run("DATA.zaposleni.push({id:'z_t35',ime:'Test T35',poz:'Majstor',tel:'1',status:'Kancelarija',opis:'',grs:[],bivsi:[]}); rebuildMaps();");
+    await a.run("obrisiZaposlenog('z_t35')");
+    if (a.run('DATA.zaposleni.length') !== n0 || a.run("!!zapById.z_t35")) throw new Error('zaposleni bez gradilista nije obrisan');
+    a.run("setRole('admin')"); const c0 = a.g._calls.confirm.length; await a.run("obrisiZaposlenog('z2')");
+    if (a.run('DATA.zaposleni.length') !== n0 || a.g._calls.confirm.length !== c0) throw new Error('admin je obrisao zaposlenog');
+    /* klijent sa gradilistem = odbijen; podizvodjac: zaduzenje u predmeru se skida */
+    a.run("setRole('all')"); const al2 = a.g._calls.alert.length, nc = a.run('DATA.clijenti.length');
+    await a.run("obrisiKlijenta('c1')"); if (a.run('DATA.clijenti.length') !== nc || a.g._calls.alert.length !== al2 + 1) throw new Error('klijent sa gradilistem nije odbijen');
+    a.run("DATA.predmer.find(p=>p.gr).zaduzen='p1'"); const np = a.run('DATA.podizvodjaci.length');
+    await a.run("obrisiPodizvodjaca('p1')");
+    if (a.run('DATA.podizvodjaci.length') !== np - 1 || a.run("DATA.predmer.some(p=>p.zaduzen==='p1')")) throw new Error('podizvodjac / zaduzenje');
+  });
+  await acheck('e) obrisiGradiliste (demo): gradiliste i sve zavisno nestaje, resursi.gr = null, z.grs ociscen; odbijen confirm = bez promene', async () => {
+    const a = await boot({ confirmReturns: false });
+    a.run("setRole('all')");
+    const snap = a.run('JSON.stringify(DATA)'), c0 = a.g._calls.confirm.length;
+    await a.run("obrisiGradiliste('g1')");
+    if (a.run('JSON.stringify(DATA)') !== snap || a.g._calls.confirm.length !== c0 + 1) throw new Error('odbijen confirm je ipak menjao DATA');
+    const b = await boot();
+    b.run("setRole('all')");
+    b.run("DATA.predmer.push({id:'pmT',gr:'g1',poz:'x',jm:'m',kol:2,cena:1,izv:0}); DATA.troskovi_st.push({id:'trT',gr:'g1',datum:'2026-10-01',opis:'x',kat:'k',iznos:1}); DATA.mag_promene.push({id:'mpT',mid:'m1',datum:'2026-10-01',tip:'ulaz',kol:1,gr:'g1'}); DATA.dokumenti.push({id:'dkT',gr:'g1',autor:'uprava',datum:'2026-10-01',naziv:'x',tip:'text/plain',velicina:0,opis:'',data:'data:,'}); DATA.resursi.push({id:'rT',tip:'vozilo',naziv:'x',gr:'g1',istice:'2030-01-01'}); rebuildMaps();");
+    const TAB = ['zadaci', 'dnevnik', 'narudzbe', 'predmer', 'troskovi_st', 'situacije', 'mag_promene', 'dokumenti'];
+    for (const t of TAB) if (!b.run(`DATA.${t}.some(r=>r.gr==='g1')`)) throw new Error('priprema: nema ' + t + ' za g1');
+    if (!b.run("DATA.zaposleni.some(z=>(z.grs||[]).includes('g1'))")) throw new Error('priprema: nema z.grs');
+    const n0 = b.run('DATA.gradilista.length'), c1 = b.g._calls.confirm.length;
+    const ok = await b.run("obrisiGradiliste('g1')");
+    if (ok !== true || b.g._calls.confirm.length !== c1 + 2) throw new Error('ok=' + ok + ', confirm x' + (b.g._calls.confirm.length - c1));
+    if (b.run('DATA.gradilista.length') !== n0 - 1 || b.run("grById.g1") !== undefined) throw new Error('gradiliste ostalo');
+    for (const t of TAB) if (b.run(`DATA.${t}.some(r=>r.gr==='g1')`)) throw new Error('ostali redovi u ' + t);
+    if (b.run("DATA.resursi.some(r=>r.gr==='g1')") || b.run("DATA.resursi.find(r=>r.id==='rT').gr") !== null) throw new Error('resursi.gr nije nulovan');
+    if (b.run("DATA.zaposleni.some(z=>(z.grs||[]).includes('g1')||(z.bivsi||[]).includes('g1'))") || b.run("DATA.podizvodjaci.some(p=>(p.grs||[]).includes('g1'))")) throw new Error('grs/bivsi nisu ocisceni');
+    b.run("setRole('admin')"); const c2 = b.g._calls.confirm.length, n1 = b.run('DATA.gradilista.length');
+    await b.run("obrisiGradiliste('g2')"); if (b.run('DATA.gradilista.length') !== n1 || b.g._calls.confirm.length !== c2) throw new Error('admin je obrisao gradiliste');
+  });
+  await acheck('e2) obrisiGradiliste (supabase): direktor -> rpc, baza nema gradiliste ni zavisne redove, log brisanje; admin -> rpc odbija, nista se ne menja', async () => {
+    const USERS = { 'direktor@test': { id: 'u-dir', password: 'dir' }, 'admin@test': { id: 'u-adm', password: 'a' } };
+    const profili = [{ user_id: 'u-dir', uloga: 'direktor', zaposleni_id: null, ime: 'D' }, { user_id: 'u-adm', uloga: 'admin', zaposleni_id: null, ime: 'A' }];
+    const s0 = await boot({ supabase: true, seed: { profili }, session: { user: { id: 'u-dir', email: 'direktor@test' } }, users: USERS });
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    /* admin: klijentski guard staje pre rpc-a; sam rpc (direktno) vraca gresku i ne dira bazu */
+    const ad = await boot({ supabase: true, seed: JSON.parse(JSON.stringify(seed)), session: { user: { id: 'u-adm', email: 'admin@test' } }, users: USERS });
+    const dbA = ad.g.__mock._db, snapA = JSON.stringify(dbA.gradilista), cA = ad.g._calls.confirm.length;
+    ad.g.__mock._log.length = 0;
+    await ad.run("obrisiGradiliste('g1')");
+    if (ad.g._calls.confirm.length !== cA || ad.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'obrisi_gradiliste')) throw new Error('admin je pokrenuo brisanje');
+    const r = await ad.run("supa.rpc('obrisi_gradiliste',{p_gid:'g1'})");
+    if (!r.error || !/Samo direktor/.test(r.error.message) || JSON.stringify(dbA.gradilista) !== snapA || ad.run("grById.g1") === undefined) throw new Error('admin rpc: ' + JSON.stringify(r));
+    const a = await boot({ supabase: true, seed: JSON.parse(JSON.stringify(seed)), session: { user: { id: 'u-dir', email: 'direktor@test' } }, users: USERS });
+    const db = a.g.__mock._db;
+    if (!db.zadaci.some(t => t.gr === 'g1')) throw new Error('priprema: nema zadataka g1');
+    const ok = await a.run("obrisiGradiliste('g1')");
+    if (ok !== true || db.gradilista.some(g => g.id === 'g1')) throw new Error('baza jos ima g1 (ok=' + ok + ')');
+    for (const t of ['zadaci', 'dnevnik', 'narudzbe', 'predmer', 'troskovi_st', 'situacije']) if ((db[t] || []).some(x => x.gr === 'g1')) throw new Error('baza: ostali redovi u ' + t);
+    if ((db.zaposleni_gradiliste || []).some(x => x.gradiliste_id === 'g1')) throw new Error('baza: join redovi');
+    if (!(db.log_koriscenja || []).some(l => l.dogadjaj === 'brisanje' && l.detalj && l.detalj.id === 'g1' && l.detalj.tabela === 'gradilista')) throw new Error('nema log reda');
+    if (a.run("grById.g1") !== undefined || a.run("DATA.zadaci.some(t=>t.gr==='g1')")) throw new Error('klijent nije ocistio DATA');
+  });
+  await acheck('f) obrisiPredmerRed: red nestaje, napredak gradilista se preracunava', async () => {
+    const a = await boot();
+    a.run("setRole('all')");
+    const gid = a.run(T35_G);
+    a.run(`DATA.predmer = DATA.predmer.filter(p=>p.gr!==${JSON.stringify(gid)}); DATA.predmer.push({id:'pfA',gr:${JSON.stringify(gid)},poz:'A',jm:'m',kol:100,cena:10,izv:100},{id:'pfB',gr:${JSON.stringify(gid)},poz:'B',jm:'m',kol:100,cena:10,izv:0}); osveziNapredak(${JSON.stringify(gid)});`);
+    if (a.run(`grById[${JSON.stringify(gid)}].napredak`) !== 50) throw new Error('priprema: napredak ' + a.run(`grById[${JSON.stringify(gid)}].napredak`));
+    await a.run("obrisiPredmerRed('pfB')");
+    const n = a.run(`grById[${JSON.stringify(gid)}].napredak`);
+    if (a.run("DATA.predmer.some(p=>p.id==='pfB')") || n !== 100) throw new Error('napredak = ' + n);
+  });
 
   /* ---- T34 sifarnik mera (C2) ---- */
   section('T34 sifarnik');

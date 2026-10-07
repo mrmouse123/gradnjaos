@@ -20,17 +20,22 @@ Otvori `index.html` u pretraživaču. Ako su `SUPABASE_URL`/`SUPABASE_ANON_KEY` 
 
 U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje, vidi ništa), a ispod je **log korišćenja**: prijave, odjave, otvaranja (uređaj, verzija), čuvanja (koje tabele, koliko redova), promene uloga. Sopstvenu ulogu direktor ne može da menja, a poslednji direktor se ne može skinuti. SQL alternativa i dalje postoji: `select povezi_profil('mejl','rukovodilac','z1');` u SQL editoru.
 
-## Šta rukovodilac sme (i na serveru)
+## Uloge (šta ko sme — i na serveru, ne samo u interfejsu)
 
-| | direktor | rukovodilac |
-|---|---|---|
-| gradilišta | sve | samo svoja (čita + ažurira napredak/fazu) |
-| zadaci, dnevnik, trebovanje, izvedene količine | sve | samo na svojim gradilištima; dnevnik i trebovanje samo pod svojim imenom |
-| klijenti | svi | samo investitor svog gradilišta (ime u fioci) |
-| zaposleni | sve + menja | vidi spisak; tim menja samo na svom gradilištu |
-| troškovi, situacije, cene, marže | sve | UI ih krije; na nivou API-ja može da pročita iznose SVOG gradilišta (v. CLAUDE.md „Hardening") |
-| magacin | sve | vidi; izdaje samo na svoje gradilište |
-| demo reset, novi klijent/zaposleni/gradilište, prilozi | da | ne |
+| | Direktor (IT super admin) | Admin | Rukovodilac 1 | Rukovodilac 2 | Radnik / Spoljni saradnik |
+|---|---|---|---|---|---|
+| vidi gradilišta | sva | sva | samo svoja | samo svoja | samo ona gde je u timu / na kojima je saradnik |
+| tabovi | svi | svi | tabla, gradilišta, **naplata**, rokovi, zadaci, dnevnik, magacin, trebovanje | isto bez naplate | isto bez naplate |
+| finansije (cene, marže, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
+| kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
+| dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
+| dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
+| zadaci | sve | sve | svoja gradilišta | svoja gradilišta | pomera samo svoje zadatke |
+| dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
+| Admin kokpit (nalozi, uloge, šifarnik, log) | da | da (ne dira direktore) | ne | ne | ne |
+| **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
+
+Rukovodilac 1 i 2 su ista uloga (`rukovodilac`) sa zastavicom „vidi finansije" u Admin kokpitu. Spoljni saradnik je vezan za podizvođača/saradnika, radnik za zaposlenog.
 
 Bez prijave (anon ključ sam za sebe): **nula pristupa** — zato je u redu da `index.html` sa ključem bude u javnom repou.
 

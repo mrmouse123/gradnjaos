@@ -18,8 +18,7 @@ tip, data, opis), sifrarnik(naziv, jm, grupa, modul) — uprava uredjuje.
 - [x] A. migracija 14 + schema.sql + set local role provera za 6 uloga (f81987a)
 - [x] B. Klijent jezgro (de86224, 916/916): ULOGA/JA, uprava/jeSuper/canFinance/vidim/vodim, visibleSites,
       "Pogled kao" za 6 uloga (demo), Nalozi tab sa 5 uloga + finansije + saradnik, matrica testova
-- [ ] C. Dokumenti (fioka: upload/preuzmi/obrisi svoje; super sve), brisanje za super
-      (redovi + gradiliste kroz RPC), sifarnik (Admin kokpit) + ceklista mera pri kreiranju
+- [x] C1. Dokumenti (6a1b27c)  [x] C2. Sifarnik + ceklista mera (e2c8234)  [ ] C3. Brisanje za super (worker)
 - [ ] C4. Tajmer zadatka (zahtev 2026-10-08): radnik na svom zadatku "Počni" / "Završi";
       sesije rada u tabeli rad_na_zadatku (migracija 15: osoba, zadatak, gr, start, kraj, minuta)
       + log_koriscenja (zadatak_start/zadatak_kraj); kartica zadatka pokazuje stanje i utroseno

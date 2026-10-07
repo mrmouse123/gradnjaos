@@ -258,6 +258,16 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
           a.sesija++; a.minuta += r.minuta != null ? r.minuta : Math.max(0, Math.floor((Date.now() - s.getTime()) / 60000)); const p = r.kraj || r.start; if (!a.poslednji || p > a.poslednji) a.poslednji = p; });
         return { data: Object.values(agg).sort((x, y) => (x.osoba + x.gr).localeCompare(y.osoba + y.gr)), error: null };
       }
+      if (name === 'obrisi_gradiliste') {   // migracija 14: super brise gradiliste i sve zavisne redove, upisuje log
+        if (!ctx.isSuper()) return { data: null, error: { message: 'Samo direktor briše gradilišta.' } };
+        const g = (db.gradilista || []).find(x => x.id === args.p_gid); if (!g) return { data: null, error: null };
+        ['zadaci', 'dnevnik', 'narudzbe', 'predmer', 'troskovi_st', 'situacije', 'mag_promene', 'dokumenti'].forEach(t => { if (db[t]) db[t] = db[t].filter(r => r.gr !== args.p_gid); });
+        (db.resursi || []).forEach(r => { if (r.gr === args.p_gid) r.gr = null; });
+        ['zaposleni_gradiliste', 'podizvodjac_gradiliste'].forEach(t => { if (db[t]) db[t] = db[t].filter(r => r.gradiliste_id !== args.p_gid); });
+        db.gradilista = db.gradilista.filter(x => x.id !== args.p_gid);
+        upisiLog('brisanje', { tabela: 'gradilista', id: args.p_gid, naziv: g.naziv });
+        return { data: null, error: null };
+      }
       if (name === 'dokument_podaci') {   // data-URL dokumenta po id-u (RLS: moje_gradiliste) — mock ne filtrira redove, samo vraca data
         const d = (db.dokumenti || []).find(x => x.id === args.p_id);
         return { data: d ? (d.data || null) : null, error: null };

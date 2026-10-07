@@ -1741,7 +1741,7 @@ function clientsTable(){
   let list=DATA.clijenti; if(clientQuery.trim()){ const q=clientQuery.toLowerCase(); list=list.filter(c=>unesc(c.naziv+' '+c.osoba+' '+c.tip).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema rezultata.</div>`;
   const tip=t=> t==='Javni sektor'?'b-blue':t==='Fizičko lice'?'b-amber':'b-gray';
-  return `<div style="overflow-x:auto"><table><thead><tr><th>Klijent</th><th>Tip</th><th>Kontakt osoba</th><th>Telefon</th><th>Aktivni projekti</th></tr></thead><tbody>
+  return `<div style="overflow-x:auto"><table><thead><tr><th>Klijent</th><th>Tip</th><th>Kontakt osoba</th><th>Telefon</th><th>Aktivni projekti</th>${jeSuper()?'<th></th>':''}</tr></thead><tbody>
     ${list.map(c=>{
       const proj=DATA.gradilista.filter(g=>g.klijent===c.id);
       const akt=proj.filter(g=>g.status!=='zavrseno').length;
@@ -1752,6 +1752,7 @@ function clientsTable(){
         <td>${c.osoba}</td>
         <td class="num-cell">${c.tel}</td>
         <td><span class="strong num">${akt}</span> <span style="color:var(--faint)">/ ${proj.length} ukupno</span></td>
+        ${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiKlijenta',c.id)}</td>`:''}
       </tr>`;
     }).join('')}
   </tbody></table>`;
@@ -1777,7 +1778,7 @@ function empsTable(){
   let list=DATA.zaposleni.filter(z=>((isDirector()&&MODUL==='sve')||(z.grs||[]).some(x=>ids.has(x))) && (empFilter==='all'||z.status===empFilter));
   if(empQuery.trim()){ const q=empQuery.toLowerCase(); list=list.filter(z=>unesc(z.ime+' '+z.poz+' '+(z.grs||[]).map(x=>grById[x]?grById[x].naziv:'').join(' ')).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema rezultata.</div>`;
-  return `<table><thead><tr><th>Zaposleni</th><th>Pozicija</th><th>Projekat</th><th>Opis posla</th><th>Status</th></tr></thead><tbody>
+  return `<table><thead><tr><th>Zaposleni</th><th>Pozicija</th><th>Projekat</th><th>Opis posla</th><th>Status</th>${jeSuper()?'<th></th>':''}</tr></thead><tbody>
     ${list.map(z=>{ const projs=(z.grs||[]).map(x=>grById[x]).filter(Boolean);
       const kratko = z.opis ? (z.opis.length>72 ? z.opis.slice(0,71)+'…' : z.opis) : '—';
       return `<tr class="clk" onclick="openEmp('${z.id}')">
@@ -1786,6 +1787,7 @@ function empsTable(){
         <td><span style="color:var(--blue);font-weight:600">${projs.map(g=>g.naziv).join('</span><div style="height:3px"></div><span style="color:var(--blue);font-weight:600">')||'—'}</span>${projs.length>1?`<div class="sub">${projs.length} projekta</div>`:''}</td>
         <td style="max-width:280px"><span style="font-size:12.5px;color:var(--muted)">${kratko}</span></td>
         <td><span class="badge ${EMP_STATUS[z.status]}">${z.status}</span></td>
+        ${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiZaposlenog',z.id)}</td>`:''}
       </tr>`;
     }).join('')}
   </tbody></table>`;
@@ -2043,6 +2045,7 @@ function viewTasks(){
         <div class="tf">
           <div class="who2"><div class="av av-s">${z?initials(z.ime):'?'}</div>${z?z.ime.split(' ')[0]:''}</div>
           <span class="prio ${p.c}">${p.t}</span>
+          ${jeSuper()?BRISI_DUGME('obrisiZadatak',t.id):''}
         </div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:8px">🗓 ${rokTxt}</div>
       </div>`;
@@ -2084,7 +2087,7 @@ function viewDiary(){
         return `<div class="card entry">
           <div class="av">${z.ime!=='—'?initials(z.ime):'?'}</div>
           <div style="flex:1">
-            <div class="hd"><b>${z?z.ime:'—'}</b><span class="gr-link" onclick="openSite('${e.gr}')">${g?g.naziv:''}</span></div>
+            <div class="hd"><b>${z?z.ime:'—'}</b><span class="gr-link" onclick="openSite('${e.gr}')">${g?g.naziv:''}</span>${smemObrisatiUnos(e)?`<span style="margin-left:auto">${BRISI_DUGME('obrisiUnosDnevnika',e.id)}</span>`:''}</div>
             <p>${e.tekst}</p>
           </div>
         </div>`;
@@ -2216,7 +2219,7 @@ function viewResursi(){
       <td>${g?`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="openSite('${g.id}')">${g.naziv}</span>`:'<span class="sub">Baza / kancelarija</span>'}</td>
       <td>${z?z.ime:'—'}</td>
       <td class="r">${ist}</td>
-      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formResurs('${r.id}')">✎</button></td>`:''}
+      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formResurs('${r.id}')">✎</button>${jeSuper()?' '+BRISI_DUGME('obrisiResurs',r.id):''}</td>`:''}
     </tr>`;
   }).join('');
   return head('Resursi','Vozila, oprema, licence i polise — dodela i rokovi važenja.') +
@@ -2655,7 +2658,7 @@ function viewPredmer(){
       <td class="r"><input class="izv-in num" value="${x.izv||0}" onchange="setIzv('${x.id}',this.value)"></td>
       <td class="r" style="min-width:90px"><div class="bar" style="height:6px"><span style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--blue)'}"></span></div><div class="sub num" style="text-align:right">${pct}%</div></td>
       <td>${zaduzenIme(x.zaduzen)}</td>
-      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button></td>`:''}
+      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button>${jeSuper()?' '+BRISI_DUGME('obrisiPredmerRed',x.id):''}</td>`:''}
     </tr>`;
   }).join('');
   return `
@@ -3000,14 +3003,14 @@ function openTroskovi(grId){
   const g=grById[grId]; if(!g) return;
   const list=troskoviZa(grId).sort((a,b)=>dParse(b.datum)-dParse(a.datum));
   const uk=list.reduce((a,t)=>a+(+t.iznos||0),0);
-  const rows=list.map(t=>`<tr><td>${fmtDate(t.datum)}</td><td class="strong">${t.opis}</td><td>${t.kat||'—'}</td><td>${t.dobavljac||'—'}</td><td>${t.fakt||'—'}</td><td class="r num-cell">${fmtEur(t.iznos)}</td><td>${t.prilog?`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span>`:'—'}</td></tr>`).join('');
+  const rows=list.map(t=>`<tr><td>${fmtDate(t.datum)}</td><td class="strong">${t.opis}</td><td>${t.kat||'—'}</td><td>${t.dobavljac||'—'}</td><td>${t.fakt||'—'}</td><td class="r num-cell">${fmtEur(t.iznos)}</td><td>${t.prilog?`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span>`:'—'}</td>${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiTrosak',t.id)}</td>`:''}</tr>`).join('');
   openModal(`
     <div class="m-h"><h3>Troškovi — ${g.naziv}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">${list.length} stavki</div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th>Dobavljač</th><th>Br. fakture</th><th class="r">Iznos</th><th>Prilog</th></tr></thead>
-        <tbody>${rows}<tr><td class="strong" colspan="5">Ukupno</td><td class="r num-cell strong">${fmtEur(uk)}</td><td></td></tr></tbody>
+        <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th>Dobavljač</th><th>Br. fakture</th><th class="r">Iznos</th><th>Prilog</th>${jeSuper()?'<th></th>':''}</tr></thead>
+        <tbody>${rows}<tr><td class="strong" colspan="5">Ukupno</td><td class="r num-cell strong">${fmtEur(uk)}</td><td></td>${jeSuper()?'<td></td>':''}</tr></tbody>
       </table></div>
       <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Zatvori</button></div>
     </div>`);
@@ -3080,6 +3083,95 @@ async function obrisiDokument(id){
   if(ok!==false) openSite(d.gr);
 }
 
+/* ---------- BRISANJE (C3): super brise sve; radnik/spoljni samo svoj unos dnevnika ----------
+   Svako brisanje: confirm() sa imenom reda -> obrisiRed (server prvo, log) -> render.
+   Dugmad se crtaju samo kad je dozvoljeno; guard je i ovde (funkcije su globalne). */
+async function obrisiStavku(tabela, id, opis, dozvoljeno, posle){
+  if(!(jeSuper() || dozvoljeno)) return false;
+  if(!confirm('Obrisati '+opis+'? Ovo se ne može vratiti.')) return false;
+  const ok=await obrisiRed(tabela, id, opis);
+  if(ok){ if(posle) posle(); render(); }
+  return ok;
+}
+const BRISI_DUGME=(fn,id)=>`<button class="btn ghost" title="Obriši" style="padding:2px 8px;font-size:11px;color:var(--red)" onclick="event.stopPropagation();${fn}('${id}')">✕</button>`;
+function obrisiZadatak(id){
+  const t=(DATA.zadaci||[]).find(x=>x.id===id); if(!t||!jeSuper()) return false;
+  return obrisiStavku('zadaci', id, 'zadatak "'+unesc(t.naziv)+'"');
+}
+function smemObrisatiUnos(e){ return !!e && (jeSuper() || (ROLE!=='all' && e.autor===ROLE)); }
+function obrisiUnosDnevnika(id){
+  const e=(DATA.dnevnik||[]).find(x=>x.id===id); if(!e||!smemObrisatiUnos(e)) return false;
+  return obrisiStavku('dnevnik', id, 'unos u dnevnik od '+fmtDate(e.datum), true);
+}
+async function obrisiTrosak(id){
+  const t=(DATA.troskovi_st||[]).find(x=>x.id===id); if(!t||!jeSuper()||!canFinance()) return false;
+  const ok=await obrisiStavku('troskovi_st', id, 'trošak "'+unesc(t.opis)+'"');
+  if(ok) openTroskovi(t.gr);
+  return ok;
+}
+function obrisiSituaciju(id){
+  const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!jeSuper()||!canFinance()) return false;
+  return obrisiStavku('situacije', id, 'situaciju '+unesc(s.br));
+}
+function obrisiPredmerRed(id){
+  const x=(DATA.predmer||[]).find(r=>r.id===id); if(!x||!jeSuper()) return false;
+  return obrisiStavku('predmer', id, 'poziciju "'+unesc(x.poz)+'"', false, ()=>osveziNapredak(x.gr));   // napredak PRE render()
+}
+function obrisiResurs(id){
+  const r=(DATA.resursi||[]).find(x=>x.id===id); if(!r||!jeSuper()) return false;
+  return obrisiStavku('resursi', id, 'resurs "'+unesc(r.naziv)+'"');
+}
+function obrisiNarudzbu(id){
+  const n=(DATA.narudzbe||[]).find(x=>x.id===id); if(!n||!jeSuper()) return false;
+  const g=grById[n.gr];
+  return obrisiStavku('narudzbe', id, 'trebovanje od '+fmtDate(n.datum)+(g?' ('+unesc(g.naziv)+')':''));
+}
+function obrisiKlijenta(id){
+  const c=cliById[id]; if(!c||!jeSuper()) return false;
+  const vezana=DATA.gradilista.filter(g=>g.klijent===id);
+  if(vezana.length){ alert('Klijent ima gradilišta: '+vezana.map(g=>unesc(g.naziv)).join(', ')+'. Prvo promeni klijenta na tim gradilištima.'); return false; }
+  return obrisiStavku('clijenti', id, 'klijenta "'+unesc(c.naziv)+'"');
+}
+function obrisiZaposlenog(id){
+  const z=zapById[id]; if(!z||!jeSuper()) return false;
+  const vodi=DATA.gradilista.filter(g=>g.rukovodilac===id);
+  if(vodi.length){ alert('Prvo dodeli drugog rukovodioca na: '+vodi.map(g=>unesc(g.naziv)).join(', ')); return false; }
+  return obrisiStavku('zaposleni', id, 'zaposlenog "'+unesc(z.ime)+'"', false, ()=>{
+    const pj=PUSHED.zaposleni_gradiliste; if(pj) Object.keys(pj).filter(k=>k.indexOf(id+'|')===0).forEach(k=>delete pj[k]);
+  });
+}
+function obrisiPodizvodjaca(id){
+  const p=(DATA.podizvodjaci||[]).find(x=>x.id===id); if(!p||!jeSuper()) return false;
+  return obrisiStavku('podizvodjaci', id, (MODUL==='projektovanje'?'spoljnog saradnika "':'podizvođača "')+unesc(p.naziv)+'"', false, ()=>{
+    (DATA.predmer||[]).forEach(r=>{ if(r.zaduzen===id) r.zaduzen=null; });
+    const pj=PUSHED.podizvodjac_gradiliste; if(pj) Object.keys(pj).filter(k=>k.indexOf(id+'|')===0).forEach(k=>delete pj[k]);
+    saveState();
+  });
+}
+async function obrisiGradiliste(id){
+  const g=grById[id]; if(!g||!jeSuper()) return false;
+  if(!confirm('Obrisati gradilište "'+unesc(g.naziv)+'"? Ovo se ne može vratiti.')) return false;
+  if(!confirm('Biće obrisani i svi zadaci, dnevnik, predmer, troškovi, situacije, trebovanja i dokumenta ovog gradilišta. Nastaviti?')) return false;
+  const naziv=unesc(g.naziv);
+  if(mode==='supabase'){
+    try{ const {error}=await supa.rpc('obrisi_gradiliste',{p_gid:id}); if(error) throw new Error(error.message||String(error)); }
+    catch(e){ console.error('Supabase obrisi_gradiliste:', e); alert('Brisanje nije uspelo: '+(e.message||e)); return false; }
+  }
+  const nosi=t=>{ if(!Array.isArray(DATA[t])) return; const sada=DATA[t].filter(r=>r.gr===id);
+    sada.forEach(r=>{ if(PUSHED[t]) delete PUSHED[t][r.id]; });
+    DATA[t]=DATA[t].filter(r=>r.gr!==id); };
+  ['zadaci','dnevnik','narudzbe','predmer','troskovi_st','situacije','mag_promene','dokumenti'].forEach(nosi);
+  (DATA.resursi||[]).forEach(r=>{ if(r.gr===id) r.gr=null; });
+  DATA.zaposleni.forEach(z=>{ z.grs=(z.grs||[]).filter(x=>x!==id); z.bivsi=(z.bivsi||[]).filter(x=>x!==id); });
+  (DATA.podizvodjaci||[]).forEach(p=>{ p.grs=(p.grs||[]).filter(x=>x!==id); });
+  DATA.gradilista=DATA.gradilista.filter(x=>x.id!==id);
+  if(PUSHED.gradilista) delete PUSHED.gradilista[id];
+  JOIN_TABELE.forEach(t=>{ const pj=PUSHED[t]; if(pj) Object.keys(pj).filter(k=>k.slice(-(id.length+1))==='|'+id).forEach(k=>delete pj[k]); });
+  if(mode!=='supabase') beleziLog('brisanje',{tabela:'gradilista', id, naziv});   // u bazi log pise server
+  rebuildMaps(); saveState(); closeDrawer(); renderNav(); render();
+  return true;
+}
+
 /* ---------- PODIZVODJACI ---------- */
 function viewSubs(){
   const ids=visibleSiteIds();
@@ -3094,12 +3186,13 @@ function viewSubs(){
       <td>${projs.map(g=>`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="openSite('${g.id}')">${g.naziv}</span>`).join('<div style="height:3px"></div>')||'—'}</td>
       ${fin?`<td class="r num-cell strong">${fmtEur(x.cena||0)}</td>`:''}
       <td>${st}</td>
+      ${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiPodizvodjaca',x.id)}</td>`:''}
     </tr>`;
   }).join('');
   return head(MODUL==='projektovanje'?'Spoljni saradnici':'Podizvođači','Angažovane firme po gradilištima — kontakt i status.') +
   `<div class="tools">${isDirector()?`<button class="btn" onclick="formSub()">${icon('plus')} Novi podizvođač</button>`:''}</div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>Podizvođač</th><th>Kontakt</th><th>Gradilišta</th>${fin?'<th class="r">Ugovoreno</th>':''}<th>Status</th></tr></thead>
+    <thead><tr><th>Podizvođač</th><th>Kontakt</th><th>Gradilišta</th>${fin?'<th class="r">Ugovoreno</th>':''}<th>Status</th>${jeSuper()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':'<div class="empty">Još nema podizvođača.</div>'}
   </div>`;
@@ -3299,6 +3392,7 @@ function viewNabavka(){
         <div style="display:flex;gap:8px;margin-top:14px">
           <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="posaljiMejlNabavci('${n.id}')">\u2709 Po\u0161alji mejl ponovo</button>
           ${n.status!=='isporuceno'?`<button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="oznaciIsporuceno('${n.id}')">\u2713 Ozna\u010di isporu\u010deno</button>`:''}
+          ${jeSuper()?`<span style="margin-left:auto">${BRISI_DUGME('obrisiNarudzbu',n.id)}</span>`:''}
         </div>
       </div>
     </div>`;
@@ -3453,6 +3547,7 @@ function viewPay(){
       <td class="num-cell">${fmtDate(s.valuta)}</td>
       <td>${st}</td>
       <td class="r">${s.status!=='placeno'?`<button class="btn ghost" style="padding:5px 10px;font-size:12px" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}</td>
+      ${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiSituaciju',s.id)}</td>`:''}
     </tr>`;
   }).join('');
   return head('Naplata','Privremene situacije po projektima — šta je izdato, šta plaćeno, ko probija valutu.') +
@@ -3472,7 +3567,7 @@ function viewPay(){
   </div>
   <div class="tools"><button class="btn" onclick="formSit()">${icon('plus')} Nova situacija</button></div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>Situacija</th><th>Projekat</th><th class="r">Iznos</th><th>Izdato</th><th>Valuta</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Situacija</th><th>Projekat</th><th class="r">Iznos</th><th>Izdato</th><th>Valuta</th><th>Status</th><th></th>${jeSuper()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${sits.length?'':'<div class="empty">Još nema izdatih situacija.</div>'}
   </div>`;
@@ -3907,6 +4002,7 @@ function openSite(id){
         <h4>Zadaci (${zad.length})</h4>
         ${zadHtml}
       </div>
+      ${jeSuper()?`<div class="dr-sec"><button class="btn ghost" style="color:var(--red)" onclick="obrisiGradiliste('${id}')">Obriši gradilište</button></div>`:''}
     </div>`;
   document.getElementById('drawer').classList.add('on');
   document.getElementById('scrim').classList.add('on');
