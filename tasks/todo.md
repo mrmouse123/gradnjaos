@@ -1,3 +1,27 @@
+# 6 uloga (2026-10-07, odluka klijenta)
+
+Trazeno: Direktor/IT super admin (sve + delete + dodela uloga), Admin (sve bez delete +
+dodela uloga), Rukovodilac 1 (svoja gradilista + finansije + dodela ljudi), Rukovodilac 2
+(isto bez finansija), Radnik (dodeljena gradilista: view/edit/delete svojih unosa +
+dokumenta), Spoljni saradnik (kao radnik). "Gradilista sa merama iz sifrarnika".
+
+Model: profili.uloga ∈ {direktor, admin, rukovodilac, radnik, spoljni} + vidi_finansije
+(bool; Rukovodilac 1 = rukovodilac + true) + saradnik_id (spoljni -> podizvodjaci.id).
+Serverski helperi: je_super (direktor), je_direktor = UPRAVA (direktor|admin — ime ostaje
+zbog 60 polisa), vidi_finansije, moj_saradnik, moje_gradiliste (citanje: uprava |
+rukovodilac | clan tima | saradnik na gradilistu), vodim_gradiliste (pisanje: uprava |
+rukovodilac). Delete polise -> je_super. Radnik/spoljni: dnevnik (svoj: insert/update/
+delete), zadaci (svoj: kol), dokumenti (svoj). Nove tabele: dokumenti(gr, autor, naziv,
+tip, data, opis), sifrarnik(naziv, jm, grupa, modul) — uprava uredjuje.
+
+## Faze
+- [ ] A. migracija 14 + schema.sql + set local role provera za 6 uloga
+- [ ] B. Klijent jezgro: ULOGA/JA, uprava/jeSuper/canFinance/vidim/vodim, visibleSites,
+      "Pogled kao" za 6 uloga (demo), Nalozi tab sa 5 uloga + finansije + saradnik, matrica testova
+- [ ] C. Dokumenti (fioka: upload/preuzmi/obrisi svoje; super sve), brisanje za super
+      (redovi + gradiliste kroz RPC), sifarnik (Admin kokpit) + ceklista mera pri kreiranju
+- [ ] D. Docs (CLAUDE.md pravila 1/2/7/9 → uloge), README, memorija, commit po fazi
+
 # Novo gradiliste + napredak iz predmera + izvedeno iz Excela (2026-10-07) — GOTOVO
 Trazeno (posle sastanka sa klijentom): bez polja kontakt nadzora; projektovanje = sve 3 faze
 i podfaze sa cekboksom i zaduzenim; zdravlje = ugovoreno (predmer × mere + finansije) vs

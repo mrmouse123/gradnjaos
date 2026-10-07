@@ -73,7 +73,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `osveziNapredak`. Fixture `test/fixtures/izvedeno.xlsx` (openpyxl); stub prosleđuje
   `ReadableStream/DecompressionStream/Response/TextDecoder` iz Node-a. T31.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..13.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..14.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
