@@ -63,6 +63,15 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   Provereno `set local role`: rukovodilac → RPC raise, log select 0, insert svog reda OK;
   direktor → lista, sebi odbijeno, uklanjanje + log. Mock: `rpc` sve tri + `limit()`,
   insert u `log_koriscenja` se loguje kao `op:'log'` (ne `upsert`). T28.
+- **Izvedeno iz Excela** (od 2026-10-07): `formIzvedeno(grId)` (direktor ili rukovodilac
+  svog gradilišta) — `.xlsx` se čita U BROWSERU bez biblioteke (`zipCitaj`: centralni
+  direktorijum ZIP-a, veličine odatle jer lokalni header uz data descriptor ima 0;
+  `DecompressionStream('deflate-raw')`; `citajXlsx`: sharedStrings + prvi `sheetN.xml`
+  regexom, bez DOMParser-a), CSV/nalepljeno kroz `citajCsv`. `upariIzvedeno` po
+  normalizovanom imenu (redni broj samo kad ime nedostaje), klamp na `kol`, pregled pa
+  `primeniIzvedeno` menja SAMO `izv` (trigger za ne-direktora ionako gazi ostalo) →
+  `osveziNapredak`. Fixture `test/fixtures/izvedeno.xlsx` (openpyxl); stub prosleđuje
+  `ReadableStream/DecompressionStream/Response/TextDecoder` iz Node-a. T31.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
   helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..13.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za

@@ -2493,6 +2493,7 @@ function viewPredmer(){
     <div class="card kpi"><div class="accent" style="background:var(--amber)"></div><div class="lab">Preostalo</div><div class="val num">${fmtEur(ugUk-izUk)}</div><div class="sub">za izvođenje / fakturisanje</div></div>
   </div>`:''}
   <div class="tools">
+    ${smem?`<button class="btn${isDirector()?' ghost':''}" onclick="formIzvedeno('${g.id}')">⇧ Učitaj izvedeno (Excel)</button>`:''}
     ${isDirector()?`<button class="btn" onclick="formPredmerImport('${g.id}')">${icon('plus')} Uvezi iz Excela (nalepi)</button>
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
     <button class="btn ghost" onclick="izvozPredmer('${g.id}')">⇩ Izvoz izvedenih (CSV)</button>
@@ -2512,6 +2513,140 @@ function setIzv(pid,val){
      (osnov za fakturisanje) su izvozili sirovu vrednost. */
   x.izv=Math.min(+x.kol||0, Math.max(0, broj(val)));
   osveziNapredak(x.gr); saveState(); render();
+}
+/* ---------- UCITAVANJE IZVEDENOG IZ EXCELA (rukovodilac / direktor) ----------
+   Rukovodilac ucitava stanje izvedenih kolicina (.xlsx / .csv / nalepljeno iz Excela);
+   menja se SAMO izv (trigger na serveru ionako gazi sve ostalo za ne-direktora), napredak
+   se izvodi iz predmera (pravilo 5). .xlsx se cita u browseru bez biblioteke: ZIP centralni
+   direktorijum + DecompressionStream('deflate-raw') + regex nad sheet XML-om. */
+function smemIzvedeno(grId){ const g=grById[grId]; return !!g && (isDirector()||g.rukovodilac===ROLE); }
+function xmlDek(s){ return String(s||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&'); }
+async function zipInflate(bytes, metod){
+  if(metod===0) return bytes;
+  if(metod!==8) throw new Error('Nepodržana ZIP kompresija ('+metod+')');
+  if(typeof DecompressionStream==='undefined') throw new Error('Ovaj pretraživač ne može da otvori .xlsx — sačuvaj kao CSV ili nalepi iz Excela.');
+  const st=new ReadableStream({start(c){ c.enqueue(bytes); c.close(); }}).pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(st).arrayBuffer());
+}
+async function zipCitaj(buf){
+  const u=new Uint8Array(buf), dv=new DataView(u.buffer,u.byteOffset,u.byteLength), td=new TextDecoder('utf-8');
+  let e=u.length-22; while(e>=0 && dv.getUint32(e,true)!==0x06054b50) e--;
+  if(e<0) throw new Error('Fajl nije .xlsx (nema ZIP zaglavlja).');
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true); const ulazi={};
+  for(let i=0;i<n;i++){
+    if(dv.getUint32(p,true)!==0x02014b50) break;
+    const metod=dv.getUint16(p+10,true), csz=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), off=dv.getUint32(p+42,true);
+    const ime=td.decode(u.subarray(p+46,p+46+nl));
+    ulazi[ime]={metod,csz,off}; p+=46+nl+xl+cl;
+  }
+  return { ime:Object.keys(ulazi), async citaj(ime){ const z=ulazi[ime]; if(!z) return null;
+    const lnl=dv.getUint16(z.off+26,true), lxl=dv.getUint16(z.off+28,true), s=z.off+30+lnl+lxl;   // velicine iz CENTRALNOG dir-a (lokalne su 0 uz data descriptor)
+    return td.decode(await zipInflate(u.subarray(s,s+z.csz), z.metod)); } };
+}
+async function citajXlsx(buf){
+  const z=await zipCitaj(buf);
+  const ss=[]; const ssx=await z.citaj('xl/sharedStrings.xml');
+  if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)) ss.push([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''));
+  const list=z.ime.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort((a,b)=>(+a.match(/\d+/)[0])-(+b.match(/\d+/)[0]));
+  if(!list.length) throw new Error('U fajlu nema radnog lista.');
+  const x=await z.citaj(list[0]); const redovi=[];
+  for(const r of x.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)){
+    const red=[];
+    for(const c of r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)){
+      let kol=0; for(const ch of c[1]) kol=kol*26+(ch.charCodeAt(0)-64); kol--;
+      const atr=c[2]||'', tel=c[3]||''; let v='';
+      const vm=tel.match(/<v>([\s\S]*?)<\/v>/), im=tel.match(/<is>[\s\S]*?<\/is>/);
+      if(/t="s"/.test(atr)&&vm) v=ss[+vm[1]]??'';
+      else if(/t="inlineStr"/.test(atr)&&im) v=[...im[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join('');
+      else if(/t="b"/.test(atr)&&vm) v=vm[1]==='1'?'DA':'NE';
+      else if(vm) v=/t="str"/.test(atr)?xmlDek(vm[1]):Number(vm[1]);
+      red[kol]=v;
+    }
+    for(let i=0;i<red.length;i++) if(red[i]===undefined) red[i]='';
+    if(red.some(c=>c!=='')) redovi.push(red);
+    if(redovi.length>5000) break;
+  }
+  return redovi;
+}
+function citajCsv(txt){
+  const sep=(txt.match(/;/g)||[]).length>=(txt.match(/\t/g)||[]).length?';':'\t';
+  return txt.replace(/^﻿/,'').split(/\r?\n/).map(l=>l.split(sep).map(c=>c.trim().replace(/^"(.*)"$/,'$1'))).filter(r=>r.some(c=>c!==''));
+}
+/* Uparivanje: zaglavlje (ako ga ima) bira kolone "izved…" i "poz/opis/usluga"; "#" je rezerva.
+   Bez zaglavlja: kolona 0 = pozicija, poslednja popunjena = izvedeno. Ime se poredi
+   normalizovano (unesc, mala slova, sažeti razmaci). Rezultat: {spojeni:[{x,novo}], nepovezani:[...]} */
+const normPoz=s=>unesc(String(s??'')).toLowerCase().replace(/\s+/g,' ').trim();
+function upariIzvedeno(grId, redovi){
+  const lista=predmerZa(grId), spojeni=[], nepovezani=[];
+  if(!redovi.length) return {spojeni,nepovezani};
+  const h=redovi[0].map(c=>String(c).toLowerCase());
+  let ci=h.findIndex(c=>/izved/.test(c)), cp=h.findIndex(c=>/poz|opis|uslug|naziv/.test(c)), cn=h.findIndex(c=>c.trim()==='#'||/^r\.?br/.test(c));
+  const imaZag=ci>=0||cp>=0;
+  if(!imaZag){ cp=0; ci=-1; cn=-1; }
+  const poIme=new Map(lista.map((x,i)=>[normPoz(x.poz),x]));
+  redovi.slice(imaZag?1:0).forEach((r,i)=>{
+    const ime=normPoz(r[cp]); let x=poIme.get(ime);
+    if(!x && !ime && cn>=0 && r[cn]!=='' && Number.isFinite(+r[cn])) x=lista[+r[cn]-1];   // redni broj samo kad nema imena (ime koje ne postoji ≠ drugi red)
+    const sirovo = ci>=0 ? r[ci] : [...r].reverse().find(c=>c!==''&&Number.isFinite(typeof c==='number'?c:broj(c)));
+    if(!x){ nepovezani.push(String(r[cp]??'')||('red '+(i+1))); return; }
+    const vr=typeof sirovo==='number'?sirovo:broj(sirovo);
+    spojeni.push({x, novo:Math.min(+x.kol||0, Math.max(0, Number.isFinite(vr)?vr:0))});
+  });
+  return {spojeni,nepovezani};
+}
+let IZV_PRIPREMA=null;
+function formIzvedeno(grId){
+  if(!smemIzvedeno(grId)) return;
+  const g=grById[grId]; IZV_PRIPREMA=null;
+  openModal(`
+    <div class="m-h"><h3>Učitaj izvedeno — ${g.naziv}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-b">
+      <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">Preuzmi šablon sa tekućim pozicijama, popuni kolonu <b>Izvedeno</b> i učitaj fajl (.xlsx ili .csv) — ili nalepi dve kolone <b>Pozicija | Izvedeno</b> iz Excela. Menja se samo izvedena količina; napredak projekta se računa iz nje.</div>
+      <div class="tools" style="margin-bottom:10px">
+        <button class="btn ghost" onclick="izvozIzvedenoSablon('${grId}')">⇩ Šablon (CSV)</button>
+        <label class="btn" style="cursor:pointer">Izaberi fajl… <input id="iz_fajl" type="file" accept=".xlsx,.csv,.txt" style="display:none" onchange="izvedenoIzFajla('${grId}',this)"></label>
+      </div>
+      <div class="f-row"><textarea id="iz_tekst" style="min-height:90px;font-family:'JetBrains Mono',monospace;font-size:12px" placeholder="Iskop temelja	150,5&#10;Temelji AB	64"></textarea></div>
+      <div class="tools"><button class="btn ghost" onclick="izvedenoIzTeksta('${grId}')">Proveri nalepljeno</button></div>
+      <div id="iz_pregled"></div>
+      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" id="iz_primeni" disabled onclick="primeniIzvedeno('${grId}')">Primeni</button></div>
+    </div>`);
+}
+function izvozIzvedenoSablon(grId){
+  if(!smemIzvedeno(grId)) return;
+  const g=grById[grId], lista=predmerZa(grId);
+  const csv='﻿#;Pozicija;JM;Ugovoreno;Izvedeno\n'+lista.map((x,i)=>[i+1, '"'+unesc(x.poz).replace(/"/g,'""')+'"', unesc(x.jm||''), String(x.kol).replace('.',','), String(x.izv||0).replace('.',',')].join(';')).join('\n');
+  try{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download='izvedeno-'+unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-')+'.csv'; document.body.appendChild(a); a.click(); a.remove(); }catch(e){}
+}
+async function izvedenoIzFajla(grId, inp){
+  if(!smemIzvedeno(grId)) return;
+  const f=inp&&inp.files&&inp.files[0]; if(!f) return;
+  try{
+    const redovi = /\.xlsx$/i.test(f.name) ? await citajXlsx(await f.arrayBuffer()) : citajCsv(await f.text());
+    prikaziIzvedeno(grId, upariIzvedeno(grId, redovi));
+  }catch(e){ const p=document.getElementById('iz_pregled'); if(p) p.innerHTML='<div class="banner">'+esc(e.message||String(e))+'</div>'; }
+}
+function izvedenoIzTeksta(grId){
+  if(!smemIzvedeno(grId)) return;
+  const t=document.getElementById('iz_tekst'); const redovi=citajCsv(t?String(t.value):'');
+  prikaziIzvedeno(grId, upariIzvedeno(grId, redovi));
+}
+function prikaziIzvedeno(grId, rez){
+  IZV_PRIPREMA={grId, spojeni:rez.spojeni};
+  const p=document.getElementById('iz_pregled'); if(!p) return;
+  const promene=rez.spojeni.filter(s=>s.novo!==(+s.x.izv||0));
+  p.innerHTML=(rez.spojeni.length?`<div style="overflow-x:auto;margin-top:6px"><table><thead><tr><th>Pozicija</th><th class="r">Ugovoreno</th><th class="r">Bilo</th><th class="r">Novo</th></tr></thead><tbody>
+    ${rez.spojeni.map(s=>`<tr${s.novo!==(+s.x.izv||0)?' style="font-weight:600"':''}><td>${s.x.poz}</td><td class="r num">${s.x.kol} ${s.x.jm}</td><td class="r num">${s.x.izv||0}</td><td class="r num">${s.novo}</td></tr>`).join('')}
+    </tbody></table></div>`:'<div class="empty">Nijedna pozicija nije prepoznata.</div>')
+    +(rez.nepovezani.length?`<div class="banner" style="margin-top:8px">Nisu pronađene u predmeru (preskaču se): ${rez.nepovezani.map(esc).join(', ')}</div>`:'')
+    +`<div class="sub" style="margin-top:8px">${rez.spojeni.length} pozicija prepoznato · ${promene.length} sa promenom</div>`;
+  const b=document.getElementById('iz_primeni'); if(b){ b.disabled=!promene.length; b.textContent='Primeni ('+promene.length+')'; }
+}
+function primeniIzvedeno(grId){
+  if(!smemIzvedeno(grId)||!IZV_PRIPREMA||IZV_PRIPREMA.grId!==grId) return;
+  let n=0; IZV_PRIPREMA.spojeni.forEach(s=>{ const x=(DATA.predmer||[]).find(r=>r.id===s.x.id); if(x && x.gr===grId && (+x.izv||0)!==s.novo){ x.izv=s.novo; n++; } });
+  IZV_PRIPREMA=null; if(!n){ closeModal(); return; }
+  osveziNapredak(grId); saveState(); closeModal(); render();
 }
 /* formPredmerRed(grId) = nova pozicija; formPredmerRed(grId,pid) = izmena postojece (samo direktor). */
 function formPredmerRed(grId,pid){

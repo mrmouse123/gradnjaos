@@ -454,6 +454,56 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
 
+  /* ---- T31 ucitavanje izvedenog iz Excela: .xlsx parser bez biblioteke, uparivanje, klamp, samo izv, napredak ---- */
+  section('T31 izvedeno iz Excela');
+  await acheck('citajXlsx: fixture (openpyxl) -> 5 redova, shared strings, brojevi kao brojevi, tekst sa zarezom kao tekst', async () => {
+    const a = await boot();
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'izvedeno.xlsx'));
+    a.g.__xlsx = new Uint8Array(buf).buffer;
+    const rows = await a.run('citajXlsx(__xlsx)');
+    if (rows.length !== 5) throw new Error('redova: ' + rows.length + ' ' + JSON.stringify(rows));
+    if (rows[0][1] !== 'Pozicija' || rows[0][4] !== 'Izvedeno') throw new Error('zaglavlje: ' + JSON.stringify(rows[0]));
+    if (rows[1][1] !== 'Iskop temelja' || rows[1][3] !== 180 || rows[1][4] !== '150,5') throw new Error('red 1: ' + JSON.stringify(rows[1]));
+    if (rows[2][4] !== 64 || rows[4][4] !== 999) throw new Error('brojevi: ' + JSON.stringify([rows[2], rows[4]]));
+    if (!rows[3][1].includes('Nepostojeća')) throw new Error('utf-8/shared string: ' + rows[3][1]);
+  });
+  await acheck('upariIzvedeno + primeniIzvedeno: po imenu (normalizovano), klamp na kol, nepovezani prijavljeni, samo izv menjano, napredak osvezen; rukovodilac samo svoje', async () => {
+    const a = await boot();
+    a.run(`ROLE='all'; DATA.predmer=DATA.predmer.filter(x=>x.gr!=='g1');
+      DATA.predmer.push({id:'i1',gr:'g1',poz:esc('Iskop temelja'),jm:'m³',kol:180,cena:22,izv:10,zaduzen:null},
+                        {id:'i2',gr:'g1',poz:esc('Temelji AB'),jm:'m³',kol:64,cena:210,izv:0,zaduzen:null},
+                        {id:'i3',gr:'g1',poz:esc('Armiranje ploče'),jm:'m²',kol:500,cena:9,izv:0,zaduzen:null});`);
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'izvedeno.xlsx'));
+    a.g.__xlsx = new Uint8Array(buf).buffer;
+    const rez = await a.run("citajXlsx(__xlsx).then(r=>{ const u=upariIzvedeno('g1', r); return {n:u.spojeni.map(s=>[s.x.id,s.novo]), ne:u.nepovezani}; })");
+    const map = Object.fromEntries(rez.n);
+    if (map.i1 !== 150.5) throw new Error('"150,5" tekst nije prosao kroz broj(): ' + map.i1);
+    if (map.i2 !== 64) throw new Error('Temelji: ' + map.i2);
+    if (map.i3 !== 500) throw new Error('klamp 999 -> 500 nije primenjen: ' + map.i3);
+    if (rez.ne.length !== 1 || !rez.ne[0].includes('Nepostojeća')) throw new Error('nepovezani: ' + JSON.stringify(rez.ne));
+    /* primena kroz dijalog: prikaziIzvedeno -> primeniIzvedeno */
+    a.run("formIzvedeno('g1')");
+    await a.run("citajXlsx(__xlsx).then(r=>prikaziIzvedeno('g1', upariIzvedeno('g1', r)))");
+    const pre = a.run("JSON.stringify(DATA.predmer.filter(x=>x.gr==='g1').map(x=>({poz:x.poz,kol:x.kol,cena:x.cena})))");
+    a.run("primeniIzvedeno('g1')");
+    const izv = a.run("DATA.predmer.filter(x=>x.gr==='g1').map(x=>x.izv)");
+    if (JSON.stringify(izv) !== JSON.stringify([150.5, 64, 500])) throw new Error('izv posle primene: ' + JSON.stringify(izv));
+    if (a.run("JSON.stringify(DATA.predmer.filter(x=>x.gr==='g1').map(x=>({poz:x.poz,kol:x.kol,cena:x.cena})))") !== pre) throw new Error('promenjeno nesto osim izv');
+    const ocek = Math.floor(100 * (150.5 * 22 + 64 * 210 + 500 * 9) / (180 * 22 + 64 * 210 + 500 * 9) + 0.5);
+    if (a.run('grById.g1.napredak') !== ocek) throw new Error('napredak ' + a.run('grById.g1.napredak') + ' != ' + ocek);
+    /* nalepljeno: bez zaglavlja, tab */
+    a.g.document.getElementById('iz_tekst').value = 'Temelji AB\t30\nIskop temelja\t0';
+    a.run("izvedenoIzTeksta('g1'); primeniIzvedeno('g1');");
+    if (a.run("DATA.predmer.find(x=>x.id==='i2').izv") !== 30 || a.run("DATA.predmer.find(x=>x.id==='i1').izv") !== 0) throw new Error('nalepljeni unos nije primenjen');
+    /* guard: rukovodilac tudjeg gradilista */
+    const tudje = a.run("DATA.gradilista.find(g=>g.rukovodilac!=='z1').id");
+    const modal = a.g.document.getElementById('modal'); modal.innerHTML = '';
+    a.run(`ROLE='z1'; formIzvedeno(${JSON.stringify(tudje)});`);
+    if (modal.innerHTML !== '') throw new Error('rukovodilac otvorio ucitavanje za tudje gradiliste');
+    a.run("current='predmer'; PRED_ID='g1'; render();");
+    if (!a.g.document.getElementById('view').innerHTML.includes("formIzvedeno('g1')")) throw new Error('rukovodilac svog gradilista nema dugme Ucitaj izvedeno');
+  });
+
   /* ---- T30 napredak iz predmera (migracija 13): ugovoreno × izvedeno; direktor lokalno, rukovodilac sa servera; rucni napredak samo bez predmera ---- */
   section('T30 napredak iz predmera');
   await acheck('direktor: setIzv -> napredak = Σ min(izv,kol)·cena / Σ kol·cena; bez cena -> po kolicinama; bez predmera -> null i rucni ostaje', async () => {

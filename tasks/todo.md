@@ -1,3 +1,19 @@
+# Novo gradiliste + napredak iz predmera + izvedeno iz Excela (2026-10-07) — GOTOVO
+Trazeno (posle sastanka sa klijentom): bez polja kontakt nadzora; projektovanje = sve 3 faze
+i podfaze sa cekboksom i zaduzenim; zdravlje = ugovoreno (predmer × mere + finansije) vs
+stanje koje rukovodilac ucita iz Excela, za sva gradilista.
+- [x] formSite bez nadzora; nivoiChecklist (36 podfaza, zaduzeni = zaposleni + spoljni) — T29
+- [x] migracija 13: napredak_iz_predmera + trigger na predmer + zdravlja_mojih.napredak;
+      jednokratno na sva gradilista; klijent: napredakIzPredmera/osveziNapredak, rukovodilac
+      preuzima sa servera, formUpdate bez rucnog napretka kad postoji predmer — T30
+- [x] Ucitaj izvedeno (Excel): .xlsx parser u browseru bez biblioteke (ZIP centralni dir +
+      DecompressionStream), CSV/nalepljeno, uparivanje po imenu (normalizovano), klamp na
+      ugovoreno, pregled pre primene, menja SAMO izv; sablon CSV za preuzimanje — T31
+Review: redni broj kao rezerva za uparivanje je dao lazno uparivanje (ime koje ne postoji →
+treci red) — sad se koristi samo kad ime nedostaje. Rukovodilac ne moze lokalno da
+racuna napredak (cene null) — zato trigger na serveru, i zato je zdravlja_mojih prosiren.
+Jednokratna primena je promenila demo brojeve (g5 42%, g8 39%) — ocekivano.
+
 # Nalozi i log koriscenja (2026-10-04) — GOTOVO (596 -> 600)
 
 Trazeno: interfejs preko kog direktor (kasnije i admin) dodeljuje uloge + log koriscenja.
