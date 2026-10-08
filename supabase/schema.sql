@@ -1,7 +1,7 @@
 -- ============================================================
 -- GradnjaOS — šema baze za Supabase (SVEŽA baza)
 -- Pokreni ceo fajl u: Supabase konzola -> SQL Editor -> New query
--- Postojeća baza: NE ovo, nego migracija-01..15.sql redom.
+-- Postojeća baza: NE ovo, nego migracija-01..16.sql redom.
 -- Stanje: posle migracije 11 (Auth + RLS + hardening finansija, 2026-09-23)
 -- ============================================================
 
@@ -52,6 +52,7 @@ create table if not exists zadaci (
   naziv text not null,
   gr    text,           -- id gradilišta
   zad   text,           -- id zaduženog zaposlenog
+  opis  text,           -- duži opis (migracija 16)
   prio  text,           -- 'high' | 'mid' | 'low'
   kol   text,           -- 'todo' | 'inprogress' | 'hold' | 'done'
   rok   date
@@ -1028,3 +1029,16 @@ grant  execute on function angazovanost(date, date) to authenticated;
 -- dopuna migracije 14 (2026-10-08): dokumenti.data bez SELECT granta (table-level select se mora ukinuti)
 revoke select on dokumenti from authenticated;
 grant select (id, gr, autor, autor_uid, datum, naziv, tip, velicina, opis) on dokumenti to authenticated;
+
+-- ============================================================
+-- Migracija 16 (identican sadrzaj) — zadaci.opis
+-- ============================================================
+alter table zadaci add column if not exists opis text;
+-- radnik/spoljni na svom zadatku i dalje menjaju samo kol (trigger iz migracije 14, dopunjen za opis)
+create or replace function zastiti_kolone_zadaci() returns trigger language plpgsql as $$
+begin
+  if auth.uid() is not null and not vodim_gradiliste(new.gr) then
+    new.naziv := old.naziv; new.gr := old.gr; new.zad := old.zad; new.prio := old.prio; new.rok := old.rok; new.opis := old.opis;
+  end if;
+  return new;
+end $$;

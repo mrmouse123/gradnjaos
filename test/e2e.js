@@ -565,6 +565,28 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!/Kraj zadatka<\/td><td class="sub">[^<]*min/.test(hl)) throw new Error('log ne prikazuje trajanje uz kraj zadatka');
   });
 
+  /* ---- T37 opis zadatka (migracija 16): forma, kartica, log tajmera ---- */
+  section('T37 opis zadatka');
+  await acheck('formTask ima polje opis; saveTask cuva esc(opis); kartica ga prikazuje; start u logu nosi opis', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formTask();");
+    const doc = a.g.document;
+    if (!doc.getElementById('modal').innerHTML.includes('id="f_topis"')) throw new Error('forma nema polje opis');
+    const gid = a.run('DATA.gradilista[0].id');
+    doc.getElementById('f_tnaziv').value = 'Zadatak T37'; doc.getElementById('f_topis').value = 'Opis <b> & detalji'; doc.getElementById('f_tgr').value = gid;
+    doc.getElementById('f_tzad').value = 'z1'; doc.getElementById('f_tprio').value = 'mid'; doc.getElementById('f_trok').value = '';
+    a.run('saveTask()');
+    const t = a.run('DATA.zadaci[DATA.zadaci.length-1]');
+    if (t.naziv !== 'Zadatak T37' || t.opis !== a.run("esc('Opis <b> & detalji')")) throw new Error('opis nije sacuvan esc-ovan: ' + JSON.stringify(t));
+    a.run("current='tasks'; render();");
+    if (!doc.getElementById('view').innerHTML.includes(t.opis)) throw new Error('kartica ne prikazuje opis');
+    const b = await boot({ supabase: true, seed: {} });
+    b.run(`ROLE='all'; DATA.zadaci.push({id:'t_37',naziv:'Sa opisom',opis:esc('radi pažljivo'),gr:DATA.gradilista[0].id,zad:'z1',prio:'mid',kol:'todo',rok:todayStr()}); pocniZadatak('t_37');`);
+    await b.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const l = (b.g.__mock._db.log_koriscenja || []).find(x => x.dogadjaj === 'zadatak_start' && x.detalj && x.detalj.zadatak === 't_37');
+    if (!l || l.detalj.opis !== 'radi pažljivo') throw new Error('log start nema opis: ' + JSON.stringify(l && l.detalj));
+  });
+
   /* ---- T35 brisanje (C3): super brise sve, radnik/spoljni samo svoj unos dnevnika ---- */
   section('T35 brisanje (super)');
   const T35_ZID = "(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]))||{}).id";

@@ -2051,6 +2051,7 @@ function viewTasks(){
         : `${dd.getDate()}. ${MESECI[dd.getMonth()]}`;
       return `<div class="task" draggable="true" ondragstart="dragStart(event,'${t.id}')" onclick="openSite('${t.gr}')">
         <div class="t">${t.naziv}</div>
+        ${t.opis?`<div style="font-size:12px;color:var(--muted);margin:-4px 0 8px;white-space:pre-line">${t.opis}</div>`:''}
         <div class="site">${icon('pin')} ${g?(g.naziv.length>28?g.naziv.slice(0,27)+'…':g.naziv):''}</div>
         <div class="tf">
           <div class="who2"><div class="av av-s">${z?initials(z.ime):'?'}</div>${z?z.ime.split(' ')[0]:''}</div>
@@ -2103,7 +2104,7 @@ function pocniZadatak(id){
   if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak); alert('Već imaš započet zadatak: '+(ot?unesc(ot.naziv):otv.zadatak)+'. Prvo ga završi.'); return; }
   DATA.rad_na_zadatku.push({id:'rz'+Date.now(), zadatak:id, gr:t.gr, osoba, start:new Date().toISOString(), kraj:null, minuta:null, napomena:''});
   if(t.kol==='todo') t.kol='inprogress';
-  beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), gr:t.gr});
+  beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr});
   saveState(); render();
 }
 function zavrsiZadatak(id){
@@ -2112,7 +2113,7 @@ function zavrsiZadatak(id){
   s.kraj=new Date().toISOString();
   s.minuta=Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000));   // procena; server prepisuje (trigger)
   if(confirm('Označiti zadatak kao završen?')) t.kol='done';
-  beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), gr:t.gr, minuta:s.minuta});
+  beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s.minuta});
   saveState(); render();
 }
 /* sesije -> [{osoba,gr,sesija,minuta,poslednji}] za period [od,do] (YYYY-MM-DD, ukljucivo); otvorena sesija se racuna do sada */
@@ -2437,7 +2438,7 @@ function viewNalozi(){
   const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_kraj:'■ Kraj zadatka'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
-    else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'');
+    else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.opis?' — '+d.opis:'')+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'');
     else if(l.dogadjaj==='uloga_promena') det=(d.email||'')+': '+(d.stara||'—')+' → '+(d.nova||'')+(d.zaposleni_id?' ('+d.zaposleni_id+')':'');
     else if(l.dogadjaj==='pristup_uklonjen') det=(d.email||'')+' ('+(d.stara||'')+')';
     else if(l.dogadjaj==='brisanje') det=(d.tabela||'')+' '+(d.naziv||d.id||'');
@@ -3896,6 +3897,7 @@ function formTask(){
     <div class="m-h"><h3>Novi zadatak</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
       <div class="f-row"><label>Naziv zadatka</label><input id="f_tnaziv" placeholder="npr. Betoniranje temelja"></div>
+      <div class="f-row"><label>Opis (opciono)</label><textarea id="f_topis" placeholder="Šta tačno treba uraditi, gde, sa čim…" style="min-height:64px"></textarea></div>
       <div class="f-2">
         <div class="f-row"><label>Gradilište</label><select id="f_tgr">${sites.map(g=>`<option value="${g.id}">${g.naziv}</option>`).join('')}</select></div>
         <div class="f-row"><label>Zadužen</label><select id="f_tzad">${DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('')}</select></div>
@@ -3914,7 +3916,8 @@ function saveTask(){
   const v=id=>document.getElementById(id).value;
   if(!smemNa(v('f_tgr'))){ alert('Zadatke mozes da otvaras samo na svom gradilistu.'); return; }
   const naziv=esc(v('f_tnaziv').trim()); if(!naziv){ alert('Unesi naziv zadatka.'); return; }
-  DATA.zadaci.push({ id:'t'+Date.now(), naziv, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||plusDays(14) });
+  const opisEl=document.getElementById('f_topis'); const opis=esc(String(opisEl?opisEl.value:'').trim());
+  DATA.zadaci.push({ id:'t'+Date.now(), naziv, opis, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||plusDays(14) });
   saveState(); closeModal(); renderNav(); render();
 }
 

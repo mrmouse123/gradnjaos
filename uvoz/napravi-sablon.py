@@ -110,11 +110,12 @@ SHEETS = [
         ('id', False, None, 'tekst', 'Prazno = generiše se'),
         ('gradiliste_id', True, None, 'tekst', ''),
         ('naziv', True, None, 'tekst', ''),
+        ('opis', False, None, 'tekst', 'Duži opis zadatka (opciono)'),
         ('zaduzen_id', False, None, 'tekst', 'id iz lista Zaposleni'),
         ('prio', False, 'prio', 'lista', 'high | mid | low'),
         ('kolona', False, 'kolona', 'lista', 'todo | inprogress | hold | done'),
         ('rok', True, None, 'datum', D),
-    ], ['', 'G-01', 'Armiranje ploče 3. sprata', 'Z-01', 'high', 'inprogress', '2026-10-20']),
+    ], ['', 'G-01', 'Armiranje ploče 3. sprata', 'Ø12 na 15 cm, gornja zona', 'Z-01', 'high', 'inprogress', '2026-10-20']),
     ('Dnevnik', [
         ('id', False, None, 'tekst', 'Prazno = generiše se'),
         ('gradiliste_id', True, None, 'tekst', ''),

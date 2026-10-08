@@ -205,8 +205,8 @@ def main():
     for i, r in citaj(wb, 'Zadaci', ['gradiliste_id', 'naziv', 'rok']):
         _id = gen_id('Zadaci', i, r.get('id')); g = fk_g('Zadaci', i, r)
         if not s(r.get('naziv')): err('Zadaci', i, 'naziv je obavezno')
-        sql.append(f"insert into zadaci (id,naziv,gr,zad,prio,kol,rok) values ({q(_id)},{q(esc_html(s(r.get('naziv'))))},{q(g)},{q(fk_z('Zadaci', i, r, 'zaduzen_id'))},{q(enum(r.get('prio'), 'prio', 'Zadaci', i, 'prio') or 'mid')},{q(enum(r.get('kolona'), 'kolona', 'Zadaci', i, 'kolona') or 'todo')},{q(datum(r.get('rok'), 'Zadaci', i, 'rok', True))}) "
-                   f"on conflict (id) do update set naziv=excluded.naziv, gr=excluded.gr, zad=excluded.zad, prio=excluded.prio, kol=excluded.kol, rok=excluded.rok;")
+        sql.append(f"insert into zadaci (id,naziv,opis,gr,zad,prio,kol,rok) values ({q(_id)},{q(esc_html(s(r.get('naziv'))))},{q(esc_html(s(r.get('opis'))))},{q(g)},{q(fk_z('Zadaci', i, r, 'zaduzen_id'))},{q(enum(r.get('prio'), 'prio', 'Zadaci', i, 'prio') or 'mid')},{q(enum(r.get('kolona'), 'kolona', 'Zadaci', i, 'kolona') or 'todo')},{q(datum(r.get('rok'), 'Zadaci', i, 'rok', True))}) "
+                   f"on conflict (id) do update set naziv=excluded.naziv, opis=excluded.opis, gr=excluded.gr, zad=excluded.zad, prio=excluded.prio, kol=excluded.kol, rok=excluded.rok;")
     # ---- Dnevnik
     for i, r in citaj(wb, 'Dnevnik', ['gradiliste_id', 'datum', 'autor_id', 'tekst']):
         _id = gen_id('Dnevnik', i, r.get('id')); g = fk_g('Dnevnik', i, r)
