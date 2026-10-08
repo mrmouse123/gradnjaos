@@ -175,3 +175,13 @@ to nije pokazao jer autocrlf normalizuje diff. Provera posle svakog worker-a:
 `node -e "...(s.match(/\r/g)||[]).length"` — i LF pravilo ide u svaki prompt. Takodje:
 workeri u paralelnom radu vide tudje izmene u radnom stablu (README, todo) i prijave ih
 kao "neocekivane" — reci im unapred sta je ko menjao.
+
+## Lekcija 28 (2026-10-08, Gantt osa)
+Zaglavlje meseci (`repeat(N,1fr)`) je grid ciji item ima `min-width:auto`, pa sa 35 kolona
+tekst "JAN '26" ne moze da se skupi i zaglavlje ISCURI sire od trake sa stapicima (1272 px
+vs 550 px) — stapici i linija "danas" su u % trake, pa su klizili ~9 meseci ulevo, iako
+je formula bila tacna. Pravilo: svaki grid koji deli osu sa apsolutno pozicioniranim
+elementima dobija `minmax(0,1fr)` + `overflow:hidden` na celijama, a sirina kontejnera
+se racuna iz broja kolona (`--g-col`), ne iz fiksnog `min-width`. Dokaz samo merenjem
+u browseru (`getBoundingClientRect` zaglavlja vs trake) — e2e ne vidi layout; T39 cuva
+samo oblik HTML/CSS-a.

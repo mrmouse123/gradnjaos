@@ -272,7 +272,7 @@ Breakpointi: **1100** (Kanban 4→2), **1050** (`.row2` 2→1), **900** (tablet:
 sidebar off-canvas + hamburger `toggleSide()` + zajednički scrim, KPI 4→2, touch
 mete 38px, `input` 16px protiv iOS zuma, fioka/modal puna širina), **560**
 (telefon: segment modula i topbar se prelamaju, gustina kartica/tabela, Gantt
-150px labela / 700px min, modal na ceo ekran, Kanban 1 kolona), **400** (mali
+150px labela / 700px min / 52px po mesecu, modal na ceo ekran, Kanban 1 kolona), **400** (mali
 telefon: sve u 1 koloni), `max-height:500` (landscape), `hover:none` (bez
 zalepljenih hover efekata). Nosive ispravke: `.main{min-width:0}` (grid ćelija
 inače raste na min-content Gantta/tabela i širi CEO layout), `.kanban`
@@ -300,6 +300,9 @@ Segment „Tema" u sidebaru. `.rpt-page` ostaje bela (izveštaj = papir). Pravil
 nova boja = nova promenljiva u SVA TRI bloka; sidebar/brif su tamno-plavi u obe teme.
 Provera: u browser panelu `resize_window colorScheme:'dark'` + skener elemenata sa
 `background rgb(255,255,255)` ili `color===backgroundColor` kroz sve poglede.
+**Gantt osa (2026-10-08):** `.gantt-inner` dobija inline `min-width:max(--g-min, --g-lab + N*--g-col)`
+(64px/52px po mesecu), kolone `minmax(0,1fr)`, `.gm{overflow:hidden}` — zaglavlje meseci
+i traka MORAJU biti iste širine, inače štapići/„danas" (u % trake) klize (lekcija 28, T39).
 Pravila: široka tabela UVEK u `<div style="overflow-x:auto">`; nikad `1fr`
 grid bez `minmax(0,…)` ako sadržaj može biti širok; nikad `white-space:nowrap`
 na tekstu koji može premašiti 300px; hamburger nikad ne sme biti jedini način

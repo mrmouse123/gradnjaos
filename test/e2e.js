@@ -2972,6 +2972,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
   });
 
+  /* ---- T39 Gantt: osa siroka koliko zaglavlje meseci (inace stapici/"danas" klize) ---- */
+  section('T39 Gantt osa');
+  await acheck('viewTime: kolone minmax(0,1fr) + inline min-width iz broja meseci', async () => {
+    const a = await boot();
+    const h = a.run(`current='time'; viewTime()`);
+    const n = (h.match(/repeat\((\d+),minmax\(0,1fr\)\)/) || [])[1];
+    if (!n) throw new Error('nema repeat(N,minmax(0,1fr)) — kolona meseca sme da naraste na min-content i zaglavlje iscuri sire od trake');
+    if (h.match(/repeat\(\d+,1fr\)/)) throw new Error('jos postoji repeat(N,1fr)');
+    const mw = `min-width:max(var(--g-min), calc(var(--g-lab) + ${n} * var(--g-col)))`;
+    if (!h.includes(`class="gantt-inner" style="${mw}"`)) throw new Error('gantt-inner nema inline ' + mw);
+    const css = HTML.slice(0, HTML.indexOf('</style>'));
+    for (const v of ['--g-col:', '--g-min:']) if (!css.includes(v)) throw new Error('CSS nema ' + v);
+    if (!/\.g-months \.gm\{[^}]*overflow:hidden/.test(css)) throw new Error('.gm bez overflow:hidden — tekst meseca bi sirio kolonu');
+  });
+
   /* N4 — napredak je int kolona */
   await acheck('napredak se upisuje kao ceo broj', async () => {
     const a = await boot();
