@@ -1,7 +1,7 @@
 -- ============================================================
 -- GradnjaOS — šema baze za Supabase (SVEŽA baza)
 -- Pokreni ceo fajl u: Supabase konzola -> SQL Editor -> New query
--- Postojeća baza: NE ovo, nego migracija-01..16.sql redom.
+-- Postojeća baza: NE ovo, nego migracija-01..17.sql redom.
 -- Stanje: posle migracije 11 (Auth + RLS + hardening finansija, 2026-09-23)
 -- ============================================================
 
@@ -1042,3 +1042,10 @@ begin
   end if;
   return new;
 end $$;
+
+-- ============================================================
+-- Migracija 17 (identican sadrzaj) — vidljivost zadataka po ulozi
+-- ============================================================
+drop policy if exists p_sel on zadaci;
+create policy p_sel on zadaci for select to authenticated
+  using (vodim_gradiliste(gr) or (moje_gradiliste(gr) and zad = moj_autor()));

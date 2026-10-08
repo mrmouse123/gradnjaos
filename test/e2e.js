@@ -565,6 +565,35 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!/Kraj zadatka<\/td><td class="sub">[^<]*min/.test(hl)) throw new Error('log ne prikazuje trajanje uz kraj zadatka');
   });
 
+  /* ---- T38 vidljivost zadataka (migracija 17): uprava sve, rukovodilac svoja gradilista, radnik samo svoje ---- */
+  section('T38 vidljivost zadataka');
+  await acheck('zadaciVidljivi: direktor sve; rukovodilac sve na svojim gradilistima; radnik/spoljni samo svoje; tab brojac, kanban i fioka isto', async () => {
+    const a = await boot();
+    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
+    const gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    a.run(`DATA.zadaci.push({id:'t38a',naziv:'moj T38',gr:${JSON.stringify(gid)},zad:${JSON.stringify(zid)},prio:'mid',kol:'todo',rok:todayStr()},{id:'t38b',naziv:'tudji T38',gr:${JSON.stringify(gid)},zad:'z1',prio:'mid',kol:'todo',rok:todayStr()});`);
+    a.run("setRole('all'); MODUL='sve';");
+    if (a.run('zadaciVidljivi().length') !== a.run('DATA.zadaci.length')) throw new Error('direktor ne vidi sve zadatke');
+    const ruk = a.run(`grById[${JSON.stringify(gid)}].rukovodilac`);
+    a.run(`setRole(${JSON.stringify(ruk)})`);
+    const rv = a.run('zadaciVidljivi().map(t=>t.id)');
+    if (!rv.includes('t38a') || !rv.includes('t38b')) throw new Error('rukovodilac ne vidi sve zadatke svog gradilista: ' + rv);
+    if (a.run("zadaciVidljivi().some(t=>!visibleSiteIds().has(t.gr))")) throw new Error('rukovodilac vidi zadatke tudjih gradilista');
+    a.run(`setRole('radnik:${zid}')`);
+    const wv = a.run('zadaciVidljivi().map(t=>t.id)');
+    if (!wv.includes('t38a') || wv.includes('t38b')) throw new Error('radnik: ' + wv);
+    if (a.run(`zadaciVidljivi().some(t=>t.zad!==${JSON.stringify(zid)})`)) throw new Error('radnik vidi tudje zadatke');
+    if (a.run("tabs().find(t=>t.id==='tasks').cnt") !== wv.length) throw new Error('brojac taba != vidljivi zadaci');
+    a.run("current='tasks'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('moj T38') || h.includes('tudji T38')) throw new Error('kanban prikazuje tudji zadatak radniku');
+    a.run(`openSite(${JSON.stringify(gid)})`);
+    const d = a.g.document.getElementById('drawer').innerHTML;
+    if (!d.includes('moj T38') || d.includes('tudji T38')) throw new Error('fioka prikazuje tudji zadatak radniku');
+    a.run("current='dash'; render();");
+    if (a.g.document.getElementById('view').innerHTML.includes('tudji T38')) throw new Error('tabla prikazuje tudji zadatak radniku');
+  });
+
   /* ---- T37 opis zadatka (migracija 16): forma, kartica, log tajmera ---- */
   section('T37 opis zadatka');
   await acheck('formTask ima polje opis; saveTask cuva esc(opis); kartica ga prikazuje; start u logu nosi opis', async () => {

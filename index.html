@@ -1197,6 +1197,15 @@ function visibleSites(){
   return l;
 }
 function visibleSiteIds(){ return new Set(visibleSites().map(g=>g.id)); }
+/* Zadaci po ulozi (odluka 2026-10-08): uprava sve (uz filter modula); rukovodilac sve zadatke svojih
+   gradilista (i svojih radnika na njima); radnik/spoljni SAMO svoje zadatke na svojim gradilistima.
+   Server isto (migracija 17: p_sel zadaci). */
+function zadaciVidljivi(){
+  const v=vrstaUloge(), ids=visibleSiteIds();
+  if(v==='uprava') return DATA.zadaci.filter(t=>MODUL==='sve'||ids.has(t.gr));
+  if(v==='rukovodilac') return DATA.zadaci.filter(t=>ids.has(t.gr));
+  return DATA.zadaci.filter(t=>ids.has(t.gr) && t.zad===ROLE);
+}
 function isDirector(){ return ROLE==='all'; }
 /* Vlasnistvo gradilista: direktor sve, rukovodilac samo svoje.
    Koristiti u SVAKOJ funkciji koja prima grId spolja — funkcije su globalne,
@@ -1292,7 +1301,7 @@ function tabs(){
     {id:'clients', naziv:'Klijenti', ic:'client', cnt:DATA.clijenti.length, dirOnly:true},
     {id:'emps', naziv:'Zaposleni', ic:'emp', cnt:DATA.zaposleni.filter(z=>(isDirector()&&MODUL==='sve')||(z.grs||[]).some(x=>ids.has(x))).length},
     {id:'time', naziv:'Rokovi', ic:'time'},
-    {id:'tasks', naziv:'Zadaci', ic:'task', cnt:DATA.zadaci.filter(t=>(isDirector()&&MODUL==='sve')||ids.has(t.gr)).length},
+    {id:'tasks', naziv:'Zadaci', ic:'task', cnt:zadaciVidljivi().length},
     {id:'pay', naziv:'Naplata', ic:'money', cnt:(DATA.situacije||[]).filter(s=>s.status!=='placeno'&&ids.has(s.gr)).length, finOnly:true},
     {id:'diary', naziv:'Dnevnik radova', ic:'book', cnt:DATA.dnevnik.filter(d=>(isDirector()&&MODUL==='sve')||ids.has(d.gr)).length},
     {id:'resursi', naziv:'Resursi', ic:'truck', cnt:(DATA.resursi||[]).filter(r=>r.istice&&daysBetween(TODAY,dParse(r.istice))<=30).length},
@@ -1548,7 +1557,7 @@ function viewDash(){
     </div>`;
   }).join('') || '<div class="empty">Nema unosa u dnevnik.</div>';
 
-  const mojiZad = DATA.zadaci.filter(t=>ids.has(t.gr)&&t.kol!=='done');
+  const mojiZad = zadaciVidljivi().filter(t=>t.kol!=='done');
   const mojiKasne = mojiZad.filter(t=>daysBetween(TODAY,dParse(t.rok))<0).length;
   const finKpis = fin ? `
     <div class="card kpi amber"><div class="accent"></div>
@@ -1591,7 +1600,7 @@ function viewDash(){
   const aktProj=sites.filter(g=>g.status!=='zavrseno'&&g.status!=='planirano');
   const najrizik=aktProj.filter(g=>zdravlje(g)!=null).sort((a,b)=>zdravlje(a)-zdravlje(b))[0];
   const rokovi7=sites.filter(g=>g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))>=0&&daysBetween(TODAY,dParse(g.rok))<=7).length
-              + DATA.zadaci.filter(t=>t.kol!=='done'&&ids.has(t.gr)&&daysBetween(TODAY,dParse(t.rok))>=0&&daysBetween(TODAY,dParse(t.rok))<=7).length;
+              + zadaciVidljivi().filter(t=>t.kol!=='done'&&daysBetween(TODAY,dParse(t.rok))>=0&&daysBetween(TODAY,dParse(t.rok))<=7).length;
   const bl=[];
   if(fin){
     const dosp=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&x.status!=='placeno'&&sitKasni(x));
@@ -1599,7 +1608,7 @@ function viewDash(){
     if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`Najrizičniji projekat: <b>${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova (projekti + zadaci)`]);
   } else {
-    const moji=DATA.zadaci.filter(t=>t.kol!=='done'&&ids.has(t.gr));
+    const moji=zadaciVidljivi().filter(t=>t.kol!=='done');
     const danas=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))===0).length;
     const kasneT=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))<0).length;
     bl.push([kasneT?'var(--red)':'var(--green)',`Zadaci: <b>${danas}</b> dospeva danas${kasneT?`, <b>${kasneT}</b> već kasni`:', ništa ne kasni'}`]);
@@ -2041,7 +2050,7 @@ function viewTime(){
 function viewTasks(){
   const ids=visibleSiteIds();
   const cols=KOLONE.map(col=>{
-    const items=DATA.zadaci.filter(t=>t.kol===col.id && ((isDirector()&&MODUL==='sve')||ids.has(t.gr)));
+    const items=zadaciVidljivi().filter(t=>t.kol===col.id);
     const cards=items.map(t=>{
       const g=grById[t.gr], z=zapById[t.zad], p=PRIO[t.prio];
       const dd=dParse(t.rok), diff=daysBetween(TODAY,dd);
@@ -3987,7 +3996,7 @@ function openSite(id){
   if(!vidimGr(id)) return;   // citanje: i radnik/spoljni na svom gradilistu; akcije unutra su iza smemNa/canFinance
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const tim=timNa(id);
-  const zad=DATA.zadaci.filter(t=>t.gr===id);
+  const zad=zadaciVidljivi().filter(t=>t.gr===id);   // radnik u fioci vidi samo svoje zadatke
   const dd=dParse(g.rok), diff=daysBetween(TODAY,dd);
   const pot=potroseno(g), trSt=troskoviZa(id), subs=subsZa(id);
   const budPct=g.budzet?Math.round(pot/g.budzet*100):0;
