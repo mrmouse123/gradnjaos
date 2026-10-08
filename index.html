@@ -2434,9 +2434,10 @@ function viewNalozi(){
        ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
     return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
   }).join('');
-  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje'};
+  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_kraj:'■ Kraj zadatka'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
+    else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'');
     else if(l.dogadjaj==='uloga_promena') det=(d.email||'')+': '+(d.stara||'—')+' → '+(d.nova||'')+(d.zaposleni_id?' ('+d.zaposleni_id+')':'');
     else if(l.dogadjaj==='pristup_uklonjen') det=(d.email||'')+' ('+(d.stara||'')+')';
     else if(l.dogadjaj==='brisanje') det=(d.tabela||'')+' '+(d.naziv||d.id||'');

@@ -556,6 +556,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     await a.run('ucitajNaloge()'); await sleep();
     if (!a.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'angazovanost')) throw new Error('nema rpc angazovanost: ' + JSON.stringify(a.g.__mock._log.slice(0, 6)));
     if (!Array.isArray(a.run('ANGAZ')) || !a.run('ANGAZ').length) throw new Error('ANGAZ prazan');
+    /* log u kokpitu prikazuje opis (naziv) zadatka, gradiliste i trajanje za start/kraj */
+    a.run('render()');
+    const hl = a.g.document.getElementById('view').innerHTML;
+    const naziv = a.run(`unesc(DATA.zadaci.find(t=>t.id===${q36(tid)}).naziv)`);
+    if (!hl.includes('Početak zadatka') || !hl.includes('Kraj zadatka')) throw new Error('log ne prikazuje start/kraj zadatka');
+    if (!hl.includes('„' + naziv + '&quot;')) throw new Error('log ne prikazuje naziv zadatka: ' + naziv);   // esc() na izlazu: " -> &quot;
+    if (!/Kraj zadatka<\/td><td class="sub">[^<]*min/.test(hl)) throw new Error('log ne prikazuje trajanje uz kraj zadatka');
   });
 
   /* ---- T35 brisanje (C3): super brise sve, radnik/spoljni samo svoj unos dnevnika ---- */
