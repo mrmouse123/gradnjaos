@@ -43,7 +43,7 @@ Bez prijave (anon ključ sam za sebe): **nula pristupa** — zato je u redu da `
 
 ### 1. Supabase (baza)
 
-Projekat već postoji: `gradnjaos`, region eu-central-1, besplatan plan. Besplatan plan **pauzira projekat posle 7 dana bez upotrebe** — app tada javi šta da se uradi (dashboard → Restore, minut čekanja, osveži stranicu). Ako ovo postane iritantno, Pro plan (25 $/mes) to ukida.
+Projekat već postoji: `gradnjaos`, region eu-central-1, **Pro plan** (ne pauzira se; Supabase pravi dnevni backup sa čuvanjem 7 dana — Database → Backups). Ako se baza ikad ne učita, app javi poruku sa koracima.
 
 Nova baza od nule: **SQL Editor → New query** → nalepi ceo `supabase/schema.sql` → Run (16 tabela, helperi, polise, `povezi_profil`). Zatim URL i anon ključ (Project Settings → API) u blok `KONFIGURACIJA ZA DEPLOYMENT` u `index.html`.
 

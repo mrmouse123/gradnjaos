@@ -8,8 +8,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 ## Arhitektura
 - `index.html`: CSS + HTML ljuska + sav JS u jednom <script> bloku
 - **Supabase** (od 2026-09-14): projekat `gradnjaos`, ref `xqggoxrihitvqaocowlb`,
-  org "jovan.miskovic@think-tech.co's Org", eu-central-1, besplatan plan
-  (PAUZIRA se posle 7 dana bez upotrebe → Restore u dashboardu, v. lessons #10).
+  org "jovan.miskovic@think-tech.co's Org", eu-central-1, **Pro plan** (od
+  2026-10-08: ne pauzira se, dnevni backup 7 dana; ranije besplatan, v. lessons #10).
   Konstante SUPABASE_URL/SUPABASE_ANON_KEY u bloku "KONFIGURACIJA ZA DEPLOYMENT".
   Anon ključ u fajlu je NORMALAN Supabase model — zaštita je RLS, ne tajnost ključa.
 - **Auth + RLS** (od 2026-09-23, F4): bez prijave = nula pristupa (anon nema
