@@ -194,3 +194,13 @@ Dve zamke u njemu: `dir` mora kroz `path.resolve` (forward-slash iz argv vs back
 `preview_stop` pa `preview_start` (panel ne restartuje proces sam). Dokaz za „klik otvara":
 `element.click()` u pravom DOM-u + provera da `#drawer` sadrzi `dr-b` — ne citanje atributa.
 
+## Lekcija 30 (2026-10-10, opseg po modulu + zivotni ciklus sesije)
+Klijent gleda Projektovanje i Izvodjenje kao razlicite svetove: funkcija "za radnike" (tajmer)
+je trazena samo za Projektovanje, a ja sam je ugradio za oba. Pravilo: svaka nova funkcija
+koja ide na zadatak/gradiliste dobija eksplicitan odgovor "koji modul?" PRE implementacije,
+i `jePro(g)` guard na jednom mestu (`tajmerZa`). Drugo: kad se stanje otvara (sesija, tajmer),
+odmah nabrojati SVE puteve koji ga mogu ostaviti bez izlaza (drag u done, promena pravila
+koja sakrije dugme, nasledjeni redovi) — review je nasao dva takva puta koje testovi nisu
+pokrivali. Mutacioni test (worker u worktree-u: pokvari funkciju → test MORA pasti) je jeftin
+i otkrio je 2/10 "lazno zelenih" asercija.
+

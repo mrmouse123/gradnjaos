@@ -1,3 +1,25 @@
+# Pregled izmena 2026-10-09/10 po skilovima (2026-10-10)
+Opseg: commit d7852b9..de95673 — bez auto-zadataka pri kreiranju, „Razno" ceklista
+(projektovanje), Pauziraj/Nastavi/Zavrsi SAMO u Projektovanju, klikovi na kontrolnoj tabli.
+Redosled: boris-cherny (plan + subagenti + verifikacija) → /code-review → /security-review.
+
+- [x] 1a. Subagent A (explorer): 9 nalaza (1 bug, 5 rizika, 3 nita)
+- [x] 1b. Subagent B (worker, worktree): mutacije 8/10 uhvacene; M4 (info-linija na Izvodjenju) i M10 (RAZNO_N reset) nisu → dodate asercije
+- [x] 2. /code-review: 8 nalaza prijavljeno, 7 ispravljeno, 1 svesno preskocen (Zavrsi bez confirm-a = odluka)
+- [ ] 3. /security-review (uloge, esc, RLS)
+- [x] 4. Ispravke + e2e 965/0 + commit
+- [ ] 5. Review sekcija ispod
+
+## Review (2026-10-10)
+Ispravljeno: (1) svoja otvorena sesija se uvek moze zaustaviti — i na Izvodjenju (nasledjena) i na
+zadatku prevucenom u Zavrseno („⏸ Zaustavi tajmer"); (2) `dropTask` u done zatvara svoju sesiju;
+(3) `zadatak_kraj` loguje `minuta` (svoja sesija) + `ukupno` (ceo zadatak), log prikazuje oba;
+(4) „Razno" samo uz eksplicitan `razno=true` (formSite), brojac se resetuje pri svakom renderu;
+(5) „▶ Nastavi" samo po SVOJIM sesijama; (6) testovi: a2 blok vise ne moze tiho da se preskoci,
+T41 trazi >0 klikova za rukovodioca i obavezan brif za upravu, drag-u-done test, M4/M10 asercije.
+Iznenadjenje: baza nema otvorenih sesija (obe zatvorene), pa niko nije bio zaglavljen.
+Preskoceno svesno: Zavrsi bez potvrde (postoji Pauziraj; vracanje = prevuci karticu nazad).
+
 # 6 uloga (2026-10-07, odluka klijenta)
 
 Trazeno: Direktor/IT super admin (sve + delete + dodela uloga), Admin (sve bez delete +

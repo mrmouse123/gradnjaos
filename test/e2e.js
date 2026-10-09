@@ -479,16 +479,25 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run(`pocniZadatak(${q36(izv.id)})`);
     if (a.run('DATA.rad_na_zadatku.length') !== 0) throw new Error('pocniZadatak je otvorio sesiju na Izvodjenju');
     if (a.run(`DATA.zadaci.find(t=>t.id===${q36(izv.id)}).kol`) !== izv.kol) throw new Error('kol promenjen');
+    // nasledjena (zaglavljena) sesija na Izvodjenju: Zavrsi je i dalje no-op, ali SVOJA sesija mora moci da se zaustavi — inace blokira svaki novi start
     a.run(`DATA.rad_na_zadatku.push({id:'rzx',zadatak:${q36(izv.id)},gr:${q36(izv.gr)},osoba:'uprava',start:new Date().toISOString(),kraj:null,minuta:null,napomena:''});`);
-    a.run(`pauzirajZadatak(${q36(izv.id)}); zavrsiZadatak(${q36(izv.id)});`);
-    if (a.run("DATA.rad_na_zadatku[0].kraj") !== null) throw new Error('pauziraj/zavrsi dirali sesiju na Izvodjenju');
+    a.run(`zavrsiZadatak(${q36(izv.id)})`);
+    if (a.run("DATA.rad_na_zadatku[0].kraj") !== null || a.run(`DATA.zadaci.find(t=>t.id===${q36(izv.id)}).kol`) === 'done') throw new Error('zavrsi dirao sesiju/kol na Izvodjenju');
     a.run("current='tasks'; render();");
-    if (a.g.document.getElementById('view').innerHTML.includes(`zavrsiZadatak('${izv.id}')`)) throw new Error('Zavrsi na zadatku Izvodjenja');
+    let hz = a.g.document.getElementById('view').innerHTML;
+    if (hz.includes(`zavrsiZadatak('${izv.id}')`)) throw new Error('Zavrsi na zadatku Izvodjenja');
+    if (!hz.includes(`pauzirajZadatak('${izv.id}')`) || !hz.includes('Zaustavi tajmer')) throw new Error('zaglavljena sesija na Izvodjenju nema dugme za zaustavljanje');
+    a.run(`pauzirajZadatak(${q36(izv.id)})`);
+    if (a.run("DATA.rad_na_zadatku[0].kraj") === null) throw new Error('pauza nije zatvorila zaglavljenu sesiju');
+    a.run("current='tasks'; render();");
+    if (a.g.document.getElementById('view').innerHTML.includes(`pauzirajZadatak('${izv.id}')`)) throw new Error('dugme ostalo posle zatvaranja');
+    if (a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id===${q36(izv.id)}))`) !== '') throw new Error('zatvorena sesija na Izvodjenju curi kao info-linija (⏱ ukupno)');
   });
   const prep36 = a => {   // radnik zid na svom gradilistu gid: tri zadatka (dva njegova, jedan tudj)
     const zid = a.run(T36_ZID), gid = a.run(`zapById[${q36(zid)}].grs.find(x=>grById[x])`);
     a.run(`grById[${q36(gid)}].modul='projektovanje'; grById[${q36(gid)}].tip=null;`);   // tajmer je samo u Projektovanju (2026-10-10)
-    const tudj = a.run(`DATA.zaposleni.find(z=>z.id!==${q36(zid)}).id`);
+    const tudj = a.run(`DATA.zaposleni.find(z=>z.id!==${q36(zid)}&&!/[Rr]ukovodilac/.test(z.poz)).id`);
+    a.run(`const zt=zapById[${q36(tudj)}]; if(!(zt.grs||[]).includes(${q36(gid)})) zt.grs=[...(zt.grs||[]),${q36(gid)}];`);   // tudj u timu → vidimGr true → a2 blok se NE preskace
     a.run(`DATA.zadaci.push({id:'tm1',naziv:'Tajmer A',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm2',naziv:'Tajmer tudji',gr:${q36(gid)},zad:${q36(tudj)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm3',naziv:'Tajmer B',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'});`);
     return { zid, gid, tudj };
   };
@@ -541,7 +550,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run("DATA.zadaci.find(t=>t.id==='tm2').kol") !== 'inprogress') throw new Error('radnik je zavrsio tudji zadatak');
     const ruk = a.run(`grById[${q36(gid)}].rukovodilac`);
     a.run(`setRole(${q36('radnik:' + tudj)})`);
-    if (a.run("mogaTajmer(DATA.zadaci.find(t=>t.id==='tm2'))")) {
+    if (!a.run("mogaTajmer(DATA.zadaci.find(t=>t.id==='tm2'))")) throw new Error('prep36: tudj ne moze tajmer na tm2 — blok bi se tiho preskocio');
+    {
       a.run("pocniZadatak('tm2')");
       const n0 = a.g._calls.alert.length;
       a.run(`setRole('all'); zavrsiZadatak('tm2');`);
@@ -550,6 +560,12 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
       a.run(`setRole('all'); pauzirajZadatak('tm2');`);
       if (!a.run("DATA.rad_na_zadatku.some(s=>s.zadatak==='tm2'&&!s.kraj)")) throw new Error('uprava je pauzirala TUDJU sesiju');
     }
+    // prevlacenje u Zavrseno zatvara SVOJU otvorenu sesiju (inace ostaje bez dugmeta i blokira)
+    a.run(`setRole(${q36('radnik:' + zid)}); pocniZadatak('tm3');`);
+    if (!a.run("DATA.rad_na_zadatku.some(s=>s.zadatak==='tm3'&&!s.kraj)")) throw new Error('tm3 nije pokrenut');
+    a.run("dragId='tm3'; dropTask({preventDefault(){}}, 'done');");
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm3').kol") !== 'done') throw new Error('drop nije prebacio u done');
+    if (a.run("DATA.rad_na_zadatku.some(s=>s.zadatak==='tm3'&&!s.kraj)")) throw new Error('drop u done ostavio otvorenu sesiju');
     // log: pauza nosi naziv i minute
     const b = await boot({ supabase: true, seed: {} });
     const sleep = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)); };
@@ -3051,7 +3067,11 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const html = a.g.document.getElementById('modal').innerHTML;
     if (!html.includes('>Razno<') || !html.includes('id="raznoBox"')) throw new Error('nema sekcije Razno');
     if (html.indexOf('id="raznoBox"') < html.lastIndexOf('f_nd_')) throw new Error('Razno nije ISPOD svih svezaka');
-    a.run('dodajRaznoRed(); dodajRaznoRed(); dodajRaznoRed();');
+    a.run('dodajRaznoRed(); dodajRaznoRed();');
+    a.run("sifrarnikChecklist('projektovanje', true)");   // ponovni render (nova forma) mora da resetuje brojac
+    if (a.run('RAZNO_N') !== 0) throw new Error('RAZNO_N nije resetovan pri ponovnom renderu: ' + a.run('RAZNO_N'));
+    if (a.run("sifrarnikChecklist('projektovanje')").includes('raznoBox')) throw new Error('Razno se prikazuje bez eksplicitnog flaga');
+    a.run("formSite(); dodajRaznoRed(); dodajRaznoRed(); dodajRaznoRed();");
     if (a.run('RAZNO_N') !== 3) throw new Error('RAZNO_N = ' + a.run('RAZNO_N'));
     const set = (id, val) => { a.g.document.getElementById(id).value = val; };
     set('f_naziv', 'T40 projekat'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDR');
@@ -3086,7 +3106,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (dl.length < 4) throw new Error('premalo dl stavki: ' + dl.length);
     const bez = dl.filter(x => !/onclick="openSite\('g[^']+'\)"/.test(x) && !/go\('resursi'\)/.test(x));
     if (bez.length) throw new Error('stavke bez klika: ' + bez.join(' | '));
-    if (/zdravlje \d+\/100/.test(h) && !/<b style="[^"]*" onclick="openSite\('g[^']+'\)">[^<]+<\/b> — zdravlje \d+\/100/.test(h)) throw new Error('najrizicniji projekat u brifu nije klikabilan');
+    if (!/zdravlje \d+\/100/.test(h)) throw new Error('brif za upravu nema najrizicniji projekat (DEMO ima aktivne projekte)');
+    if (!/<b style="[^"]*" onclick="openSite\('g[^']+'\)">[^<]+<\/b> — zdravlje \d+\/100/.test(h)) throw new Error('najrizicniji projekat u brifu nije klikabilan');
     if (!/<tr class="clk" onclick="openSite\('g[^']+'\)">[\s\S]*?<span class="badge/.test(h)) throw new Error('red sa statusom nije klikabilan');
     // rukovodilac: isto, bez curenja tudjih id-jeva
     const ruk = a.run("DATA.gradilista.find(g=>g.rukovodilac).rukovodilac");
@@ -3094,6 +3115,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const h2 = a.g.document.getElementById('view').innerHTML;
     const vidi = new Set(a.run('[...visibleSiteIds()]'));
     const ids = [...h2.matchAll(/openSite\('(g[^']+)'\)/g)].map(m => m[1]);
+    if (!ids.length) throw new Error('rukovodilac nema nijedan klik na tabli');
     const tudje = ids.filter(x => !vidi.has(x));
     if (tudje.length) throw new Error('rukovodilac dobija klik na tudja gradilista: ' + tudje.join(','));
   });
