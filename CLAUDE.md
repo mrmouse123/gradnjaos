@@ -84,7 +84,9 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `zadatak_start/zadatak_pauza/zadatak_kraj`). **Pauza (2026-10-09):** `pauzirajZadatak` zatvara
   SVOJU sesiju, `kol` ostaje `inprogress`; „▶ Nastavi" = `pocniZadatak` (nova sesija, server ih
   sabira); `zavrsiZadatak` → `done` BEZ confirm-a, dozvoljen i bez sesije za zadatak u toku, tuđa
-  otvorena sesija blokira (alert). Bez migracije. T36 a2.
+  otvorena sesija blokira (alert). Bez migracije. T36 a2. **Tajmer SAMO u Projektovanju**
+  (odluka 2026-10-10): `tajmerZa(t)` = `jePro(grById[t.gr])` je prvi uslov u `mogaTajmer` i
+  `tajmerLinija` — na Izvođenju nema dugmadi, funkcije su no-op. T36 0.
 - **„Razno" u Projektovanju (2026-10-09):** `sifrarnikChecklist('projektovanje')` ispod svih svezaka
   nudi `#raznoBox` + `dodajRaznoRed()` (`f_nr_k`/`f_nrz_k`, brojač `RAZNO_N` — NE `getElementById`
   petlja, dom-stub vraća element za svaki id); `saveSite` pravi redove specifikacije

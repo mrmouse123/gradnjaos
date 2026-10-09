@@ -466,8 +466,28 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   section('T36 tajmer i angazovanost');
   const T36_ZID = "(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]))||{}).id";
   const q36 = x => JSON.stringify(x);
+  const PRO_TID = "DATA.zadaci.find(t=>grById[t.gr]&&jePro(grById[t.gr])).id";   // zadatak na gradilistu Projektovanja (tajmer samo tamo)
+  await acheck('0) tajmer SAMO u Projektovanju: na zadatku Izvodjenja nema dugmadi, pocni/pauziraj/zavrsi su no-op', async () => {
+    const a = await boot();
+    const izv = a.run("DATA.zadaci.find(t=>grById[t.gr]&&!jePro(grById[t.gr])&&t.kol!=='done')");
+    const pro = a.run("DATA.zadaci.find(t=>grById[t.gr]&&jePro(grById[t.gr])&&t.kol!=='done')");
+    if (!izv || !pro) throw new Error('DEMO nema oba tipa zadatka');
+    a.run("setRole('all'); MODUL='sve'; PODTIP='sve'; current='tasks'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (h.includes(`pocniZadatak('${izv.id}')`)) throw new Error('dugme tajmera na zadatku Izvodjenja');
+    if (!h.includes(`pocniZadatak('${pro.id}')`)) throw new Error('nema dugmeta tajmera na zadatku Projektovanja');
+    a.run(`pocniZadatak(${q36(izv.id)})`);
+    if (a.run('DATA.rad_na_zadatku.length') !== 0) throw new Error('pocniZadatak je otvorio sesiju na Izvodjenju');
+    if (a.run(`DATA.zadaci.find(t=>t.id===${q36(izv.id)}).kol`) !== izv.kol) throw new Error('kol promenjen');
+    a.run(`DATA.rad_na_zadatku.push({id:'rzx',zadatak:${q36(izv.id)},gr:${q36(izv.gr)},osoba:'uprava',start:new Date().toISOString(),kraj:null,minuta:null,napomena:''});`);
+    a.run(`pauzirajZadatak(${q36(izv.id)}); zavrsiZadatak(${q36(izv.id)});`);
+    if (a.run("DATA.rad_na_zadatku[0].kraj") !== null) throw new Error('pauziraj/zavrsi dirali sesiju na Izvodjenju');
+    a.run("current='tasks'; render();");
+    if (a.g.document.getElementById('view').innerHTML.includes(`zavrsiZadatak('${izv.id}')`)) throw new Error('Zavrsi na zadatku Izvodjenja');
+  });
   const prep36 = a => {   // radnik zid na svom gradilistu gid: tri zadatka (dva njegova, jedan tudj)
     const zid = a.run(T36_ZID), gid = a.run(`zapById[${q36(zid)}].grs.find(x=>grById[x])`);
+    a.run(`grById[${q36(gid)}].modul='projektovanje'; grById[${q36(gid)}].tip=null;`);   // tajmer je samo u Projektovanju (2026-10-10)
     const tudj = a.run(`DATA.zaposleni.find(z=>z.id!==${q36(zid)}).id`);
     a.run(`DATA.zadaci.push({id:'tm1',naziv:'Tajmer A',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm2',naziv:'Tajmer tudji',gr:${q36(gid)},zad:${q36(tudj)},prio:'mid',kol:'todo',rok:'2026-12-01'},{id:'tm3',naziv:'Tajmer B',gr:${q36(gid)},zad:${q36(zid)},prio:'mid',kol:'todo',rok:'2026-12-01'});`);
     return { zid, gid, tudj };
@@ -533,7 +553,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     // log: pauza nosi naziv i minute
     const b = await boot({ supabase: true, seed: {} });
     const sleep = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)); };
-    const tid = b.run('DATA.zadaci[0].id');
+    const tid = b.run(PRO_TID);
     b.run(`pocniZadatak(${q36(tid)}); pauzirajZadatak(${q36(tid)});`);
     await b.run('doSave()'); await sleep();
     const lg = (b.g.__mock._db.log_koriscenja || []).find(l => l.dogadjaj === 'zadatak_pauza');
@@ -585,7 +605,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('e) Supabase: sesija se salje, server racuna minute (ne klijent), log, angazovanost rpc', async () => {
     const a = await boot({ supabase: true, seed: {} });
     const sleep = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)); };
-    const tid = a.run('DATA.zadaci[0].id');
+    const tid = a.run(PRO_TID);
     a.run(`pocniZadatak(${q36(tid)})`);
     await a.run('doSave()'); await sleep();
     let row = a.g.__mock._db.rad_na_zadatku.find(r => r.zadatak === tid);
@@ -657,7 +677,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("current='tasks'; render();");
     if (!doc.getElementById('view').innerHTML.includes(t.opis)) throw new Error('kartica ne prikazuje opis');
     const b = await boot({ supabase: true, seed: {} });
-    b.run(`ROLE='all'; DATA.zadaci.push({id:'t_37',naziv:'Sa opisom',opis:esc('radi pažljivo'),gr:DATA.gradilista[0].id,zad:'z1',prio:'mid',kol:'todo',rok:todayStr()}); pocniZadatak('t_37');`);
+    b.run(`ROLE='all'; DATA.zadaci.push({id:'t_37',naziv:'Sa opisom',opis:esc('radi pažljivo'),gr:DATA.gradilista.find(g=>jePro(g)).id,zad:'z1',prio:'mid',kol:'todo',rok:todayStr()}); pocniZadatak('t_37');`);
     await b.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     const l = (b.g.__mock._db.log_koriscenja || []).find(x => x.dogadjaj === 'zadatak_start' && x.detalj && x.detalj.zadatak === 't_37');
     if (!l || l.detalj.opis !== 'radi pažljivo') throw new Error('log start nema opis: ' + JSON.stringify(l && l.detalj));

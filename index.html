@@ -2107,7 +2107,9 @@ function hhmm(iso){ const d=new Date(iso); return String(d.getHours()).padStart(
 function lokalniDatum(iso){ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function osobaTajmera(){ return ROLE==='all'?'uprava':ROLE; }
 function imeTajmera(o){ return o==='uprava'?'Uprava':osobaIme(o); }
-function mogaTajmer(t){ return !!t && vidimGr(t.gr) && (t.zad===ROLE || smemNa(t.gr)); }
+/* Tajmer SAMO u Projektovanju (odluka 2026-10-10): na gradilistima Izvodjenja nema dugmadi, a funkcije su no-op. */
+function tajmerZa(t){ const g=t&&grById[t.gr]; return !!g && jePro(g); }
+function mogaTajmer(t){ return tajmerZa(t) && vidimGr(t.gr) && (t.zad===ROLE || smemNa(t.gr)); }
 function pocniZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
   const osoba=osobaTajmera();
@@ -2150,6 +2152,7 @@ function agregirajAngazovanost(rows, od, do_){
   return Object.values(agg).sort((x,y)=>(x.osoba+x.gr).localeCompare(y.osoba+y.gr));
 }
 function tajmerLinija(t){
+  if(!tajmerZa(t)) return '';
   const ses=radZa(t.id), tot=minutaZadatka(t.id);
   const moze=mogaTajmer(t) && t.kol!=='done', moja=otvorenaSesija(t.id, osobaTajmera());
   const tuda=ses.find(s=>!s.kraj && s.osoba!==osobaTajmera());

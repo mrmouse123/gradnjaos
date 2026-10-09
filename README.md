@@ -30,7 +30,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
 | dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
 | dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
-| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | vidi i pomera SAMO svoje zadatke na svojim gradilištima; na svom zadatku **Počni / Pauziraj / Završi** (vreme se beleži po sesiji) |
+| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | vidi i pomera SAMO svoje zadatke na svojim gradilištima; na svom zadatku **Počni / Pauziraj / Završi** (samo u Projektovanju; vreme se beleži po sesiji) |
 | dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
 | Admin kokpit (nalozi, uloge, šifarnik, log) | da | da (ne dira direktore) | ne | ne | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
