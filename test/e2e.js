@@ -3066,7 +3066,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (dl.length < 4) throw new Error('premalo dl stavki: ' + dl.length);
     const bez = dl.filter(x => !/onclick="openSite\('g[^']+'\)"/.test(x) && !/go\('resursi'\)/.test(x));
     if (bez.length) throw new Error('stavke bez klika: ' + bez.join(' | '));
-    if (!/Najrizičniji projekat: <b [^>]*onclick="openSite\('g[^']+'\)"/.test(h) && !/zdravlje \d+\/100/.test(h)) throw new Error('najrizicniji projekat nije klikabilan');
+    if (/zdravlje \d+\/100/.test(h) && !/<b style="[^"]*" onclick="openSite\('g[^']+'\)">[^<]+<\/b> — zdravlje \d+\/100/.test(h)) throw new Error('najrizicniji projekat u brifu nije klikabilan');
     if (!/<tr class="clk" onclick="openSite\('g[^']+'\)">[\s\S]*?<span class="badge/.test(h)) throw new Error('red sa statusom nije klikabilan');
     // rukovodilac: isto, bez curenja tudjih id-jeva
     const ruk = a.run("DATA.gradilista.find(g=>g.rukovodilac).rukovodilac");
