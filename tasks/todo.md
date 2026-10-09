@@ -6,9 +6,9 @@ Redosled: boris-cherny (plan + subagenti + verifikacija) → /code-review → /s
 - [x] 1a. Subagent A (explorer): 9 nalaza (1 bug, 5 rizika, 3 nita)
 - [x] 1b. Subagent B (worker, worktree): mutacije 8/10 uhvacene; M4 (info-linija na Izvodjenju) i M10 (RAZNO_N reset) nisu → dodate asercije
 - [x] 2. /code-review: 8 nalaza prijavljeno, 7 ispravljeno, 1 svesno preskocen (Zavrsi bez confirm-a = odluka)
-- [ ] 3. /security-review (uloge, esc, RLS)
+- [x] 3. /security-review: 0 nalaza ≥ prag (1 kandidat 3/10: id gradilista u onclick — samo uprava pise id-jeve)
 - [x] 4. Ispravke + e2e 965/0 + commit
-- [ ] 5. Review sekcija ispod
+- [x] 5. Review sekcija ispod
 
 ## Review (2026-10-10)
 Ispravljeno: (1) svoja otvorena sesija se uvek moze zaustaviti — i na Izvodjenju (nasledjena) i na
