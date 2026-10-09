@@ -1526,8 +1526,8 @@ function viewDash(){
 
   // rokovi
   const dl = [];
-  sites.forEach(g=>{ if(g.status!=='zavrseno') dl.push({naziv:g.naziv, meta:'Rok završetka projekta', datum:g.rok, tip:'projekat'}); });
-  DATA.zadaci.forEach(t=>{ if(t.kol!=='done' && ids.has(t.gr)) dl.push({naziv:t.naziv, meta:grById[t.gr].naziv, datum:t.rok, tip:'zadatak'}); });
+  sites.forEach(g=>{ if(g.status!=='zavrseno') dl.push({naziv:g.naziv, meta:'Rok završetka projekta', datum:g.rok, tip:'projekat', gr:g.id}); });
+  DATA.zadaci.forEach(t=>{ if(t.kol!=='done' && ids.has(t.gr)) dl.push({naziv:t.naziv, meta:grById[t.gr].naziv, datum:t.rok, tip:'zadatak', gr:t.gr}); });
   dl.sort((a,b)=>dParse(a.datum)-dParse(b.datum));
   const dlHtml = dl.slice(0,6).map(d=>{
     const dd=dParse(d.datum); const diff=daysBetween(TODAY,dd);
@@ -1535,7 +1535,7 @@ function viewDash(){
     const metaExtra = diff<0?`<span style="color:var(--red);font-weight:600"> · kasni ${Math.abs(diff)} d</span>`
                       : diff===0?'<span style="color:var(--amber);font-weight:600"> · danas</span>'
                       : `<span style="color:var(--muted)"> · za ${diff} d</span>`;
-    return `<div class="dl ${cls}">
+    return `<div class="dl ${cls}" style="cursor:pointer" onclick="openSite('${d.gr}')">
       <div class="when"><div class="d">${dd.getDate()}</div><div class="m">${MESECI[dd.getMonth()]}</div></div>
       <div style="flex:1">
         <div class="nm">${d.naziv}</div>
@@ -1548,7 +1548,7 @@ function viewDash(){
   const diaryEntries = DATA.dnevnik.filter(d=>ids.has(d.gr)).sort((a,b)=>dParse(b.datum)-dParse(a.datum)).slice(0,3);
   const diaryHtml = diaryEntries.map(e=>{
     const z={ime:osobaIme(e.autor)}, g=grById[e.gr]||{naziv:'\u2014'};   // autor moze biti i spoljni saradnik
-    return `<div class="dl">
+    return `<div class="dl" style="cursor:pointer" onclick="openSite('${e.gr}')">
       <div class="av" style="margin-top:2px">${initials(z.ime)}</div>
       <div style="flex:1">
         <div class="nm">${g.naziv}</div>
@@ -1606,14 +1606,14 @@ function viewDash(){
   if(fin){
     const dosp=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&x.status!=='placeno'&&sitKasni(x));
     if(dosp.length) bl.push(['var(--red)',`<b>${fmtEur(dosp.reduce((a,b)=>a+b.iznos,0))}</b> dospelo za naplatu (${dosp.length} situacij${dosp.length===1?'a':'e'}) — proveri tab Naplata`]);
-    if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`Najrizičniji projekat: <b>${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100`]);
+    if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`Najrizičniji projekat: <b style="cursor:pointer;text-decoration:underline" onclick="openSite('${najrizik.id}')">${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova (projekti + zadaci)`]);
   } else {
     const moji=zadaciVidljivi().filter(t=>t.kol!=='done');
     const danas=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))===0).length;
     const kasneT=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))<0).length;
     bl.push([kasneT?'var(--red)':'var(--green)',`Zadaci: <b>${danas}</b> dospeva danas${kasneT?`, <b>${kasneT}</b> već kasni`:', ništa ne kasni'}`]);
-    if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`<b>${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100, rok ${fmtDate(najrizik.rok)}`]);
+    if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`<b style="cursor:pointer;text-decoration:underline" onclick="openSite('${najrizik.id}')">${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100, rok ${fmtDate(najrizik.rok)}`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova`]);
   }
   const briefCard=`<div class="brief">
@@ -2112,19 +2112,32 @@ function pocniZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
   const osoba=osobaTajmera();
   const otv=(DATA.rad_na_zadatku||[]).find(s=>s.osoba===osoba && !s.kraj);
-  if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak); alert('Već imaš započet zadatak: '+(ot?unesc(ot.naziv):otv.zadatak)+'. Prvo ga završi.'); return; }
+  if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak); alert('Već imaš započet zadatak: '+(ot?unesc(ot.naziv):otv.zadatak)+'. Prvo ga pauziraj ili završi.'); return; }
   DATA.rad_na_zadatku.push({id:'rz'+Date.now(), zadatak:id, gr:t.gr, osoba, start:new Date().toISOString(), kraj:null, minuta:null, napomena:''});
   if(t.kol==='todo') t.kol='inprogress';
   beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr});
   saveState(); render();
 }
+function zatvoriSesiju(s){ s.kraj=new Date().toISOString(); s.minuta=Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000)); }   // procena; server prepisuje (trigger)
+/* Pauza: zatvara SVOJU otvorenu sesiju, zadatak ostaje "u toku"; "Nastavi" otvara novu sesiju (pocniZadatak). */
+function pauzirajZadatak(id){
+  const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
+  const s=otvorenaSesija(id, osobaTajmera()); if(!s) return;
+  zatvoriSesiju(s);
+  beleziLog('zadatak_pauza',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s.minuta});
+  saveState(); render();
+}
+/* Zavrsi: zatvara svoju sesiju (ako je otvorena) i prebacuje zadatak u "Završeno" — bez potvrde (za „samo stani" postoji Pauziraj).
+   Bez svoje sesije dozvoljeno samo za zadatak u toku (nastavljen posle pauze); tudja otvorena sesija blokira. */
 function zavrsiZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
-  const s=otvorenaSesija(id, osobaTajmera()); if(!s) return;   // zatvara se samo SVOJA otvorena sesija
-  s.kraj=new Date().toISOString();
-  s.minuta=Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000));   // procena; server prepisuje (trigger)
-  if(confirm('Označiti zadatak kao završen?')) t.kol='done';
-  beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s.minuta});
+  const s=otvorenaSesija(id, osobaTajmera());
+  if(!s && t.kol!=='inprogress') return;
+  const tuda=radZa(id).find(x=>!x.kraj && x.osoba!==osobaTajmera());
+  if(tuda){ alert(imeTajmera(tuda.osoba)+' još radi na ovom zadatku — ne može se završiti dok ne stane.'); return; }
+  if(s) zatvoriSesiju(s);
+  t.kol='done';
+  beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:minutaZadatka(id)});
   saveState(); render();
 }
 /* sesije -> [{osoba,gr,sesija,minuta,poslednji}] za period [od,do] (YYYY-MM-DD, ukljucivo); otvorena sesija se racuna do sada */
@@ -2140,9 +2153,11 @@ function tajmerLinija(t){
   const ses=radZa(t.id), tot=minutaZadatka(t.id);
   const moze=mogaTajmer(t) && t.kol!=='done', moja=otvorenaSesija(t.id, osobaTajmera());
   const tuda=ses.find(s=>!s.kraj && s.osoba!==osobaTajmera());
+  const B=(fn,txt,ghost)=>`<button class="btn${ghost?' ghost':''}" style="flex:1;min-height:38px;padding:6px 8px" onclick="event.stopPropagation();${fn}('${t.id}')">${txt}</button>`;
+  const uToku=t.kol==='inprogress';
   const dugme = !moze ? '' : moja
-    ? `<button class="btn" style="width:100%;min-height:38px;margin-top:8px" onclick="event.stopPropagation();zavrsiZadatak('${t.id}')">■ Završi zadatak</button><div style="font-size:11.5px;color:var(--muted);margin-top:4px">⏱ radi od ${hhmm(moja.start)} · ${fmtTrajanje(minSesije(moja))}</div>`
-    : `<button class="btn ghost" style="width:100%;min-height:38px;margin-top:8px" onclick="event.stopPropagation();pocniZadatak('${t.id}')">▶ Počni zadatak</button>`;
+    ? `<div style="display:flex;gap:6px;margin-top:8px">${B('pauzirajZadatak','⏸ Pauziraj',1)}${B('zavrsiZadatak','■ Završi zadatak')}</div><div style="font-size:11.5px;color:var(--muted);margin-top:4px">⏱ radi od ${hhmm(moja.start)} · ${fmtTrajanje(minSesije(moja))}</div>`
+    : `<div style="display:flex;gap:6px;margin-top:8px">${B('pocniZadatak', uToku&&ses.length?'▶ Nastavi':'▶ Počni zadatak',1)}${uToku?B('zavrsiZadatak','■ Završi zadatak'):''}</div>`;
   const info = (tot>0||tuda) ? `<div style="font-size:11.5px;color:var(--muted);margin-top:4px">${tot>0?'⏱ ukupno '+fmtTrajanje(tot):''}${tuda?(tot>0?' · ':'')+'radi: '+imeTajmera(tuda.osoba):''}</div>` : '';
   return dugme+info;
 }
@@ -2446,10 +2461,10 @@ function viewNalozi(){
        ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
     return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
   }).join('');
-  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_kraj:'■ Kraj zadatka'};
+  const DOG={prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_pauza:'⏸ Pauza zadatka',zadatak_kraj:'■ Kraj zadatka'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
-    else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.opis?' — '+d.opis:'')+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'');
+    else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_pauza'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.opis?' — '+d.opis:'')+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'');
     else if(l.dogadjaj==='uloga_promena') det=(d.email||'')+': '+(d.stara||'—')+' → '+(d.nova||'')+(d.zaposleni_id?' ('+d.zaposleni_id+')':'');
     else if(l.dogadjaj==='pristup_uklonjen') det=(d.email||'')+' ('+(d.stara||'')+')';
     else if(l.dogadjaj==='brisanje') det=(d.tabela||'')+' '+(d.naziv||d.id||'');
@@ -2626,9 +2641,10 @@ const NIVOI_DOK={
   'IDP/PGD':['1.0 Arhitektura','2.0 Konstrukcija','3.0 ViK','4.0 Elektroenergetika','5.1 Telekomunikacije i signalne inst.','5.2 Dojava požara','5.3 Video nadzor','6.0 Mašinske instalacije','7.0 Tehnologija','8.0 Saobraćaj i saobraćajna sign.','9.0 Parterno uređenje','10.0 Pripremni radovi','Elaborat energetske efikasnosti','Elaborat o geotehničkim uslovima','Elaborat zaštite od požara','Plan upravljanja otpadom','Energetski pasoš'],
   'PZI':['1.0 Arhitektura','2.0 Konstrukcija','3.0 ViK','4.0 Elektroenergetika','5.1 Telekomunikacije i signalne inst.','5.2 Dojava požara','5.3 Video nadzor','6.0 Mašinske instalacije','7.0 Tehnologija','8.0 Saobraćaj i saobraćajna sign.','9.0 Parterno uređenje','Plan preventivnih mera','Glavni projekat zaštite od požara']
 };
-/* Sabloni faza za Izvodjenje. Svaka faza nosi tipicne zadatke; pri kreiranju
-   gradilista (ili na zahtev iz fioke) sejemo ih u Kanban sa rokovima
-   rasporedjenim od pocetka do roka gradilista. Redosled = redosled faza. */
+/* Sabloni faza za Izvodjenje. Svaka faza nosi tipicne zadatke; SAMO na zahtev iz fioke
+   (ubaciSablonFaza — od 2026-10-09 vise ne pri kreiranju) sejemo ih u Kanban sa rokovima
+   rasporedjenim od pocetka do roka gradilista. Redosled = redosled faza. fazeZa() i dalje
+   cita imena faza odavde. */
 const SABLONI_FAZA={
   visokogradnja:[
     {faza:'Priprema terena',  zadaci:['Prijava gradilišta i tabla','Ograđivanje i obezbeđenje','Geodetsko obeležavanje','Privremeni priključci (voda, struja)']},
@@ -3785,8 +3801,7 @@ function formSite(id){
         <div class="f-row" id="nivoBox" style="display:none"><label>Trenutni nivo (faza)</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
       <div id="nivoFillBox" style="display:none">${sifrarnikChecklist('projektovanje')}</div>
-      <div id="mereFillBox">${sifrarnikChecklist('izvodjenje')}</div>
-      <div class="f-row" id="fazeFillBox"><label class="chk" style="border:0;padding:0"><input type="checkbox" id="f_faze_fill" checked> Popuni Zadatke šablonom faza za izabrani tip izvođenja</label></div>`}
+      <div id="mereFillBox">${sifrarnikChecklist('izvodjenje')}</div>`}
       <div class="f-2">
         <div class="f-row"><label>Klijent</label><select id="f_kli"${ed?'':' onchange="toggleNoviKlijent(this.value)"'}>${DATA.clijenti.map(c=>`<option value="${c.id}"${sel(g&&g.klijent,c.id)}>${c.naziv}</option>`).join('')}${ed?'':'<option value="__novi__">＋ Novi klijent…</option>'}</select></div>
         <div class="f-row"><label>Rukovodilac</label><select id="f_ruk">${rukLista.map(z=>`<option value="${z.id}"${sel(g&&g.rukovodilac,z.id)}>${z.ime}</option>`).join('')}</select></div>
@@ -3823,9 +3838,23 @@ function formSite(id){
    (globalan kroz grupe) — saveSite/saveIzSifarnika iteriraju ISTU listu.
    projektovanje: f_nd_k + f_ndz_k (podrazumevano cekirano); izvodjenje: f_sf_k + f_sfk_k (kolicina) + f_sfz_k (podrazumevano necekirano). */
 function sifrarnikPoz(s, modul){ return modul==='projektovanje' ? (s.grupa?s.grupa+' — ':'')+s.naziv : s.naziv; }
+function zaduzenOpcije(){ return [...DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv} (spoljni)</option>`)].join(''); }
+/* „Razno" (projektovanje, samo pri kreiranju): slobodne stavke ispod svih svezaka — f_nr_k (naziv) + f_nrz_k (zaduzen),
+   k = 0..RAZNO_N-1 (brojac, NE getElementById-petlja: dom-stub vraca element za svaki id). Prazne se preskacu u saveSite. */
+let RAZNO_N=0;
+function dodajRaznoRed(){
+  const box=document.getElementById('raznoBox'); if(!box) return;
+  const k=RAZNO_N++;
+  const d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px';
+  d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Geodetski snimak, Elaborat…" style="flex:1;min-width:0;font-size:12px;padding:5px 6px">
+    <select id="f_nrz_${k}" style="width:46%;min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${zaduzenOpcije()}</select>`;
+  box.appendChild(d);
+  const i=document.getElementById('f_nr_'+k); if(i&&i.focus) i.focus();
+}
 function sifrarnikChecklist(modul){
   const pro=modul==='projektovanje';
-  const opcije=[...DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv} (spoljni)</option>`)].join('');
+  const opcije=zaduzenOpcije();
+  if(pro) RAZNO_N=0;
   const lista=sifrarnikZa(modul), grupe=[];
   lista.forEach((s,k)=>{ let gr=grupe.find(x=>x.naziv===s.grupa); if(!gr){ gr={naziv:s.grupa,red:[]}; grupe.push(gr); } gr.red.push([s,k]); });
   const cid=pro?'f_nd_':'f_sf_', zid=pro?'f_ndz_':'f_sfz_';
@@ -3838,6 +3867,9 @@ function sifrarnikChecklist(modul){
         ${pro?'':`<input type="number" id="f_sfk_${k}" placeholder="količina" style="width:84px;font-size:12px;padding:5px 6px">`}
         <select id="${zid}${k}" style="width:${pro?'46%':'34%'};min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
       </div>`).join('')}`).join('')}
+      ${pro?`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">Razno</div>
+      <div id="raznoBox"></div>
+      <button type="button" class="btn ghost" style="font-size:12px;padding:5px 10px;min-height:0;margin:2px 0 6px" onclick="dodajRaznoRed()">＋ Dodaj stavku</button>`:''}
     </div></div>`;
 }
 function toggleTipRadova(val){
@@ -3846,7 +3878,6 @@ function toggleTipRadova(val){
   const n=document.getElementById('nivoBox'); if(n) n.style.display = pro?'block':'none';
   const f=document.getElementById('nivoFillBox'); if(f) f.style.display = pro?'block':'none';
   const m=document.getElementById('mereFillBox'); if(m) m.style.display = pro?'none':'block';
-  const z=document.getElementById('fazeFillBox'); if(z) z.style.display = pro?'none':'block';
 }
 function toggleNoviKlijent(val){
   const box=document.getElementById('noviKlijentBox');
@@ -3892,11 +3923,16 @@ function saveSite(grId){
       const z=document.getElementById('f_ndz_'+idx); const zad=(z&&z.value)||null;
       DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:zad});
     });
+    for(let k=0;k<RAZNO_N;k++){   // „Razno": slobodne stavke, prazne se preskacu
+      const inp=document.getElementById('f_nr_'+k); const naziv=esc(String((inp&&inp.value)||'').trim()); if(!naziv) continue;
+      const z=document.getElementById('f_nrz_'+k); const zad=(z&&z.value)||null;
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:'Razno — '+naziv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+    }
+    RAZNO_N=0;
   } else {
     dodajIzSifarnika(gid);
-    const fz=document.getElementById('f_faze_fill');
-    rebuildMaps();                      // primeniSablonFaza cita grById
-    if(fz&&fz.checked) primeniSablonFaza(gid);
+    rebuildMaps();
+    /* Zadaci se pri kreiranju NE seju (odluka 2026-10-09): šablon faza ostaje opciono dugme u fioci (ubaciSablonFaza). */
   }
   rebuildMaps(); saveState(); closeModal(); renderNav(); render();
 }

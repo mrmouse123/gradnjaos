@@ -30,7 +30,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
 | dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
 | dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
-| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | vidi i pomera SAMO svoje zadatke na svojim gradilištima |
+| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | vidi i pomera SAMO svoje zadatke na svojim gradilištima; na svom zadatku **Počni / Pauziraj / Završi** (vreme se beleži po sesiji) |
 | dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
 | Admin kokpit (nalozi, uloge, šifarnik, log) | da | da (ne dira direktore) | ne | ne | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
@@ -65,7 +65,8 @@ Sad se trebovanje šalje kroz mailto (otvori mail klijent). Za pravo slanje: `su
 
 - Prevlačenje zadataka (drag & drop) radi mišem; na telefonu koristi klik na karticu.
 - Upis u bazu je „poslednji piše — pobeđuje" po redu: ako dvoje menja ISTI zapis istovremeno, kasniji pregazi raniji. Različite zapise više ljudi menja bez sukoba (čuva se samo ono što se promenilo).
-- Brisanje pojedinačnih stavki nije u UI (samo pun demo reset) — namerno.
+- Novo gradilište (Izvođenje) se pravi BEZ zadataka; šablon faza (8 faza × tipični zadaci) ubacuje se po želji dugmetom u fioci gradilišta. Novo gradilište (Projektovanje) nudi sve sveske po fazama + sekciju **Razno** za sopstvene stavke.
+- Brisanje: samo direktor (red po red, dugme u fioci); radnik/spoljni brišu svoje unose dnevnika i dokumenta.
 - Prilozi (fakture, dokumenta) se čuvaju u bazi kao data-URL, limit 2.5 MB po fajlu — do prelaska na Supabase Storage.
 
 ## Struktura

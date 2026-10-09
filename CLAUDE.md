@@ -81,7 +81,16 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   poruka pri odbijanju, log `brisanje`; `obrisi_gradiliste` RPC + lokalno čišćenje
   zavisnih tabela i `PUSHED`), `rad_na_zadatku` (tajmer: start/kraj, `minuta` računa
   server trigerom; `angazovanost(od,do)` RPC za upravu; klijent loguje
-  `zadatak_start/zadatak_kraj`).
+  `zadatak_start/zadatak_pauza/zadatak_kraj`). **Pauza (2026-10-09):** `pauzirajZadatak` zatvara
+  SVOJU sesiju, `kol` ostaje `inprogress`; „▶ Nastavi" = `pocniZadatak` (nova sesija, server ih
+  sabira); `zavrsiZadatak` → `done` BEZ confirm-a, dozvoljen i bez sesije za zadatak u toku, tuđa
+  otvorena sesija blokira (alert). Bez migracije. T36 a2.
+- **„Razno" u Projektovanju (2026-10-09):** `sifrarnikChecklist('projektovanje')` ispod svih svezaka
+  nudi `#raznoBox` + `dodajRaznoRed()` (`f_nr_k`/`f_nrz_k`, brojač `RAZNO_N` — NE `getElementById`
+  petlja, dom-stub vraća element za svaki id); `saveSite` pravi redove specifikacije
+  `Razno — <naziv>` (esc, prazne preskače). Samo pri kreiranju. T40.
+- **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
+  `onclick="openSite"` (red tabele ga je već imao). T41.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
   helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..17.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
@@ -124,7 +133,8 @@ situacije (naplata), narudzbe (UI: "Trebovanje", mailto/Edge Function na NABAVKA
 troskovi_st (izvor za potroseno(g); opciono `prilog` = faktura kao PDF/slika, data-URL u pilotu),
 podizvodjaci (UI u Projektovanju: "Spoljni saradnici"), predmer (i "Specifikacija usluga" za
 projektovanje; NIVOI_DOK šablon: IDR/IDP-PGD/PZI auto-popuna; SABLONI_FAZA šablon za
-Izvođenje: 8 faza × zadaci po tipu visoko/niskogradnja, `primeniSablonFaza()`), resursi
+Izvođenje: 8 faza × zadaci po tipu visoko/niskogradnja, `primeniSablonFaza()` — od 2026-10-09 SAMO
+na zahtev iz fioke `ubaciSablonFaza`, NE pri kreiranju; `fazeZa()` i dalje čita imena faza), resursi
 (istek → upozorenja), magacin + mag_promene, izveštaji (openIzvestaj=za investitora bez
 finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine), profili (auth).
 

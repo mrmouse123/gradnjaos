@@ -185,3 +185,12 @@ elementima dobija `minmax(0,1fr)` + `overflow:hidden` na celijama, a sirina kont
 se racuna iz broja kolona (`--g-col`), ne iz fiksnog `min-width`. Dokaz samo merenjem
 u browseru (`getBoundingClientRect` zaglavlja vs trake) — e2e ne vidi layout; T39 cuva
 samo oblik HTML/CSS-a.
+
+## Lekcija 29 (2026-10-09, demo server)
+`Temp/demo/serve.js` je nestao (Temp se cisti) i preview je pukao sa MODULE_NOT_FOUND — server
+sad zivi u `.claude/serve.js` (gitignore, prezivljava), `launch.json` mu daje port i folder.
+Dve zamke u njemu: `dir` mora kroz `path.resolve` (forward-slash iz argv vs backslash iz
+`path.join` → `startsWith` guard vraca 403 za SVE), a posle izmene serve.js obavezno
+`preview_stop` pa `preview_start` (panel ne restartuje proces sam). Dokaz za „klik otvara":
+`element.click()` u pravom DOM-u + provera da `#drawer` sadrzi `dr-b` — ne citanje atributa.
+

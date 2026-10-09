@@ -151,7 +151,7 @@ const MUTATORS = [
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
   ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-i-01'"], ['obrisiSifrarnik', "'sf-i-01'"], ['saveIzSifarnika', "'g1'"],
-  ['pocniZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
+  ['pocniZadatak', "'t3'"], ['pauzirajZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
   ['obrisiSituaciju', "'s1'"], ['obrisiPredmerRed', "'pm1'"], ['obrisiResurs', "'r1'"], ['obrisiNarudzbu', "'n1'"],
   ['obrisiKlijenta', "'c1'"], ['obrisiZaposlenog', "'z2'"], ['obrisiPodizvodjaca', "'p1'"], ['obrisiGradiliste', "'g2'"],
 ];
@@ -474,7 +474,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   };
   const viewZa36 = (a, role, cur) => { a.run(`setRole(${q36(role)}); MODUL='sve'; PODTIP='sve'; current=${q36(cur)}; render();`); return a.g.document.getElementById('view').innerHTML; };
   const tabla36 = (a, role) => { a.run(`setRole(${q36(role)}); MODUL='sve'; PODTIP='sve'; current='tasks'; render();`); return a.g.document.getElementById('view').innerHTML; };
-  await acheck('a) radnik: Pocni na svom zadatku, tudji bez dugmeta, jedna otvorena sesija, Zavrsi zatvara i (uz potvrdu) zavrsava', async () => {
+  await acheck('a) radnik: Pocni na svom zadatku, tudji bez dugmeta, jedna otvorena sesija, Zavrsi zatvara i zavrsava (bez potvrde)', async () => {
     const a = await boot(); const { zid } = prep36(a);
     let h = tabla36(a, 'radnik:' + zid);
     if (!h.includes('▶ Počni zadatak')) throw new Error('nema dugmeta Počni');
@@ -494,7 +494,54 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const s = a.run('DATA.rad_na_zadatku[0]');
     if (!s.kraj || typeof s.minuta !== 'number' || s.minuta < 0) throw new Error('sesija nije zatvorena: ' + JSON.stringify(s));
     if (a.run("DATA.zadaci.find(t=>t.id==='tm1').kol") !== 'done') throw new Error('kol nije done');
-    if (!a.g._calls.confirm.some(m => /završen/.test(m))) throw new Error('nije pitao za potvrdu');
+    if (a.g._calls.confirm.some(m => /završen/.test(m))) throw new Error('Završi ne sme da pita za potvrdu (za „samo stani" postoji Pauziraj)');
+  });
+  await acheck('a2) Pauziraj: zatvara svoju sesiju, zadatak ostaje u toku, log zadatak_pauza; Nastavi otvara drugu sesiju; Zavrsi bez sesije; tudja sesija blokira', async () => {
+    const a = await boot(); const { zid, gid, tudj } = prep36(a);
+    tabla36(a, 'radnik:' + zid); a.run("pocniZadatak('tm1')");
+    let h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes("pauzirajZadatak('tm1')") || !h.includes('⏸ Pauziraj')) throw new Error('nema dugmeta Pauziraj dok sesija tece');
+    a.run("pauzirajZadatak('tm1')");
+    const s1 = a.run("DATA.rad_na_zadatku[0]");
+    if (!s1.kraj || typeof s1.minuta !== 'number') throw new Error('pauza nije zatvorila sesiju: ' + JSON.stringify(s1));
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm1').kol") !== 'inprogress') throw new Error('pauza je promenila kol');
+    h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('▶ Nastavi') || !h.includes("zavrsiZadatak('tm1')")) throw new Error('posle pauze ocekujem Nastavi + Zavrsi, dobio: ' + (h.match(/▶[^<]*|■[^<]*/g) || []).join('|'));
+    if (h.includes("pauzirajZadatak('tm1')")) throw new Error('Pauziraj bez otvorene sesije');
+    a.run("pocniZadatak('tm1')");
+    if (a.run("DATA.rad_na_zadatku.filter(s=>s.zadatak==='tm1').length") !== 2) throw new Error('Nastavi nije otvorio drugu sesiju');
+    if (a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj).length") !== 1) throw new Error('vise od jedne otvorene sesije');
+    a.run("pauzirajZadatak('tm1')");
+    a.run("zavrsiZadatak('tm1')");   // bez otvorene sesije, zadatak u toku → dozvoljeno
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm1').kol") !== 'done') throw new Error('Zavrsi posle pauze nije zavrsio');
+    if (a.run("DATA.rad_na_zadatku.some(s=>!s.kraj)")) throw new Error('ostala otvorena sesija');
+    // tudji zadatak u toku: radnik bez sesije ne moze da ga zavrsi; tudja otvorena sesija blokira i rukovodioca
+    a.run("DATA.zadaci.find(t=>t.id==='tm2').kol='inprogress'");
+    a.run("zavrsiZadatak('tm2')");
+    if (a.run("DATA.zadaci.find(t=>t.id==='tm2').kol") !== 'inprogress') throw new Error('radnik je zavrsio tudji zadatak');
+    const ruk = a.run(`grById[${q36(gid)}].rukovodilac`);
+    a.run(`setRole(${q36('radnik:' + tudj)})`);
+    if (a.run("mogaTajmer(DATA.zadaci.find(t=>t.id==='tm2'))")) {
+      a.run("pocniZadatak('tm2')");
+      const n0 = a.g._calls.alert.length;
+      a.run(`setRole('all'); zavrsiZadatak('tm2');`);
+      if (a.run("DATA.zadaci.find(t=>t.id==='tm2').kol") === 'done') throw new Error('uprava zavrsila zadatak dok radnik radi na njemu');
+      if (a.g._calls.alert.length !== n0 + 1 || !/još radi/.test(a.g._calls.alert[n0])) throw new Error('nema poruke o tudjoj sesiji');
+      a.run(`setRole('all'); pauzirajZadatak('tm2');`);
+      if (!a.run("DATA.rad_na_zadatku.some(s=>s.zadatak==='tm2'&&!s.kraj)")) throw new Error('uprava je pauzirala TUDJU sesiju');
+    }
+    // log: pauza nosi naziv i minute
+    const b = await boot({ supabase: true, seed: {} });
+    const sleep = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r)); };
+    const tid = b.run('DATA.zadaci[0].id');
+    b.run(`pocniZadatak(${q36(tid)}); pauzirajZadatak(${q36(tid)});`);
+    await b.run('doSave()'); await sleep();
+    const lg = (b.g.__mock._db.log_koriscenja || []).find(l => l.dogadjaj === 'zadatak_pauza');
+    if (!lg || !lg.detalj || !lg.detalj.naziv || typeof lg.detalj.minuta !== 'number') throw new Error('log pauze: ' + JSON.stringify(lg));
+    b.run("NALOZI=null; ANGAZ=null; current='nalozi';");
+    await b.run('ucitajNaloge()'); await sleep();
+    b.run('render()');
+    if (!b.g.document.getElementById('view').innerHTML.includes('⏸ Pauza zadatka')) throw new Error('log pogled ne prikazuje pauzu');
   });
   await acheck('b) tudji zadatak: nista; rukovodilac svog gradilista: osoba = on; uprava: osoba "uprava"', async () => {
     const a = await boot(); const { zid, gid } = prep36(a);
@@ -1382,8 +1429,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot();
     a.run('ROLE=\'all\'; formSite();');
     const html = a.g.document.getElementById('modal').innerHTML;
-    for (const x of ['id="f_modul"', 'f_faze_fill', 'f_nd_0', 'f_ndz_0', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"'])
+    for (const x of ['id="f_modul"', 'f_nd_0', 'f_ndz_0', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"', 'id="raznoBox"', 'dodajRaznoRed()'])
       if (!html.includes(x)) throw new Error('create forma nema: ' + x);
+    if (html.includes('f_faze_fill')) throw new Error('sablon faza se vise ne nudi pri kreiranju (2026-10-09)');
     if (html.includes('f_nadzor')) throw new Error('polje kontakt nadzora je uklonjeno iz forme (2026-10-07)');
   });
   await acheck('A1c formSite(id) kao rukovodilac ne otvara modal', async () => {
@@ -2573,7 +2621,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
       throw new Error('formUpdate i sablon se raziliaze:\n' + fazeUForm.join(',') + '\nvs\n' + fazeUSablonu.join(','));
   });
 
-  await acheck('novo gradiliste (Izvodjenje) kroz saveSite seje sablon kad je checkbox cekiran', async () => {
+  await acheck('novo gradiliste (Izvodjenje) kroz saveSite NE seje zadatke (2026-10-09); sablon ostaje dugme u fioci', async () => {
     app.run("ROLE='all'; formSite();");
     const set = (id, val) => { const e = app.g.document.getElementById(id); if (e) e.value = val; };
     set('f_naziv', 'Test sejanja'); set('f_modul', 'izvodjenje'); set('f_tip', 'niskogradnja');
@@ -2585,7 +2633,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     app.run('saveSite();');
     const postG = app.run('DATA.gradilista.length'), postZ = app.run('DATA.zadaci.length');
     if (postG !== preG + 1) throw new Error('gradiliste nije dodato');
-    if (postZ <= preZ) throw new Error('sablon faza nije zaseiao nijedan zadatak pri kreiranju');
+    if (postZ !== preZ) throw new Error('kreiranje je dodalo ' + (postZ - preZ) + ' zadataka — ne sme (odluka 2026-10-09)');
+    const gid = app.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    app.run(`openSite(${JSON.stringify(gid)})`);
+    if (!app.g.document.getElementById('drawer').innerHTML.includes(`ubaciSablonFaza('${gid}')`)) throw new Error('fioka nema opciono dugme za sablon');
   });
 
 
@@ -2970,6 +3021,61 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
     const loši = a.run(`DATA.gradilista.filter(g=>Object.values(g.adm||{}).some(v=>typeof v!=='object'||v===null)).map(g=>g.id)`);
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
+  });
+
+  /* ---- T40 Razno: slobodne stavke ispod svezaka (projektovanje, kreiranje) ---- */
+  section('T40 Razno ceklista');
+  await acheck('dodajRaznoRed + saveSite: popunjene stavke → redovi specifikacije "Razno — …" sa zaduzenim, prazne se preskacu, esc', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite();");
+    const html = a.g.document.getElementById('modal').innerHTML;
+    if (!html.includes('>Razno<') || !html.includes('id="raznoBox"')) throw new Error('nema sekcije Razno');
+    if (html.indexOf('id="raznoBox"') < html.lastIndexOf('f_nd_')) throw new Error('Razno nije ISPOD svih svezaka');
+    a.run('dodajRaznoRed(); dodajRaznoRed(); dodajRaznoRed();');
+    if (a.run('RAZNO_N') !== 3) throw new Error('RAZNO_N = ' + a.run('RAZNO_N'));
+    const set = (id, val) => { a.g.document.getElementById(id).value = val; };
+    set('f_naziv', 'T40 projekat'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDR');
+    set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', a.run('DATA.zaposleni[0].id'));
+    set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(100)'));
+    const zad = a.run('DATA.zaposleni[1].id');
+    set('f_nr_0', '  Geodetski snimak '); set('f_nrz_0', zad);
+    set('f_nr_1', '');                                   // prazna → preskoci
+    set('f_nr_2', '<b>x</b>');                           // XSS → esc
+    a.run('saveSite();');
+    const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    const rows = a.run(`DATA.predmer.filter(r=>r.gr===${JSON.stringify(gid)} && r.poz.startsWith('Razno'))`);
+    if (rows.length !== 2) throw new Error('ocekujem 2 Razno reda, dobio ' + rows.length + ': ' + JSON.stringify(rows.map(r => r.poz)));
+    const r0 = rows.find(r => r.poz === 'Razno — Geodetski snimak');
+    if (!r0 || r0.zaduzen !== zad || r0.kol !== 1 || r0.jm !== 'kom') throw new Error('red: ' + JSON.stringify(r0));
+    if (rows.some(r => r.poz.includes('<b>'))) throw new Error('XSS: ' + JSON.stringify(rows.map(r => r.poz)));
+    if (!rows.some(r => r.poz.includes('&lt;b&gt;'))) throw new Error('esc nije primenjen');
+    if (a.run('RAZNO_N') !== 0) throw new Error('RAZNO_N nije resetovan');
+    const ids = new Set(a.run(`DATA.predmer.map(r=>r.id)`)); if (ids.size !== a.run('DATA.predmer.length')) throw new Error('duplirani id-jevi predmera');
+    // izmena postojeceg: nema Razno
+    a.run(`formSite(${JSON.stringify(gid)})`);
+    if (a.g.document.getElementById('modal').innerHTML.includes('raznoBox')) throw new Error('Razno u formi izmene');
+  });
+
+  /* ---- T41 Kontrolna tabla: rokovi, dnevnik i najrizicniji projekat otvaraju gradiliste ---- */
+  section('T41 tabla klik');
+  await acheck('viewDash: svaka stavka rokova i dnevnika ima onclick openSite; najrizicniji projekat u brifu klikabilan; status red klikabilan', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; MODUL='sve'; PODTIP='sve'; current='dash'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    const dl = h.match(/<div class="dl[^"]*"[^>]*>/g) || [];
+    if (dl.length < 4) throw new Error('premalo dl stavki: ' + dl.length);
+    const bez = dl.filter(x => !/onclick="openSite\('g[^']+'\)"/.test(x) && !/go\('resursi'\)/.test(x));
+    if (bez.length) throw new Error('stavke bez klika: ' + bez.join(' | '));
+    if (!/Najrizičniji projekat: <b [^>]*onclick="openSite\('g[^']+'\)"/.test(h) && !/zdravlje \d+\/100/.test(h)) throw new Error('najrizicniji projekat nije klikabilan');
+    if (!/<tr class="clk" onclick="openSite\('g[^']+'\)">[\s\S]*?<span class="badge/.test(h)) throw new Error('red sa statusom nije klikabilan');
+    // rukovodilac: isto, bez curenja tudjih id-jeva
+    const ruk = a.run("DATA.gradilista.find(g=>g.rukovodilac).rukovodilac");
+    a.run(`setRole(${JSON.stringify(ruk)}); current='dash'; render();`);
+    const h2 = a.g.document.getElementById('view').innerHTML;
+    const vidi = new Set(a.run('[...visibleSiteIds()]'));
+    const ids = [...h2.matchAll(/openSite\('(g[^']+)'\)/g)].map(m => m[1]);
+    const tudje = ids.filter(x => !vidi.has(x));
+    if (tudje.length) throw new Error('rukovodilac dobija klik na tudja gradilista: ' + tudje.join(','));
   });
 
   /* ---- T39 Gantt: osa siroka koliko zaglavlje meseci (inace stapici/"danas" klize) ---- */
