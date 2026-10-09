@@ -86,7 +86,11 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   sabira); `zavrsiZadatak` → `done` BEZ confirm-a, dozvoljen i bez sesije za zadatak u toku, tuđa
   otvorena sesija blokira (alert). Bez migracije. T36 a2. **Tajmer SAMO u Projektovanju**
   (odluka 2026-10-10): `tajmerZa(t)` = `jePro(grById[t.gr])` je prvi uslov u `mogaTajmer` i
-  `tajmerLinija` — na Izvođenju nema dugmadi, funkcije su no-op. T36 0.
+  `tajmerLinija` — na Izvođenju nema dugmadi za START, `pocniZadatak`/`zavrsiZadatak` su no-op.
+  IZUZETAK (2026-10-10, review): SVOJA otvorena sesija se uvek može zaustaviti (`pauzirajZadatak`
+  traži samo svoju sesiju + `vidimGr`; kartica tada nudi „⏸ Zaustavi tajmer" i na Izvođenju i na
+  done zadatku; `dropTask` u done zatvara svoju sesiju) — inače sesija ostaje zaglavljena i
+  blokira svaki novi start. Ne uklanjati taj izlaz. T36 0, a2.
 - **„Razno" u Projektovanju (2026-10-09):** `sifrarnikChecklist('projektovanje')` ispod svih svezaka
   nudi `#raznoBox` + `dodajRaznoRed()` (`f_nr_k`/`f_nrz_k`, brojač `RAZNO_N` — NE `getElementById`
   petlja, dom-stub vraća element za svaki id); `saveSite` pravi redove specifikacije

@@ -491,7 +491,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run("DATA.rad_na_zadatku[0].kraj") === null) throw new Error('pauza nije zatvorila zaglavljenu sesiju');
     a.run("current='tasks'; render();");
     if (a.g.document.getElementById('view').innerHTML.includes(`pauzirajZadatak('${izv.id}')`)) throw new Error('dugme ostalo posle zatvaranja');
-    if (a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id===${q36(izv.id)}))`) !== '') throw new Error('zatvorena sesija na Izvodjenju curi kao info-linija (⏱ ukupno)');
+    a.run("DATA.rad_na_zadatku[0].minuta=15");   // sa 0 minuta info-linija je prazna i bez guarda — zato pozitivna vrednost
+    if (a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id===${q36(izv.id)}))`) !== '') throw new Error('zatvorena sesija na Izvodjenju curi kao info-linija (⏱ ukupno 15 min)');
   });
   const prep36 = a => {   // radnik zid na svom gradilistu gid: tri zadatka (dva njegova, jedan tudj)
     const zid = a.run(T36_ZID), gid = a.run(`zapById[${q36(zid)}].grs.find(x=>grById[x])`);
