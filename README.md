@@ -33,7 +33,8 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
 | dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
 | Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktore) | ne | ne | ne |
-| šifarnik mera (dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
+| šifarnik mera i artikala (dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
+| situacije (privremena / okončana) sa stavkama | pravi, vidi iznose i razlike | isto | pravi na svojim gradilištima; iznose vidi samo uz finansije | pravi, bez iznosa | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
 
 Rukovodilac 1 i 2 su ista uloga (`rukovodilac`) sa zastavicom „vidi finansije" u Admin kokpitu. Spoljni saradnik je vezan za podizvođača/saradnika, radnik za zaposlenog.
@@ -66,6 +67,7 @@ Sad se trebovanje šalje kroz mailto (otvori mail klijent). Za pravo slanje: `su
 
 - Prevlačenje zadataka (drag & drop) radi mišem; na telefonu koristi klik na karticu.
 - Upis u bazu je „poslednji piše — pobeđuje" po redu: ako dvoje menja ISTI zapis istovremeno, kasniji pregazi raniji. Različite zapise više ljudi menja bez sukoba (čuva se samo ono što se promenilo).
+- **Naplata po stavkama:** uprava pri kreiranju gradilišta bira pozicije i artikle iz šifarnika (81 artikal ELOM + pozicije radova) sa ugovorenom količinom i cenom. Rukovodilac pravi privremenu ili okončanu situaciju iz istog predmera (plus artikli iz šifarnika kojih nema u predmeru); količine mogu da odstupe. Server računa kumulativ po stavci kroz sve situacije i **razliku preko ugovorenog**, koju uprava vidi kao upozorenje na tabli i u detalju situacije, a iznos iz ugovorenih cena. Rukovodilac bez finansija ne vidi iznose.
 - Novo gradilište (Izvođenje) se pravi BEZ zadataka; šablon faza (8 faza × tipični zadaci) ubacuje se po želji dugmetom u fioci gradilišta. Novo gradilište (Projektovanje) nudi sve sveske po fazama + sekciju **Razno** za sopstvene stavke.
 - Brisanje: samo direktor (red po red, dugme u fioci); radnik/spoljni brišu svoje unose dnevnika i dokumenta.
 - Prilozi (fakture, dokumenta) se čuvaju u bazi kao data-URL, limit 2.5 MB po fajlu — do prelaska na Supabase Storage.

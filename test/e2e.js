@@ -143,7 +143,7 @@ const MODULI = [
 /* ---------- funkcije koje MORAJU imati role-guard ---------- */
 /* [ime, pozivArgumenti] — poziv se radi kao rukovodilac; DATA se ne sme promeniti */
 const MUTATORS = [
-  ['saveSit', ''], ['markPaid', "'s1'"], ['saveEmp', ''], ['saveClient', ''],
+  ['saveSituacija', "'g2'"], ['formSituacija', "'g2'"], ['markPaid', "'s1'"], ['saveEmp', ''], ['saveClient', ''],
   ['saveSite', ''], ['saveSite', "'g1'"], ['saveSub', ''], ['saveNarudzba', ''], ['saveTrosak', "'g1'"],
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
@@ -384,7 +384,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     ['gradiliste', "formSite()",                   "saveSite()",               'gradilista'],
     ['zadatak',    "formTask()",                   "saveTask()",               'zadaci'],
     ['dnevnik',    "formDiary()",                  "saveDiary()",              'dnevnik'],
-    ['situacija',  "formSit()",                    "saveSit()",                'situacije'],
+    ['situacija',  "formSituacija(DATA.predmer[0].gr)", "(function(){const g=DATA.predmer[0].gr; document.getElementById('st_k_'+predmerZa(g)[0].id).value='2'; saveSituacija(g);})()", 'situacije'],
     ['podizvodjac',"formSub()",                    "saveSub()",                'podizvodjaci'],
     ['resurs',     "formResurs(null)",             "saveResurs(null)",         'resursi'],
     ['artikal',    "formArtikal()",                "saveArtikal()",            'magacin'],
@@ -828,12 +828,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T34 sifarnik mera (C2) ---- */
   section('T34 sifarnik');
-  await acheck('a) DATA.sifrarnik: 60 redova, unikatni id, 36 projektovanje / 24 izvodjenje, sifrarnikZa sortiran po redosledu', async () => {
+  await acheck('a) DATA.sifrarnik: 141 redova (60 + 81 artikala ELOM), unikatni id, 36 projektovanje / 105 izvodjenje, sifrarnikZa sortiran po redosledu', async () => {
     const a = await boot();
-    if (a.run('DATA.sifrarnik.length') !== 60) throw new Error('ukupno ' + a.run('DATA.sifrarnik.length'));
-    if (a.run('new Set(DATA.sifrarnik.map(s=>s.id)).size') !== 60) throw new Error('id-jevi nisu unikatni');
+    if (a.run('DATA.sifrarnik.length') !== 141) throw new Error('ukupno ' + a.run('DATA.sifrarnik.length'));
+    if (a.run('new Set(DATA.sifrarnik.map(s=>s.id)).size') !== 141) throw new Error('id-jevi nisu unikatni');
     const p = a.run("DATA.sifrarnik.filter(s=>s.modul==='projektovanje').length"), i = a.run("DATA.sifrarnik.filter(s=>s.modul==='izvodjenje').length");
-    if (p !== 36 || i !== 24) throw new Error('projektovanje ' + p + ', izvodjenje ' + i);
+    if (p !== 36 || i !== 105) throw new Error('projektovanje ' + p + ', izvodjenje ' + i);
+    const art = a.run("DATA.sifrarnik.filter(s=>s.grupa==='Artikli (ELOM)')");
+    if (art.length !== 81 || new Set(art.map(x => x.sifra)).size !== 81) throw new Error('artikli: ' + art.length);
+    for (const sf of ['01-1', '46', '47', 'M029', 'M009']) if (!art.some(x => x.sifra === sf)) throw new Error('nema sifre ' + sf);
+    if (art.find(x => x.sifra === 'M009').jm !== 'm' || art.find(x => x.sifra === 'M009').naziv !== 'Parapet 210x90') throw new Error('M009 jm/naziv (zalepljena JM u PDF-u)');
     for (const m of ['izvodjenje', 'projektovanje'])
       if (!a.run(`(()=>{const l=sifrarnikZa('${m}');return l.length>0&&l.every((s,k)=>k===0||l[k-1].redosled<=s.redosled)})()`)) throw new Error('nije sortirano: ' + m);
   });
@@ -843,7 +847,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
     if (!html.includes('id="mereFillBox"') || !html.includes('id="nivoFillBox"')) throw new Error('nema kontejnera');
     const c = re => (html.match(re) || []).length;
-    if (c(/id="f_sf_\d+"/g) !== 24 || c(/id="f_sfk_\d+"/g) !== 24 || c(/id="f_sfz_\d+"/g) !== 24) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
+    if (c(/id="f_sf_\d+"/g) !== 105 || c(/id="f_sfk_\d+"/g) !== 105 || c(/id="f_sfz_\d+"/g) !== 105) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
+    if (c(/id="f_sfc_\d+"/g) !== 105) throw new Error('cena po stavci (uprava): ' + c(/id="f_sfc_\d+"/g));
+    if (!html.includes('oninput="filtrirajSifrarnik(this)"') || c(/class="sf-red"/g) !== 141) throw new Error('nema filtera / sf-red redova: ' + c(/class="sf-red"/g));
     if (c(/id="f_nd_\d+"/g) !== 36) throw new Error('f_nd_ ' + c(/id="f_nd_\d+"/g));
     if (!/id="f_sfk_0"[^>]*type="number"|type="number"[^>]*id="f_sfk_0"/.test(html)) throw new Error('kolicina nije type=number');
     a.run("toggleTipRadova('izvodjenje')");
@@ -909,10 +915,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const set = (id, v) => { doc.getElementById(id).value = v; };
     set('sf_naziv', '<b>Nova poz</b>'); set('sf_jm', 'm²'); set('sf_grupa', 'Zemljani radovi'); set('sf_modul', 'izvodjenje');
     a.run("ROLE='z1'; saveSifrarnik(); ROLE='all';");
-    if (N() !== 60) throw new Error('rukovodilac je dodao u sifarnik');
+    if (N() !== 141) throw new Error('rukovodilac je dodao u sifarnik');
     const maxR = a.run('Math.max(...DATA.sifrarnik.map(s=>s.redosled))');
     a.run('saveSifrarnik()');
-    if (N() !== 61) throw new Error('direktor nije dodao: ' + N());
+    if (N() !== 142) throw new Error('direktor nije dodao: ' + N());
     const nov = a.run('DATA.sifrarnik[DATA.sifrarnik.length-1]');
     if (nov.naziv.includes('<b>') || nov.redosled !== maxR + 1 || nov.aktivan !== true || nov.jm !== 'm²' || nov.modul !== 'izvodjenje' || nov.grupa !== 'Zemljani radovi') throw new Error('red: ' + JSON.stringify(nov));
     a.run("ROLE='z1'; toggleSifrarnik('sf-i-01'); ROLE='all';");
@@ -924,13 +930,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== true) throw new Error('toggle nazad');
     a.run("setRole('admin')");
     await a.run("obrisiSifrarnik('sf-i-01')");
-    if (N() !== 61) throw new Error('admin je obrisao');
+    if (N() !== 142) throw new Error('admin je obrisao');
     a.run('formSifrarnik()');
     if (a.g.document.getElementById('modal').innerHTML.includes('obrisiSifrarnik')) throw new Error('admin vidi dugme brisanja');
     if (a.run("viewNalozi()").includes('Šifarnik mera')) throw new Error('sifarnik je i dalje u Admin kokpitu (izbacen 2026-10-11)');
     a.run("setRole('all')");
     await a.run("obrisiSifrarnik('sf-i-01')");
-    if (N() !== 60 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-i-01')")) throw new Error('direktor nije obrisao');
+    if (N() !== 141 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-i-01')")) throw new Error('direktor nije obrisao');
   });
   await acheck('g) Šifarnik: modal sa taba Gradilišta (uprava), NE u Admin kokpitu; kartica "Šifarnik mera (60)" + polja', async () => {
     const a = await boot();
@@ -944,7 +950,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('rukovodilac otvorio sifarnik');
     a.run("setRole('all'); formSifrarnik();");
     const h = a.g.document.getElementById('modal').innerHTML;
-    if (!h.includes('Šifarnik mera (60)')) throw new Error('nema kartice u modalu');
+    if (!h.includes('Šifarnik mera (141)')) throw new Error('nema kartice u modalu');
+    if (!h.includes('id="sf_sifra"') || !h.includes('<th>Šifra</th>')) throw new Error('sifarnik bez sifre');
     a.run("toggleSifrarnik('sf-i-01')");   // akcija osvezava modal
     if (!a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('modal nestao posle akcije');
     for (const id of ['sf_naziv', 'sf_jm', 'sf_grupa', 'sf_modul', 'saveSifrarnik()']) if (!h.includes(id)) throw new Error('nema ' + id);
@@ -1900,14 +1907,15 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('rukovodilac: cita iz view-ova, ne trazi troskovi_st/situacije, bez ijednog iznosa u DATA', async () => {
     const a = await boot({ supabase: true, seed: await punSeed(), session: RUK_S, faults: { zdravlja: { g1: 61 } } });
     const sel = a.g.__mock._log.filter(l => l.op === 'select').map(l => l.table);
-    for (const t of ['gradilista_v', 'predmer_v', 'podizvodjaci_v']) if (!sel.includes(t)) throw new Error('nije citao ' + t + ' (citao: ' + [...new Set(sel)].join(',') + ')');
+    for (const t of ['gradilista_v', 'predmer_v', 'podizvodjaci_v', 'situacije_v']) if (!sel.includes(t)) throw new Error('nije citao ' + t + ' (citao: ' + [...new Set(sel)].join(',') + ')');
     for (const t of ['gradilista', 'predmer', 'podizvodjaci', 'troskovi_st', 'situacije']) if (sel.includes(t)) throw new Error('rukovodilac citao tabelu ' + t);
     const g = a.run("DATA.gradilista.find(g=>g.id==='g1')");
     if (!g) throw new Error('g1 nije ucitan');
     for (const k of ['budzet', 'troskovi', 'potroseno', 'naplaceno']) if (g[k] != null) throw new Error('gradiliste nosi ' + k + '=' + g[k]);
     if (a.run("DATA.predmer.some(x=>x.cena!=null)")) throw new Error('predmer nosi cenu');
     if (a.run("DATA.podizvodjaci.some(x=>x.cena!=null)")) throw new Error('podizvodjac nosi cenu');
-    if (a.run('DATA.troskovi_st.length') || a.run('DATA.situacije.length')) throw new Error('finansijske tabele nisu prazne');
+    if (a.run('DATA.troskovi_st.length')) throw new Error('troskovi_st nisu prazni');
+    if (a.run("DATA.situacije.some(x=>x.iznos!=null)")) throw new Error('situacije nose iznos bez finansija (migracija 19: situacije_v)');   // situacije se citaju (svoje), iznos = null
     if (a.run("zdravlje(grById['g1'])") !== 61) throw new Error('zdravlje(g1) = ' + a.run("zdravlje(grById['g1'])") + ', ocekivano 61 sa servera');
     if (a.run("JSON.stringify(ZDR_SRV)") !== '{"g1":61}') throw new Error('ZDR_SRV = ' + a.run('JSON.stringify(ZDR_SRV)'));
     const greske = a.run(`(()=>{ const out=[]; const p=(l,f)=>{ try{ f(); }catch(e){ out.push(l+': '+e.message); } };
@@ -3083,6 +3091,107 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
     const loši = a.run(`DATA.gradilista.filter(g=>Object.values(g.adm||{}).some(v=>typeof v!=='object'||v===null)).map(g=>g.id)`);
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
+  });
+
+  /* ---- T43 situacije sa stavkama + sifarnik artikala (migracija 19) ---- */
+  section('T43 situacije sa stavkama');
+  await acheck('ceklista: izabrani artikal → predmer red sa cenom i sifrom; dedupe po sifri; cena samo uz finansije', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite();");
+    const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
+    const k = a.run("sifrarnikZa('izvodjenje').findIndex(s=>s.sifra==='M029')"); if (k < 0) throw new Error('M029 nije u listi');
+    if (!html.includes(`id="f_sfc_${k}"`) || !html.includes('data-sifra="M029"')) throw new Error('red artikla bez cene/sifre');
+    doc.getElementById('f_sf_' + k).checked = true; doc.getElementById('f_sfk_' + k).value = '12'; doc.getElementById('f_sfc_' + k).value = '85.5';
+    const set = (id, v) => { doc.getElementById(id).value = v; };
+    set('f_naziv', 'T43 rasveta'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja'); set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', 'z1');
+    set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(90)')); set('f_cena', '100000'); set('f_tro', '80000');
+    a.run('saveSite()');
+    const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    const r = a.run(`predmerZa(${JSON.stringify(gid)}).find(x=>x.sifra==='M029')`);
+    if (!r || r.kol !== 12 || r.cena !== 85.5 || !/RC132V/.test(r.poz)) throw new Error('predmer red: ' + JSON.stringify(r));
+    a.run(`formIzSifarnika(${JSON.stringify(gid)})`);
+    doc.getElementById('f_sf_' + k).checked = true; doc.getElementById('f_sfk_' + k).value = '3';
+    a.run(`saveIzSifarnika(${JSON.stringify(gid)})`);
+    if (a.run(`predmerZa(${JSON.stringify(gid)}).filter(x=>x.sifra==='M029').length`) !== 1) throw new Error('dedupe po sifri ne radi');
+    a.run("setRole('z1'); formSite();");   // rukovodilac ne otvara formu; ali ceklista bez finansija nema polje cene
+    if (a.run("sifrarnikChecklist('izvodjenje')").includes('f_sfc_')) throw new Error('cena ponudjena bez finansija');
+    a.run("setRole('all')");
+  });
+  await acheck('rukovodilac BEZ finansija: formSituacija → stavke, iznos null, razlika za stavku van predmera; nijedan pogled bez NaN', async () => {
+    const s0 = await boot({ supabase: true, seed: {} });   // direktor zaseje demo; Petar (u-ruk, bez finansija) radi nad tim seed-om
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    const a = await boot({ supabase: true, seed, session: { user: { id: 'u-ruk', email: 'petar@test' } } });
+    if (a.run('canFinance()') || a.run('mode') !== 'supabase') throw new Error('priprema: Petar ima finansije / mode ' + a.run('mode'));
+    if (a.run("DATA.situacije.some(s=>s.iznos!=null)")) throw new Error('iznos stigao bez finansija: ' + JSON.stringify(a.run("DATA.situacije.filter(s=>s.iznos!=null).map(s=>s.id)")));
+    a.run("formSituacija('g2')"); if (a.g.document.getElementById('modal').innerHTML.includes('f_sbr')) throw new Error('otvorio tudje gradiliste');
+    a.run("formSituacija('g1')");
+    const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
+    if (!html.includes('id="f_svrsta"') || !html.includes('id="st_sf"')) throw new Error('forma nepotpuna');
+    doc.getElementById('f_sbr').value = 'PS-T43'; doc.getElementById('f_svrsta').value = 'okoncana'; doc.getElementById('f_sopis').value = 'proba';
+    doc.getElementById('st_sf').value = a.run("DATA.sifrarnik.find(s=>s.sifra==='M029').id");
+    a.run('dodajStavkuIzSifarnika()'); doc.getElementById('st_xk_0').value = '4';
+    const pre = a.g._calls.alert.length;
+    a.run("saveSituacija('g1')");
+    const s = a.run("DATA.situacije.find(x=>x.br==='PS-T43')");
+    if (!s || s.vrsta !== 'okoncana' || s.autor !== 'z1' || s.status !== 'ceka') throw new Error('situacija: ' + JSON.stringify(s));
+    const st = a.run(`stavkeZa(${JSON.stringify(s.id)})`);
+    if (st.length !== 1 || st[0].sifra !== 'M029' || st[0].kol !== 4 || st[0].kol_ugovoreno !== 0 || st[0].razlika !== 4) throw new Error('stavke: ' + JSON.stringify(st));
+    if (!a.g._calls.alert.slice(pre).some(m => /preko ugovorene/.test(m))) throw new Error('rukovodilac nije obavesten o razlici');
+    await a.run('doSave()'); for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    const row = a.g.__mock._db.situacije.find(x => x.br === 'PS-T43'), rows = a.g.__mock._db.situacija_stavke.filter(x => x.sit === s.id);
+    if (!row || rows.length !== 1 || rows[0].razlika !== 4) throw new Error('server: ' + JSON.stringify({ row, rows }));
+    if (a.g.__mock._log.some(l => l.op === 'upsert' && l.table === 'situacije' && l.cols && !l.cols.includes('iznos') && l.via !== 'update')) throw new Error('insert situacije bez iznos kolone (trigger je postavlja, ali red mora nositi 0)');
+    for (const v of ['dash', 'sites', 'time', 'tasks', 'diary']) { a.run(`current=${JSON.stringify(v)}; render();`); if (a.g.document.getElementById('view').innerHTML.includes('NaN')) throw new Error('NaN u pogledu ' + v); }
+    a.run("openSite('g1')");
+    const dr = a.g.document.getElementById('drawer').innerHTML;
+    if (!dr.includes('PS-T43') || !dr.includes("formSituacija('g1')") || !dr.includes('1 preko ugovora')) throw new Error('fioka bez situacije/razlike');
+    a.run(`detaljSituacije(${JSON.stringify(s.id)})`);
+    const dm = a.g.document.getElementById('modal').innerHTML;
+    if (!dm.includes('van predmera') || dm.includes('Jed. cena') || dm.includes('Ukupno:')) throw new Error('detalj za rukovodioca bez finansija pokazuje cene');
+  });
+  await acheck('uprava: kumulativ kroz situacije, razlika preko ugovorenog, iznos iz cena; upozorenje u computeAlerts; viewPay + detalj; brisanje nosi stavke', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; MODUL='sve'; PODTIP='sve';");
+    const st3 = a.run("DATA.situacija_stavke.find(x=>x.id==='st3')");
+    if (st3.kumulativ !== 190 || st3.razlika !== 10) throw new Error('demo stavke nisu po formuli: ' + JSON.stringify(st3));
+    a.run("preracunajSituacijeLokalno('g5')");
+    const s15 = a.run("DATA.situacije.find(x=>x.id==='s15')"), st5 = a.run("DATA.situacija_stavke.find(x=>x.id==='st5')");
+    if (s15.iznos !== 11420 || st5.razlika !== 12 || a.run("DATA.situacija_stavke.find(x=>x.id==='st3').kumulativ") !== 190) throw new Error('lokalna formula: ' + JSON.stringify({ s15, st5 }));
+    const al = a.run('computeAlerts()').filter(x => /preko ugovorene/.test(x.tekst));
+    if (!al.length || al[0].gr !== 'g5' || !/PS-02\/26/.test(al[0].tekst) || !/2 stavki/.test(al[0].tekst)) throw new Error('alert razlike: ' + JSON.stringify(al));
+    a.run("setRole('z7')");   // rukovodilac 2 bez finansija: razlika je fin alert — ne vidi je
+    if (a.run('computeAlerts()').some(x => /preko ugovorene/.test(x.tekst))) throw new Error('rukovodilac 2 vidi fin alert');
+    a.run("setRole('all'); current='pay'; render();");
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes("detaljSituacije('s15')") || !h.includes('2 preko ugovora') || !h.includes('Privremena')) throw new Error('viewPay bez razlike/vrste');
+    a.run("detaljSituacije('s15')");
+    const dm = a.g.document.getElementById('modal').innerHTML;
+    for (const x of ['Jed. cena', 'Ukupno:', 'van predmera', '+10', '+12']) if (!dm.includes(x)) throw new Error('detalj nema ' + x);
+    // nova situacija kroz formu: pm1 jos 5 → kumulativ 195, razlika 15; iznos 5*22
+    a.run("formSituacija('g5')");
+    const doc = a.g.document; doc.getElementById('f_sbr').value = 'PS-T43B'; doc.getElementById('st_k_pm1').value = '5';
+    a.run("saveSituacija('g5')");
+    const nova = a.run("DATA.situacije.find(x=>x.br==='PS-T43B')"), ns = a.run(`stavkeZa(${JSON.stringify(a.run("DATA.situacije.find(x=>x.br==='PS-T43B').id"))})`);
+    if (!nova || nova.iznos !== 110 || nova.autor !== 'direkcija' || ns.length !== 1 || ns[0].kumulativ !== 195 || ns[0].razlika !== 15) throw new Error('nova: ' + JSON.stringify({ nova, ns }));
+    // brisanje situacije nosi i stavke
+    a.g._calls.confirm.length = 0;
+    const before = a.run('DATA.situacija_stavke.length');
+    await a.run(`obrisiSituaciju(${JSON.stringify(nova.id)})`);
+    if (a.run("DATA.situacije.some(x=>x.br==='PS-T43B')") || a.run('DATA.situacija_stavke.length') !== before - 1) throw new Error('brisanje nije nosilo stavke');
+    if (a.run("DATA.situacija_stavke.find(x=>x.id==='st3').kumulativ") !== 190) throw new Error('kumulativ nije preracunat posle brisanja');
+    // mock trigger: server strana (seed) daje iste brojeve
+    const b = await boot({ supabase: true, seed: {} });
+    const srv = b.g.__mock._db.situacija_stavke.find(x => x.id === 'st5');
+    if (!srv || srv.razlika !== 12 || b.g.__mock._db.situacije.find(x => x.id === 's15').iznos !== 11420) throw new Error('mock preracun: ' + JSON.stringify(srv));
+  });
+  await acheck('obrisi_gradiliste cisti i stavke (lokalno + mock); radnik/spoljni/tudj rukovodilac: formSituacija no-op', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    a.g._calls.confirm.length = 0;
+    await a.run("obrisiGradiliste('g5')"); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    if (a.run("DATA.situacija_stavke.some(x=>x.gr==='g5')") || a.g.__mock._db.situacija_stavke.some(x => x.gr === 'g5')) throw new Error('stavke g5 ostale');
+    const c = await boot();
+    for (const r of ["radnik:z2", "z3"]) { c.run(`setRole(${JSON.stringify(r)}); formSituacija('g1');`); if (c.g.document.getElementById('modal').innerHTML.includes('f_sbr')) throw new Error(r + ' otvorio situaciju na g1'); }
+    c.run("setRole('all')");
   });
 
   /* ---- T42 modul po nalogu (migracija 18) ---- */

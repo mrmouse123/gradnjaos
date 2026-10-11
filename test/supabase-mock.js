@@ -27,8 +27,8 @@ function clone(x){ return JSON.parse(JSON.stringify(x)); }
 const DATE_COLS = new Set(['pocetak', 'rok', 'datum', 'izdato', 'valuta', 'istice']);
 
 /* view -> osnovna tabela; kolone koje view NULL-uje ne-direktoru */
-const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci', dokumenti_v: 'dokumenti' };
-const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'] };
+const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci', dokumenti_v: 'dokumenti', situacije_v: 'situacije' };
+const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'], situacije: ['iznos'] };
 const SKRIVENE_KOLONE = { dokumenti: ['data'] };   // migracija 14: dokumenti.data nema SELECT grant — view ga nema ni za koga
 
 /* Primarni ključ po tabeli — join tabele i profili nemaju `id`. */
@@ -40,6 +40,26 @@ function osveziNapredakMock(db, gr){
   const ugV = l.reduce((s, r) => s + kol(r) * cena(r), 0), ugK = l.reduce((s, r) => s + kol(r), 0);
   const n = ugV > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r) * cena(r), 0) / ugV + 0.5) : ugK > 0 ? Math.floor(100 * l.reduce((s, r) => s + izv(r), 0) / ugK + 0.5) : 0;
   const g = db.gradilista.find(x => x.id === gr); if (g) g.napredak = Math.max(0, Math.min(100, n));
+}
+/* Migracija 19: preracunaj_situacije — kol_ugovoreno iz predmera, kumulativ po artiklu kroz situacije (izdato, id, id stavke),
+   razlika = max(0, kumulativ - ugovoreno), situacije.iznos = Σ kol × predmer.cena (samo situacije koje imaju stavke). */
+function preracunSituacijeMock(db, gr){
+  if (!gr) return;
+  const sits = (db.situacije || []).filter(x => x.gr === gr).sort((a, b) => String(a.izdato).localeCompare(String(b.izdato)) || String(a.id).localeCompare(String(b.id)));
+  const pm = {}; (db.predmer || []).filter(p => p.gr === gr).forEach(p => pm[p.id] = p);
+  const kum = {};
+  sits.forEach(s => {
+    const st = (db.situacija_stavke || []).filter(x => x.sit === s.id).sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    let iznos = 0;
+    st.forEach(x => {
+      const p = x.predmer_id ? pm[x.predmer_id] : null;
+      x.kol_ugovoreno = p ? (+p.kol || 0) : 0;
+      const k = x.predmer_id || (x.sifra ? 'sifra:' + x.sifra : 'poz:' + String(x.poz || '').toLowerCase());
+      kum[k] = (kum[k] || 0) + (+x.kol || 0); x.kumulativ = kum[k]; x.razlika = Math.max(0, x.kumulativ - x.kol_ugovoreno);
+      iznos += (+x.kol || 0) * (p && p.cena != null ? +p.cena : 0);
+    });
+    if (st.length) s.iznos = Math.round(iznos * 100) / 100;
+  });
 }
 /* Migracija 15: trigger rad_minuta — minuta se racuna na serveru iz start/kraj (klijentov broj se ignorise). */
 function radMinutaMock(r){
@@ -151,6 +171,7 @@ class Query {
         if (i >= 0) this.db[t][i] = Object.assign({}, this.db[t][i], clone(r)); else this.db[t].push(clone(r));
         if (t === 'predmer') osveziNapredakMock(this.db, r.gr);
         if (t === 'rad_na_zadatku') radMinutaMock(this.db[t].find(x => x.id === r.id));
+        if (t === 'situacija_stavke' || t === 'situacije' || t === 'predmer') preracunSituacijeMock(this.db, r.gr);   // + trigger na predmer (kol/cena)
       }
       /* log_koriscenja je append-only i van PUSH_TABLES — loguje se kao op:'log' da testovi koji broje upserte ostanu tacni */
       this.log.push({ op: t === 'log_koriscenja' ? 'log' : 'upsert', table: t, n: this._rows.length, keys: this._rows.map(r => kljuc(t, r)), cols: Object.keys(this._rows[0] || {}) });
@@ -170,13 +191,17 @@ class Query {
       this.db[t] = this.db[t].map(r => { if (this._match(r)) { n++; return Object.assign({}, r, clone(this._patch)); } return r; });
       if (t === 'predmer') { const grs = new Set(this.db[t].filter(r => this._match(r)).map(r => r.gr)); grs.forEach(gr => osveziNapredakMock(this.db, gr)); }
       if (t === 'rad_na_zadatku') this.db[t].filter(r => this._match(r)).forEach(radMinutaMock);
+      if (t === 'situacija_stavke' || t === 'situacije' || t === 'predmer') new Set(this.db[t].filter(r => this._match(r)).map(r => r.gr)).forEach(gr => preracunSituacijeMock(this.db, gr));
       /* log kao 'upsert' da stariji testovi (koji broje upserte po tabeli) ostanu validni */
       this.log.push({ op: 'upsert', via: 'update', table: t, n, keys: n ? [kljuc(t, this._patch)] : [], cols: Object.keys(this._patch) });
       return { data: null, error: null };
     }
     if (this.op === 'delete') {
       const before = this.db[t].length;
+      const grs = (t === 'situacija_stavke' || t === 'situacije' || t === 'predmer') ? new Set(this.db[t].filter(r => this._match(r)).map(r => r.gr)) : null;
+      if (t === 'situacije') { const ids = new Set(this.db[t].filter(r => this._match(r)).map(r => r.id)); this.db.situacija_stavke = (this.db.situacija_stavke || []).filter(x => !ids.has(x.sit)); }   // on delete cascade
       this.db[t] = this.db[t].filter(r => !this._match(r));
+      if (grs) grs.forEach(gr => preracunSituacijeMock(this.db, gr));
       this.log.push({ op: 'delete', table: t, n: before - this.db[t].length });
       return { data: null, error: null };
     }
@@ -261,7 +286,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       if (name === 'obrisi_gradiliste') {   // migracija 14: super brise gradiliste i sve zavisne redove, upisuje log
         if (!ctx.isSuper()) return { data: null, error: { message: 'Samo direktor briše gradilišta.' } };
         const g = (db.gradilista || []).find(x => x.id === args.p_gid); if (!g) return { data: null, error: null };
-        ['zadaci', 'dnevnik', 'narudzbe', 'predmer', 'troskovi_st', 'situacije', 'mag_promene', 'dokumenti'].forEach(t => { if (db[t]) db[t] = db[t].filter(r => r.gr !== args.p_gid); });
+        ['zadaci', 'dnevnik', 'narudzbe', 'predmer', 'troskovi_st', 'situacija_stavke', 'situacije', 'mag_promene', 'dokumenti', 'rad_na_zadatku'].forEach(t => { if (db[t]) db[t] = db[t].filter(r => r.gr !== args.p_gid); });
         (db.resursi || []).forEach(r => { if (r.gr === args.p_gid) r.gr = null; });
         ['zaposleni_gradiliste', 'podizvodjac_gradiliste'].forEach(t => { if (db[t]) db[t] = db[t].filter(r => r.gradiliste_id !== args.p_gid); });
         db.gradilista = db.gradilista.filter(x => x.id !== args.p_gid);

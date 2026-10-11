@@ -1,3 +1,14 @@
+# Sifarnik artikala + situacije sa stavkama (2026-10-11)
+Trazeno: PDF „Sifarnik artikala" (ELOM, 78) + 3 dopune u sifarnik Izvodjenja; uprava iz cekliste bira
+materijale sa kolicinom i cenom; rukovodilac pravi privremenu/okoncanu situaciju iz istih stavki
+(+ usluge), kolicine mogu odstupati; razliku dobija uprava (dogovor sa investitorom).
+- [x] 1. Migracija 19 (sifra, situacije_v + FIN iznos, situacija_stavke, preracunaj_situacije, trigeri) — zivo, proverena SQL matricom (Petar/direktor/Milos)
+- [x] 2. Artikli: PDF → 81 red (prelomljeni redovi, zalepljene JM) → ARTIKLI_ELOM + seed
+- [x] 3. Klijent: ceklista (sifra, cena, filter), dodajIzSifarnika, predmer sifra, formSituacija/saveSituacija/detaljSituacije, fioka, Naplata, alert razlike, brisanje
+- [x] 4. Mock + T43, e2e 973/0
+- [ ] 5. Browser smoke (demo), docs, commit/push, Pages
+Odluke (reci Jovanu): predmer.izv se NE menja iz situacije; okoncana = samo oznaka; stavke van predmera nemaju cenu (0 u iznosu) dok ih uprava ne doda u predmer.
+
 # Modul po nalogu + 6 test-naloga + Admin kokpit bez sifarnika (2026-10-11)
 Trazeno: rukovodilac = projektovanje | izvodjenje | oba (+ finansije da/ne); radnik = tacno jedan modul
 (projektovanje: meri zadatke start/pauza/stop; izvodjenje: bez zadataka, podizvodjaci). 6 test-profila.

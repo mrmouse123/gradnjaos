@@ -98,7 +98,25 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..18.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..19.sql` redom.
+- **Šifarnik artikala + situacije sa stavkama** (2026-10-11, migracija 19): `sifrarnik.sifra` + 81
+  artikal „ELOM projekt" (`ARTIKLI_ELOM` u index.html = seed u migraciji, ISTI sadržaj; izvor PDF
+  „Sifarnik artikala" + 3 dopune 46/47/M029; `sf-a-NNN`, grupa „Artikli (ELOM)"); `predmer.sifra`
+  (snimak pri izboru; `dodajIzSifarnika` dedupe po šifri, čita i cenu `f_sfc_k` kad `canFinance()`);
+  ček-lista izvođenja ima filter (`filtrirajSifrarnik`, `.sf-red[data-txt]`). **Situacije:** `situacije`
+  je sada FIN tabela po obrascu predmera — `iznos` bez SELECT granta, klijent čita `situacije_v`
+  (`CASE vidi_finansije()`), `FIN_KOLONE.situacije=['iznos']`, NIJE više u `FIN_TABELE` (rukovodilac
+  bez finansija vidi svoje situacije sa `iznos=null` → svaka suma `(b.iznos||0)`). Kolone `vrsta`
+  (privremena|okoncana — samo oznaka), `autor`, `napomena`. `situacija_stavke(sit, gr, predmer_id, sifra,
+  poz, jm, kol, kol_ugovoreno, kumulativ, razlika)` BEZ cena; `TABLES` je ima POSLE `predmer` (FK).
+  Server `preracunaj_situacije(gid)` (definer): ugovoreno iz predmera, kumulativ po artiklu kroz situacije
+  (izdato, id), razlika = max(0, kumulativ−ugovoreno), iznos = Σ kol×cena (samo situacije sa stavkama);
+  trigeri na stavkama, situacije(izdato) i predmer(kol,cena), `pg_trigger_depth()` protiv rekurzije;
+  `zastiti_kolone_situacije` (ne-uprava ne dira iznos/status/gr/autor, depth>1 pušta server). Klijent
+  ISTO: `preracunajSituacijeLokalno` — formula na DVA mesta (+ mock `preracunSituacijeMock`), menjati sva tri.
+  UI: `formSituacija(gr)` (smemNa; predmer + „＋ iz šifarnika", `SIT_DODATNE` mapa, NE skriveni input),
+  `detaljSituacije`, fioka „Situacije", Naplata, `computeAlerts` fin-alert „preko ugovorene količine"
+  (= uprava „dobija razliku"). `predmer.izv` se iz situacije NE menja (pravilo 5). T43.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -199,6 +217,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `PUSHED` da ga diff ne šalje nazad). Ručni napredak samo bez predmera (`formUpdate`
    ga tada nudi, inače je samo prikaz). Formula na DVA mesta — menjati oba. T30.
    Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije).
+   Situacija (migracija 19) je dokument za naplatu: njene količine NE pišu `predmer.izv`.
 6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` NE SME
    dobiti `null` kao default — default na smislen datum (isti kao u formi). Jedini
    null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string
