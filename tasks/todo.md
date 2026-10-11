@@ -6,9 +6,9 @@ Iz Admin kokpita ukloniti sifarnik.
 - [x] 2. Klijent: MODULI/primeniUlogu/modulDozvoljen, visibleSites, modulSeg, tabDozvoljen(tasks), bnav, setRole |pro/|izv, roleOptions
 - [x] 3. Admin kokpit: moduli u formi i redovima, dodeliUlogu p_moduli, ulogaLabela; bez sifarnika → formSifrarnik modal iz Gradilista (uprava)
 - [x] 4. Mock + testovi (T42), e2e 968/0
-- [ ] 5. Podaci: trtr/test 1 → z17; z10 u tim g9 + 3 zadatka; 4 auth naloga (admin, nikola, sara, milos) + profili
-- [ ] 6. Ziva provera: curl login ×4, set local role matrica (ruk-pro, ruk-izv, radnik-pro, radnik-izv)
-- [ ] 7. Docs (CLAUDE.md pravilo 1, README), memorija (nalozi bez lozinki), commit/push
+- [x] 5. Podaci: trtr/test 1 → z17; z10 u tim g9 + 3 zadatka; 4 auth naloga (admin, nikola, sara, milos) + profili
+- [x] 6. Ziva provera (4× login OK; matrica: admin 12 gr, nikola 3 pro + budzeti, petar 2 izv bez budzeta, sara 2 gr + 3 svoja zadatka, milos 2 gr + 0 aktivnih): curl login ×4, set local role matrica (ruk-pro, ruk-izv, radnik-pro, radnik-izv)
+- [x] 7. Docs (CLAUDE.md pravilo 1, README), memorija (nalozi bez lozinki), commit/push
 Nije u opsegu (reci Jovanu): formTim filtriranje radnika po modulu (klijent ne vidi tudje profile).
 
 # Pregled izmena 2026-10-09/10 po skilovima (2026-10-10)
