@@ -212,7 +212,7 @@ brise (`drop function if exists`). Dokaz samo curl-om na /rest/v1/rpc sa pravim 
 apply_migration-om (on samo kompajlira). 2) `git checkout -- index.html` uz core.autocrlf=true
 vraca fajl kao CRLF i svaki sledeci patch sa `
 ` anchor-ima tiho promasi (count 0) — posle
-checkout-a OBAVEZNO normalizovati EOL (python replace) pre patch-a; `grep -c $''` u Git
+checkout-a OBAVEZNO normalizovati EOL (python replace) pre patch-a; `grep -c $'\r'` u Git
 Bash-u nije pouzdan, koristiti node/python.
 
 ## Lekcija 32 (2026-10-11, nova tabela sa FK + stub)
