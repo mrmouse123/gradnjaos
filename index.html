@@ -1151,7 +1151,7 @@ const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','
 function tabDozvoljen(id){
   if(vrstaUloge()==='uprava') return true;
   if(id==='pay') return canFinance();
-  if(id==='tasks' && vrstaUloge()==='radnik' && !MODULI.includes('projektovanje')) return false;   // radnik izvodjenja: bez zadataka (podizvodjaci), odluka 2026-10-11
+  if(id==='tasks' && !MODULI.includes('projektovanje')) return false;   // bez projektovanja nema zadataka (Izvodjenje: podizvodjaci), odluka 2026-10-11
   return TABOVI_OSTALI.includes(id);
 }
 /* Ime osobe po id-u: zaposleni ili spoljni saradnik (dnevnik.autor / zadaci.zad / dokumenti.autor). */
@@ -1236,11 +1236,14 @@ function visibleSiteIds(){ return new Set(visibleSites().map(g=>g.id)); }
 /* Zadaci po ulozi (odluka 2026-10-08): uprava sve (uz filter modula); rukovodilac sve zadatke svojih
    gradilista (i svojih radnika na njima); radnik/spoljni SAMO svoje zadatke na svojim gradilistima.
    Server isto (migracija 17: p_sel zadaci). */
+/* Zadaci postoje SAMO u Projektovanju (odluka 2026-10-11): na gradilistima Izvodjenja ih nema (radove nose podizvodjaci) —
+   ne prikazuju se, ne nude se u formi, ne ulaze u rokove/upozorenja. Stari redovi u bazi ostaju, samo su sakriveni. */
+function zadatakPro(t){ const g=grById[t.gr]; return !!g && jePro(g); }
 function zadaciVidljivi(){
   const v=vrstaUloge(), ids=visibleSiteIds();
-  if(v==='uprava') return DATA.zadaci.filter(t=>MODUL==='sve'||ids.has(t.gr));
-  if(v==='rukovodilac') return DATA.zadaci.filter(t=>ids.has(t.gr));
-  return DATA.zadaci.filter(t=>ids.has(t.gr) && t.zad===ROLE);
+  if(v==='uprava') return DATA.zadaci.filter(t=>zadatakPro(t)&&(MODUL==='sve'||ids.has(t.gr)));
+  if(v==='rukovodilac') return DATA.zadaci.filter(t=>zadatakPro(t)&&ids.has(t.gr));
+  return DATA.zadaci.filter(t=>zadatakPro(t)&&ids.has(t.gr) && t.zad===ROLE);
 }
 function isDirector(){ return ROLE==='all'; }
 /* Vlasnistvo gradilista: direktor sve, rukovodilac samo svoje.
@@ -1467,7 +1470,7 @@ function computeAlerts(){
     if(om<8 && g.status!=='zavrseno') out.push({sev:'red', gr:g.id, fin:true, tekst:'Ostvarena marža pala na '+String(om).replace('.',',')+'%', nas:g.naziv});
     else if(potroseno(g)>g.troskovi && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — ostvarena marža '+String(om).replace('.',',')+'% (plan '+String(pm).replace('.',',')+'%)', nas:g.naziv});
   });
-  DATA.zadaci.forEach(t=>{
+  zadaciVidljivi().forEach(t=>{
     if(t.kol==='done'||!ids.has(t.gr)) return;
     const diff=daysBetween(TODAY,dParse(t.rok));
     if(diff<0) out.push({sev:'red', gr:t.gr, tekst:'Zadatak „'+t.naziv+'" kasni '+Math.abs(diff)+' d', nas:grById[t.gr]?grById[t.gr].naziv:''});
@@ -1520,7 +1523,7 @@ function dashSorted(sites){
 function brzeAkcije(){
   return `<div class="qa">
     <button class="btn" onclick="formDiary()">＋ Dnevnik</button>
-    ${mogaDaUpravljam()?`<button class="btn ghost" onclick="formTask()">＋ Zadatak</button>
+    ${mogaDaUpravljam()?`${visibleSites().some(g=>jePro(g))?`<button class="btn ghost" onclick="formTask()">＋ Zadatak</button>`:''}
     <button class="btn ghost" onclick="formNarudzba()">＋ Trebovanje</button>`:''}
   </div>`;
 }
@@ -1565,7 +1568,7 @@ function viewDash(){
   // rokovi
   const dl = [];
   sites.forEach(g=>{ if(g.status!=='zavrseno') dl.push({naziv:g.naziv, meta:'Rok završetka projekta', datum:g.rok, tip:'projekat', gr:g.id}); });
-  DATA.zadaci.forEach(t=>{ if(t.kol!=='done' && ids.has(t.gr)) dl.push({naziv:t.naziv, meta:grById[t.gr].naziv, datum:t.rok, tip:'zadatak', gr:t.gr}); });
+  zadaciVidljivi().forEach(t=>{ if(t.kol!=='done' && ids.has(t.gr)) dl.push({naziv:t.naziv, meta:grById[t.gr].naziv, datum:t.rok, tip:'zadatak', gr:t.gr}); });
   dl.sort((a,b)=>dParse(a.datum)-dParse(b.datum));
   const dlHtml = dl.slice(0,6).map(d=>{
     const dd=dParse(d.datum); const diff=daysBetween(TODAY,dd);
@@ -2154,8 +2157,10 @@ function mogaTajmer(t){ return tajmerZa(t) && vidimGr(t.gr) && (t.zad===ROLE || 
 function pocniZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
   const osoba=osobaTajmera();
-  const otv=(DATA.rad_na_zadatku||[]).find(s=>s.osoba===osoba && !s.kraj);
-  if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak); alert('Već imaš započet zadatak: '+(ot?unesc(ot.naziv):otv.zadatak)+'. Prvo ga pauziraj ili završi.'); return; }
+  let otv=(DATA.rad_na_zadatku||[]).find(s=>s.osoba===osoba && !s.kraj);
+  if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak);
+    if(!ot || !zadatakPro(ot)){ zatvoriSesiju(otv); beleziLog('zadatak_pauza',{zadatak:otv.zadatak, naziv:ot?unesc(ot.naziv):otv.zadatak, gr:otv.gr, minuta:otv.minuta, auto:true}); otv=null; }   // zaglavljena sesija na zadatku koji vise nije vidljiv (Izvodjenje) — zatvori je umesto da blokira
+    else { alert('Već imaš započet zadatak: '+unesc(ot.naziv)+'. Prvo ga pauziraj ili završi.'); return; } }
   DATA.rad_na_zadatku.push({id:'rz'+Date.now(), zadatak:id, gr:t.gr, osoba, start:new Date().toISOString(), kraj:null, minuta:null, napomena:''});
   if(t.kol==='todo') t.kol='inprogress';
   beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr});
@@ -4205,7 +4210,8 @@ function saveSite(grId){
 
 function formTask(){
   const ids=visibleSiteIds();
-  const sites=DATA.gradilista.filter(g=>isDirector()||ids.has(g.id));
+  const sites=DATA.gradilista.filter(g=>jePro(g)&&(isDirector()||ids.has(g.id)));   // zadaci samo u Projektovanju
+  if(!sites.length){ alert('Zadaci postoje samo na gradilištima Projektovanja.'); return; }
   openModal(`
     <div class="m-h"><h3>Novi zadatak</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
@@ -4228,6 +4234,7 @@ function formTask(){
 function saveTask(){
   const v=id=>document.getElementById(id).value;
   if(!smemNa(v('f_tgr'))){ alert('Zadatke mozes da otvaras samo na svom gradilistu.'); return; }
+  if(!jePro(grById[v('f_tgr')])){ alert('Zadaci postoje samo na gradilištima Projektovanja.'); return; }
   const naziv=esc(v('f_tnaziv').trim()); if(!naziv){ alert('Unesi naziv zadatka.'); return; }
   const opisEl=document.getElementById('f_topis'); const opis=esc(String(opisEl?opisEl.value:'').trim());
   DATA.zadaci.push({ id:'t'+Date.now(), naziv, opis, gr:v('f_tgr'), zad:v('f_tzad'), prio:v('f_tprio'), kol:'todo', rok:v('f_trok')||plusDays(14) });
@@ -4336,7 +4343,6 @@ function openSite(id){
         <button class="btn ghost" style="flex:1" onclick="openIzvestaj('${id}')">Izveštaj za investitora</button>
       </div>
       <button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="formSite('${id}')">✎ Izmeni podatke</button>`:''}
-      ${isDirector()&&!jePro(g)&&!DATA.zadaci.some(t=>t.gr===id)?`<button class="btn ghost" style="width:100%;margin:-8px 0 16px" onclick="ubaciSablonFaza('${id}')">＋ Ubaci šablon faza (${PODTIPOVI[g.tip||'visokogradnja']})</button>`:''}
       <div class="dr-stats">
         <div class="dr-stat"><div class="l">Zdravlje projekta</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:6px"${zdravlje(g)==null?` title="${ZDR_NEMA}"`:''}>${ringSvg(zdravlje(g),40)}<span class="v num" style="color:${zdrBoja(zdravlje(g))}">${zdrTekst(zdravlje(g))}<span style="font-size:12px;color:var(--faint)">/100</span></span></div>
@@ -4421,10 +4427,10 @@ function openSite(id){
         ${dokumentiZa(id).map(d=>`<div class="dr-kv"><span class="k">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span><div class="sub" style="font-size:11.5px">${fmtDate(d.datum)} · ${osobaIme(d.autor)}${d.velicina?' · '+Math.round(d.velicina/1024)+' KB':''}${d.opis?' · '+d.opis:''}</div></span><span class="v">${smemObrisatiDokument(d)?`<span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</span></div>`).join('')}
         ${vidimGr(id)?`<div style="margin-top:8px"><button class="btn ghost" onclick="uploadDokument('${id}')">⬆ Dodaj dokument / fotografiju</button></div>`:''}
       </div>
-      <div class="dr-sec">
+      ${jePro(g)?`<div class="dr-sec">
         <h4>Zadaci (${zad.length})</h4>
         ${zadHtml}
-      </div>
+      </div>`:''}
       ${jeSuper()?`<div class="dr-sec"><button class="btn ghost" style="color:var(--red)" onclick="obrisiGradiliste('${id}')">Obriši gradilište</button></div>`:''}
     </div>`;
   document.getElementById('drawer').classList.add('on');

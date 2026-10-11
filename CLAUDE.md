@@ -218,6 +218,14 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    ga tada nudi, inače je samo prikaz). Formula na DVA mesta — menjati oba. T30.
    Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije).
    Situacija (migracija 19) je dokument za naplatu: njene količine NE pišu `predmer.izv`.
+   **Zadaci postoje SAMO u Projektovanju (odluka 2026-10-11):** `zadatakPro(t)` = `jePro(grById[t.gr])`
+   je prvi filter u `zadaciVidljivi()` (Kanban, brojač, fioka, rokovi na tabli, upozorenja), `formTask`
+   nudi samo projektantska gradilišta (`saveTask` guard), fioka Izvođenja nema sekciju Zadaci ni dugme
+   šablona faza (`ubaciSablonFaza` više nije u UI; `SABLONI_FAZA` ostaje za `fazeZa()`), „＋ Zadatak"
+   u brzim akcijama samo ako ima vidljivo projektantsko gradilište, `tabDozvoljen('tasks')` = false za
+   svakog ne-upravu bez modula projektovanje. Stari zadaci Izvođenja u bazi ostaju, sakriveni.
+   Zaglavljenu sesiju tajmera na takvom zadatku `pocniZadatak` sam zatvori (log `zadatak_pauza`
+   sa `auto:true`) umesto da blokira. T36 0.
 6. Datum polje koje se svuda čita kao `dParse(x.rok)`/`daysBetween(...)` NE SME
    dobiti `null` kao default — default na smislen datum (isti kao u formi). Jedini
    null-safe datum je `resursi.istice` (`resIstice()` sentinel). Prazan string

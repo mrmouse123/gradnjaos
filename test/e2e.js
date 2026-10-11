@@ -479,18 +479,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run(`pocniZadatak(${q36(izv.id)})`);
     if (a.run('DATA.rad_na_zadatku.length') !== 0) throw new Error('pocniZadatak je otvorio sesiju na Izvodjenju');
     if (a.run(`DATA.zadaci.find(t=>t.id===${q36(izv.id)}).kol`) !== izv.kol) throw new Error('kol promenjen');
-    // nasledjena (zaglavljena) sesija na Izvodjenju: Zavrsi je i dalje no-op, ali SVOJA sesija mora moci da se zaustavi — inace blokira svaki novi start
+    // nasledjena (zaglavljena) sesija na zadatku Izvodjenja (vise se ne prikazuje, odluka 2026-10-11): Zavrsi no-op,
+    // a pocniZadatak na zadatku Projektovanja je automatski ZATVARA umesto da blokira
     a.run(`DATA.rad_na_zadatku.push({id:'rzx',zadatak:${q36(izv.id)},gr:${q36(izv.gr)},osoba:'uprava',start:new Date().toISOString(),kraj:null,minuta:null,napomena:''});`);
     a.run(`zavrsiZadatak(${q36(izv.id)})`);
     if (a.run("DATA.rad_na_zadatku[0].kraj") !== null || a.run(`DATA.zadaci.find(t=>t.id===${q36(izv.id)}).kol`) === 'done') throw new Error('zavrsi dirao sesiju/kol na Izvodjenju');
     a.run("current='tasks'; render();");
     let hz = a.g.document.getElementById('view').innerHTML;
-    if (hz.includes(`zavrsiZadatak('${izv.id}')`)) throw new Error('Zavrsi na zadatku Izvodjenja');
-    if (!hz.includes(`pauzirajZadatak('${izv.id}')`) || !hz.includes('Zaustavi tajmer')) throw new Error('zaglavljena sesija na Izvodjenju nema dugme za zaustavljanje');
-    a.run(`pauzirajZadatak(${q36(izv.id)})`);
-    if (a.run("DATA.rad_na_zadatku[0].kraj") === null) throw new Error('pauza nije zatvorila zaglavljenu sesiju');
+    if (hz.includes(`obrisiZadatak('${izv.id}')`) || hz.includes(`openSite('${izv.gr}')`)) throw new Error('zadatak Izvodjenja se prikazuje u Kanbanu');
+    const n0 = a.g._calls.alert.length;
+    a.run(`pocniZadatak(${q36(pro.id)})`);
+    if (a.g._calls.alert.length !== n0) throw new Error('zaglavljena sesija na Izvodjenju blokirala start: ' + a.g._calls.alert[n0]);
+    if (a.run("DATA.rad_na_zadatku.find(s=>s.id==='rzx').kraj") === null) throw new Error('zaglavljena sesija nije zatvorena');
+    if (!a.run(`DATA.rad_na_zadatku.some(s=>s.zadatak===${q36(pro.id)}&&!s.kraj)`)) throw new Error('nova sesija nije otvorena');
+    a.run(`pauzirajZadatak(${q36(pro.id)})`);
     a.run("current='tasks'; render();");
-    if (a.g.document.getElementById('view').innerHTML.includes(`pauzirajZadatak('${izv.id}')`)) throw new Error('dugme ostalo posle zatvaranja');
     a.run("DATA.rad_na_zadatku[0].minuta=15");   // sa 0 minuta info-linija je prazna i bez guarda — zato pozitivna vrednost
     if (a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id===${q36(izv.id)}))`) !== '') throw new Error('zatvorena sesija na Izvodjenju curi kao info-linija (⏱ ukupno 15 min)');
   });
@@ -653,11 +656,12 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   section('T38 vidljivost zadataka');
   await acheck('zadaciVidljivi: direktor sve; rukovodilac sve na svojim gradilistima; radnik/spoljni samo svoje; tab brojac, kanban i fioka isto', async () => {
     const a = await boot();
-    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
-    const gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x])`);
+    const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).some(x=>grById[x]&&jePro(grById[x])))||{}).id");
+    const gid = a.run(`zapById[${JSON.stringify(zid)}].grs.find(x=>grById[x]&&jePro(grById[x]))`);   // zadaci samo u Projektovanju
     a.run(`DATA.zadaci.push({id:'t38a',naziv:'moj T38',gr:${JSON.stringify(gid)},zad:${JSON.stringify(zid)},prio:'mid',kol:'todo',rok:todayStr()},{id:'t38b',naziv:'tudji T38',gr:${JSON.stringify(gid)},zad:'z1',prio:'mid',kol:'todo',rok:todayStr()});`);
     a.run("setRole('all'); MODUL='sve';");
-    if (a.run('zadaciVidljivi().length') !== a.run('DATA.zadaci.length')) throw new Error('direktor ne vidi sve zadatke');
+    if (a.run('zadaciVidljivi().length') !== a.run('DATA.zadaci.filter(zadatakPro).length')) throw new Error('direktor ne vidi sve zadatke Projektovanja');
+    if (a.run('zadaciVidljivi().some(t=>!zadatakPro(t))')) throw new Error('direktor vidi zadatke Izvodjenja');
     const ruk = a.run(`grById[${JSON.stringify(gid)}].rukovodilac`);
     a.run(`setRole(${JSON.stringify(ruk)})`);
     const rv = a.run('zadaciVidljivi().map(t=>t.id)');
@@ -685,7 +689,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("ROLE='all'; formTask();");
     const doc = a.g.document;
     if (!doc.getElementById('modal').innerHTML.includes('id="f_topis"')) throw new Error('forma nema polje opis');
-    const gid = a.run('DATA.gradilista[0].id');
+    const gid = a.run('DATA.gradilista.find(g=>jePro(g)).id');
+    if (doc.getElementById('modal').innerHTML.includes(`value="${a.run('DATA.gradilista.find(g=>!jePro(g)).id')}"`)) throw new Error('forma nudi gradiliste Izvodjenja');
     doc.getElementById('f_tnaziv').value = 'Zadatak T37'; doc.getElementById('f_topis').value = 'Opis <b> & detalji'; doc.getElementById('f_tgr').value = gid;
     doc.getElementById('f_tzad').value = 'z1'; doc.getElementById('f_tprio').value = 'mid'; doc.getElementById('f_trok').value = '';
     a.run('saveTask()');
@@ -1434,11 +1439,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
   await acheck('brze akcije na tabli: Dnevnik/Zadatak/Trebovanje postoje i zovu postojece forme (obe uloge)', async () => {
     const a = await boot();
-    for (const role of ['all', 'z1']) {
+    const rukPro = a.run("DATA.gradilista.find(g=>jePro(g)&&g.rukovodilac).rukovodilac");
+    for (const role of ['all', rukPro, 'z1']) {
       a.run(`ROLE=${JSON.stringify(role)}; current='dash'; renderNav(); render();`);
       const h = a.g.document.getElementById('view').innerHTML;
       const qa = (h.match(/<div class="qa">[\s\S]*?<\/div>/) || [''])[0];
       if (!qa) throw new Error(role + ': nema .qa bloka');
+      if (role === 'z1') { if (qa.includes('formTask()')) throw new Error('rukovodilac samo Izvodjenja ima + Zadatak'); if (!qa.includes('formNarudzba()')) throw new Error('z1 nema trebovanje'); continue; }
       for (const f of ['formDiary()', 'formTask()', 'formNarudzba()']) {
         if (!qa.includes(`onclick="${f}"`)) throw new Error(role + ': nema akcije ' + f);
         if (typeof a.run(f.replace('()', '')) !== 'function') throw new Error(f + ' ne postoji');
@@ -2706,7 +2713,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (postZ !== preZ) throw new Error('kreiranje je dodalo ' + (postZ - preZ) + ' zadataka — ne sme (odluka 2026-10-09)');
     const gid = app.run('DATA.gradilista[DATA.gradilista.length-1].id');
     app.run(`openSite(${JSON.stringify(gid)})`);
-    if (!app.g.document.getElementById('drawer').innerHTML.includes(`ubaciSablonFaza('${gid}')`)) throw new Error('fioka nema opciono dugme za sablon');
+    const dr = app.g.document.getElementById('drawer').innerHTML;
+    if (dr.includes('ubaciSablonFaza') || dr.includes('<h4>Zadaci')) throw new Error('fioka Izvodjenja i dalje nudi zadatke / sablon (uklonjeno 2026-10-11)');
   });
 
 
