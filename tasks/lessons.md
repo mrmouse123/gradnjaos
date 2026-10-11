@@ -204,3 +204,14 @@ koja sakrije dugme, nasledjeni redovi) — review je nasao dva takva puta koje t
 pokrivali. Mutacioni test (worker u worktree-u: pokvari funkciju → test MORA pasti) je jeftin
 i otkrio je 2/10 "lazno zelenih" asercija.
 
+## Lekcija 31 (2026-10-11, RPC overload + autocrlf)
+1) Postgres/PostgREST overload: funkcija sa N argumenata + ista sa N+1 (poslednji ima DEFAULT)
+= poziv sa N argumenata je DVOSMISLEN (PGRST203 / "function is not unique"). "Omotac radi
+kompatibilnosti" je zato stetan — nova signatura sa default-om je vec kompatibilna; stara se
+brise (`drop function if exists`). Dokaz samo curl-om na /rest/v1/rpc sa pravim tokenom, ne
+apply_migration-om (on samo kompajlira). 2) `git checkout -- index.html` uz core.autocrlf=true
+vraca fajl kao CRLF i svaki sledeci patch sa `
+` anchor-ima tiho promasi (count 0) — posle
+checkout-a OBAVEZNO normalizovati EOL (python replace) pre patch-a; `grep -c $''` u Git
+Bash-u nije pouzdan, koristiti node/python.
+

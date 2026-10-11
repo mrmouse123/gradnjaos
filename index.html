@@ -4351,7 +4351,7 @@ function renderNalog(){
   const box=document.getElementById('roleBox'); if(!box) return;
   if(!PROFIL){ box.innerHTML='<label>Prijavljen kao</label><select id="roleSel" onchange="setRole(this.value)"></select>'; return; }
   const dir=PROFIL.uloga==='direktor'||PROFIL.uloga==='admin';
-  box.innerHTML='<label>Nalog</label><div class="acc"><b>'+esc(PROFIL.ime||'')+'</b><small>'+esc((SESIJA&&SESIJA.user&&SESIJA.user.email)||'')+' · '+ulogaLabela(PROFIL.uloga, PROFIL.vidi_finansije)+'</small></div>'
+  box.innerHTML='<label>Nalog</label><div class="acc"><b>'+esc(PROFIL.ime||'')+'</b><small>'+esc((SESIJA&&SESIJA.user&&SESIJA.user.email)||'')+' · '+ulogaLabela(PROFIL.uloga, PROFIL.vidi_finansije, PROFIL.moduli)+'</small></div>'
     +(dir?'<label style="margin-top:10px">Pogled kao</label><select id="roleSel" onchange="setRole(this.value)"></select>':'')
     +'<div class="acc-btns"><button onclick="promeniLozinku()">Lozinka</button><button onclick="odjava()">Odjavi se</button></div>';
 }

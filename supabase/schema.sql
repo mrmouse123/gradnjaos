@@ -1170,11 +1170,6 @@ begin
 end $$;
 revoke execute on function dodeli_ulogu(text, text, text, boolean, text, text[]) from public, anon;
 grant  execute on function dodeli_ulogu(text, text, text, boolean, text, text[]) to authenticated;
--- stara 5-arg signatura = omotac (klijent pre ove verzije), bez modula → oba
-create or replace function dodeli_ulogu(p_email text, p_uloga text, p_zaposleni_id text default null,
-                                        p_vidi_finansije boolean default false, p_saradnik_id text default null)
-returns text language sql security definer set search_path = public, auth as $$
-  select dodeli_ulogu(p_email, p_uloga, p_zaposleni_id, p_vidi_finansije, p_saradnik_id, null::text[]);
-$$;
-revoke execute on function dodeli_ulogu(text, text, text, boolean, text) from public, anon;
-grant  execute on function dodeli_ulogu(text, text, text, boolean, text) to authenticated;
+-- NEMA 5-arg omotaca: PostgREST ne moze da izabere izmedju 5-arg i 6-arg (sa default-om) → PGRST203
+-- (provereno 2026-10-11 curl-om). 6-arg sa `p_moduli default null` je sama po sebi unazad kompatibilna.
+drop function if exists dodeli_ulogu(text, text, text, boolean, text);

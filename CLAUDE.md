@@ -165,7 +165,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    **Modul po nalogu (od 2026-10-11, migracija 18):** `profili.moduli text[]` ⊆ {projektovanje,
    izvodjenje}; rukovodilac 1–2, radnik TAČNO 1, uprava/spoljni oba. Server: `modul_dozvoljen(gid)`
    je unutar ne-uprava grana `vodim_gradiliste`/`moje_gradiliste` (sve polise/RPC-ovi nasleđuju);
-   `dodeli_ulogu` 6-arg (+`p_moduli`; 5-arg omotač ostaje). Klijent: `MODULI` (`primeniUlogu` 4.
+   `dodeli_ulogu` 6-arg (+`p_moduli`); 5-arg je OBRISANA — omotač uz 6-arg sa default-om daje
+   PGRST203 „could not choose the best candidate" za svaki poziv bez `p_moduli` (lekcija 31). Klijent: `MODULI` (`primeniUlogu` 4.
    arg, `initAuth` iz `prof.moduli`), `modulDozvoljen(m)`, `visibleSites` filtrira po modulu,
    `modulSeg()` nudi samo dozvoljene (jedan modul = bez segmenta, `MODUL='sve'`),
    `tabDozvoljen('tasks')` = false za radnika bez projektovanja (bnav tada nudi Rokove), Admin
