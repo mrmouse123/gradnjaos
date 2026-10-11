@@ -1200,18 +1200,19 @@ function moduliOsobe(z, ruk){
   const m=[...new Set(gs.map(g=>g.modul||'izvodjenje'))];
   return m.length===1 ? (m[0]==='projektovanje'?'|pro':'|izv') : '';
 }
+/* "Pogled kao" = 6 test-profila (zahtev 2026-10-11), isti ljudi kao pravi nalozi u bazi; osoba koje nema u DATA se preskace.
+   Trenutna vrednost (npr. iz testova) ostaje u listi da select ne "iskoci". */
+const POGLED_KAO=[
+  ['all','Direktor — sve'], ['admin','Admin — sve, bez brisanja'],
+  ['z17:fin|pro','Rukovodilac · projektovanje (Nikola, sa finansijama)'], ['z1|izv','Rukovodilac · izvođenje (Petar, bez finansija)'],
+  ['radnik:z10|pro','Radnik · projektovanje (Sara)'], ['radnik:z15|izv','Radnik · izvođenje (Miloš)'],
+];
 function roleOptions(){
-  const vodji=new Set(DATA.gradilista.map(g=>g.rukovodilac));
-  const ruks = DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||vodji.has(z.id));
-  const radnici = DATA.zaposleni.filter(z=>!vodji.has(z.id)).slice(0,6);
-  const sar = (DATA.podizvodjaci||[]).filter(p=>(p.grs||[]).length).slice(0,4);
   const cur=roleValue(), o=(v,t)=>`<option value="${v}" ${cur===v?'selected':''}>${t}</option>`;
-  const ml=suf=>suf==='|pro'?' · projektovanje':suf==='|izv'?' · izvođenje':'';
-  return o('all','Direktor — sve') + o('admin','Admin — sve, bez brisanja')
-    + ruks.map(z=>{ const m=moduliOsobe(z,true); return o(z.id+':fin'+m, z.ime+' — rukovodilac 1 (finansije)'+ml(m)); }).join('')
-    + ruks.map(z=>{ const m=moduliOsobe(z,true); return o(z.id+m, z.ime+' — rukovodilac 2'+ml(m)); }).join('')
-    + radnici.map(z=>{ const m=moduliOsobe(z,false)||'|izv'; return o('radnik:'+z.id+m, z.ime+' — radnik'+ml(m)); }).join('')
-    + sar.map(p=>o('spoljni:'+p.id, p.naziv+' — spoljni saradnik')).join('');
+  const osoba=v=>{ const m=v.match(/^(?:radnik:|spoljni:)?([a-z]+\d+)/); return m?m[1]:null; };
+  const lista=POGLED_KAO.filter(([v])=>{ const id=osoba(v); return !id || zapById[id] || (DATA.podizvodjaci||[]).some(p=>p.id===id); });
+  if(!lista.some(([v])=>v===cur)) lista.push([cur, 'Trenutni pogled ('+cur+')']);
+  return lista.map(([v,t])=>o(v,t)).join('');
 }
 function visibleSites(){
   const v=vrstaUloge();

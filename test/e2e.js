@@ -3132,10 +3132,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run('roleValue()') !== `radnik:${rz}|izv`) throw new Error('radnik round-trip: ' + a.run('roleValue()'));
     a.run("setRole('all')");
     const ro = a.run('roleOptions()');
-    const pro = a.run("DATA.gradilista.find(g=>jePro(g)&&g.rukovodilac)");
-    if (pro && a.run(`DATA.gradilista.every(g=>g.rukovodilac!==${JSON.stringify(pro.rukovodilac)}||jePro(g))`) && !ro.includes(`value="${pro.rukovodilac}|pro"`)) throw new Error('roleOptions: rukovodilac samo projektovanja nema |pro');
-    if (!/value="radnik:z\d+\|(pro|izv)"/.test(ro)) throw new Error('roleOptions: radnici bez modula');
-    if (!ro.includes('· projektovanje') && !ro.includes('· izvođenje')) throw new Error('roleOptions bez labele modula');
+    const vals = [...ro.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
+    const ocek = ['all', 'admin', 'z17:fin|pro', 'z1|izv', 'radnik:z10|pro', 'radnik:z15|izv'];   // 6 test-profila (2026-10-11)
+    if (JSON.stringify(vals) !== JSON.stringify(ocek)) throw new Error('Pogled kao != 6 profila: ' + JSON.stringify(vals));
+    if ((ro.match(/<option/g) || []).length !== 6) throw new Error('vise od 6 opcija');
+    if (!ro.includes('selected')) throw new Error('trenutni pogled nije selektovan');
+    a.run("setRole('z3')");   // pogled koji nije u listi ostaje vidljiv kao 7. opcija
+    const ro2 = a.run('roleOptions()');
+    if (!/value="z3" selected/.test(ro2) || (ro2.match(/<option/g) || []).length !== 7) throw new Error('trenutni pogled van liste nije dodat');
+    a.run("DATA.zaposleni=DATA.zaposleni.filter(z=>z.id!=='z15'); rebuildMaps(); setRole('all');");   // osoba koje nema → opcija se preskace
+    if (a.run('roleOptions()').includes('radnik:z15')) throw new Error('opcija za nepostojecu osobu');
   });
   await acheck('ulogaLabela + viewNalozi: moduli u redu i formi; mock odbija radnika sa 2 modula, uprava/spoljni uvek oba', async () => {
     const a = await boot({ supabase: true, seed: {} });
