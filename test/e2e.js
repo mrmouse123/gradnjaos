@@ -3148,6 +3148,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
       // PPS nema list Masinske instalacije (20 pozicija) → ocekujemo svih 67 ostalih, bez ijednog nepovezanog
       if (rz.spojeni.length !== 67 || rz.nepovezani.length !== 0) throw new Error('prava PPS: prepoznato ' + rz.spojeni.length + ' (ocekujem 67 — bez masinskih), nepovezano ' + rz.nepovezani.length + ': ' + rz.nepovezani.slice(0, 5).join(' | '));
       console.log('      (prava PPS: ' + rz.spojeni.length + '/87 prepoznato, ' + rz.spojeni.filter(x => x.ova > 0).length + ' sa kolicinom, nepovezano ' + rz.nepovezani.length + ')');
+      const ok = pps.replace('pps.xlsx', 'okoncana.xlsx');
+      if (fs.existsSync(ok)) {   // okoncana: + kolone „izvedeno u prethodnim" / „u ovoj situaciji" — kumulativ ostaje merodavan
+        const b3 = fs.readFileSync(ok); a.g.__buf3 = b3.buffer.slice(b3.byteOffset, b3.byteOffset + b3.byteLength);
+        const red3 = await a.run('citajXlsx(__buf3, true)');
+        const rz3 = a.run(`upariSituaciju('g-osdr', ${JSON.stringify(red3)})`);
+        if (rz3.spojeni.length !== 67 || rz3.nepovezani.length !== 0) throw new Error('okoncana: prepoznato ' + rz3.spojeni.length + ', nepovezano ' + rz3.nepovezani.length + ': ' + rz3.nepovezani.slice(0, 5).join(' | '));
+        const kab = rz3.spojeni.find(x => /N2XH-J 3x1\.5/.test(x.x.poz));
+        if (!kab || kab.kum !== 1905 || kab.kum <= kab.x.kol) throw new Error('okoncana kabl 3x1.5: ' + JSON.stringify(kab && { kum: kab.kum, kol: kab.x.kol }));
+        console.log('      (prava okoncana: ' + rz3.spojeni.length + ' prepoznato, ' + rz3.spojeni.filter(x => x.kum > (+x.x.kol || 0)).length + ' preko ugovorene kolicine)');
+      }
     }
   });
 
