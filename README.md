@@ -15,7 +15,7 @@ Otvori `index.html` u pretraživaču. Ako su `SUPABASE_URL`/`SUPABASE_ANON_KEY` 
 ### Dodavanje korisnika (radi direktor, ~1 minut)
 
 1. Supabase dashboard → **Authentication → Users → Add user** → email + lozinka, uključi *Auto Confirm User*.
-2. U aplikaciji, tab **Nalozi i log** (vidi ga samo direktor): upiši email, izaberi ulogu (rukovodilac → i zaposlenog), **Dodeli ulogu**. Nalog se pojavljuje u listi; dok nema ulogu, označen je „bez uloge".
+2. U aplikaciji, tab **Admin kokpit** (uprava): upiši email, izaberi ulogu (rukovodilac/radnik → i zaposlenog), modul (rukovodilac: projektovanje, izvođenje ili oba; radnik: tačno jedan), za rukovodioca po potrebi „vidi finansije", **Dodeli ulogu**. Nalog se pojavljuje u listi; dok nema ulogu, označen je „bez uloge".
 3. Korisnik se prijavljuje lozinkom koju si mu dao (menja je dugmetom **Lozinka**). Bez dodeljene uloge nalog vidi nula podataka i dobija jasnu poruku.
 
 U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje, vidi ništa), a ispod je **log korišćenja**: prijave, odjave, otvaranja (uređaj, verzija), čuvanja (koje tabele, koliko redova), promene uloga. Sopstvenu ulogu direktor ne može da menja, a poslednji direktor se ne može skinuti. SQL alternativa i dalje postoji: `select povezi_profil('mejl','rukovodilac','z1');` u SQL editoru.
@@ -24,15 +24,16 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 
 | | Direktor (IT super admin) | Admin | Rukovodilac 1 | Rukovodilac 2 | Radnik / Spoljni saradnik |
 |---|---|---|---|---|---|
-| vidi gradilišta | sva | sva | samo svoja | samo svoja | samo ona gde je u timu / na kojima je saradnik |
+| vidi gradilišta | sva | sva | samo svoja, u svom modulu (projektovanje, izvođenje ili oba) | isto | samo ona gde je u timu / na kojima je saradnik; radnik u TAČNO jednom modulu |
 | tabovi | svi | svi | tabla, gradilišta, **naplata**, rokovi, zadaci, dnevnik, magacin, trebovanje | isto bez naplate | isto bez naplate |
 | finansije (cene, marže, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
 | kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
 | dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
 | dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
-| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | vidi i pomera SAMO svoje zadatke na svojim gradilištima; na svom zadatku **Počni / Pauziraj / Završi** (samo u Projektovanju; vreme se beleži po sesiji) |
+| zadaci | vidi sve | vidi sve | vidi sve zadatke svojih gradilišta (i svojih radnika) | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
 | dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
-| Admin kokpit (nalozi, uloge, šifarnik, log) | da | da (ne dira direktore) | ne | ne | ne |
+| Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktore) | ne | ne | ne |
+| šifarnik mera (dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
 
 Rukovodilac 1 i 2 su ista uloga (`rukovodilac`) sa zastavicom „vidi finansije" u Admin kokpitu. Spoljni saradnik je vezan za podizvođača/saradnika, radnik za zaposlenog.

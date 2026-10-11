@@ -98,7 +98,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..17.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..18.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -121,9 +121,13 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - Render: svaki pogled je `viewX()` funkcija koja vraća HTML string; `render()`
   ubacuje u #main. Globalno stanje: ROLE, MODUL/PODTIP, current (tab), PROFIL.
 
-## Nalozi (stanje 2026-09-23)
+## Nalozi (stanje 2026-10-11 — 6 test-profila, odluka klijenta)
 - direktor: `miske1431@gmail.com` (profili.uloga=direktor, zaposleni_id null)
-- test-rukovodilac: `petar@gradnjaos.test` → zaposleni `z1` (Petar Kovačević)
+- admin: `admin@gradnjaos.test`
+- rukovodilac PROJEKTOVANJE + finansije: `nikola@gradnjaos.test` → `z17` (Nikola Vuković; vodi g9, trtr, test 1)
+- rukovodilac IZVOĐENJE bez finansija: `petar@gradnjaos.test` → `z1` (Petar Kovačević; vodi g1, Test 2)
+- radnik PROJEKTOVANJE: `sara@gradnjaos.test` → `z10` (Sara Ilić; tim g9 + trtr; 3 zadatka na g9 za tajmer)
+- radnik IZVOĐENJE: `milos@gradnjaos.test` → `z15` (Miloš Đukić; tim g1, g6; bez zadataka)
 - Lozinke su poslate Jovanu u chatu, NISU u repou. Promena: dugme "Lozinka" u sidebaru.
 - Novi korisnik: Supabase → Authentication → Users → Add user (email+lozinka,
   auto confirm), pa u aplikaciji **Admin kokpit** → dodeli ulogu (uprava; admin ne
@@ -156,7 +160,17 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
    `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
    Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati
-   sva 4. „Pogled kao": `setRole('all'|'admin'|'<z>'|'<z>:fin'|'radnik:<z>'|'spoljni:<p>')`.
+   sva 4. „Pogled kao": `setRole('all'|'admin'|'<z>'|'<z>:fin'|'radnik:<z>'|'spoljni:<p>')`
+   + opcioni sufiks `|pro` / `|izv`.
+   **Modul po nalogu (od 2026-10-11, migracija 18):** `profili.moduli text[]` ⊆ {projektovanje,
+   izvodjenje}; rukovodilac 1–2, radnik TAČNO 1, uprava/spoljni oba. Server: `modul_dozvoljen(gid)`
+   je unutar ne-uprava grana `vodim_gradiliste`/`moje_gradiliste` (sve polise/RPC-ovi nasleđuju);
+   `dodeli_ulogu` 6-arg (+`p_moduli`; 5-arg omotač ostaje). Klijent: `MODULI` (`primeniUlogu` 4.
+   arg, `initAuth` iz `prof.moduli`), `modulDozvoljen(m)`, `visibleSites` filtrira po modulu,
+   `modulSeg()` nudi samo dozvoljene (jedan modul = bez segmenta, `MODUL='sve'`),
+   `tabDozvoljen('tasks')` = false za radnika bez projektovanja (bnav tada nudi Rokove), Admin
+   kokpit: čekboksi modula po redu i u formi (`nmp_/nmi_`, `n_mp/n_mi`). Mock `dodeli_ulogu`
+   ista pravila. T42.
 2. Dve provere, ne jedna: `smemNa(grId)` = VODIM (pisanje: uprava ili rukovodilac tog
    gradilišta) i `vidimGr(grId)` = ČITAM (+ radnik u timu, spoljni na gradilištu).
    SVAKA funkcija koja prima `grId`/id spolja počinje jednom od njih (ili `jeSuper()`
@@ -353,3 +367,5 @@ zamrznute u pozadinskom tabu).
   bez toga magic link / reset lozinke vode na localhost:3000.
 - Domen kasnije: `CNAME` fajl u repou + CNAME zapis kod registrara
   (`gradnjaos.think-tech.co` → `mrmouse123.github.io`), HTTPS automatski.
+- Šifarnik mera: od 2026-10-11 NIJE u Admin kokpitu (zahtev) — modal `formSifrarnik()` sa dugmeta
+  „Šifarnik mera" na tabu Gradilišta (uprava); akcije u modalu zovu `osveziSifrarnikModal()`.

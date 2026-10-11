@@ -925,16 +925,28 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('admin')");
     await a.run("obrisiSifrarnik('sf-i-01')");
     if (N() !== 61) throw new Error('admin je obrisao');
-    if (a.run("viewNalozi()").includes('obrisiSifrarnik')) throw new Error('admin vidi dugme brisanja');
+    a.run('formSifrarnik()');
+    if (a.g.document.getElementById('modal').innerHTML.includes('obrisiSifrarnik')) throw new Error('admin vidi dugme brisanja');
+    if (a.run("viewNalozi()").includes('Šifarnik mera')) throw new Error('sifarnik je i dalje u Admin kokpitu (izbacen 2026-10-11)');
     a.run("setRole('all')");
     await a.run("obrisiSifrarnik('sf-i-01')");
     if (N() !== 60 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-i-01')")) throw new Error('direktor nije obrisao');
   });
-  await acheck('g) Admin kokpit u demo rezimu: kartica "Šifarnik mera (60)" + polja za dodavanje', async () => {
+  await acheck('g) Šifarnik: modal sa taba Gradilišta (uprava), NE u Admin kokpitu; kartica "Šifarnik mera (60)" + polja', async () => {
     const a = await boot();
     a.run("ROLE='all'; current='nalozi'; render();");
-    const h = a.g.document.getElementById('view').innerHTML;
-    if (!h.includes('Šifarnik mera (60)')) throw new Error('nema kartice');
+    if (a.g.document.getElementById('view').innerHTML.includes('Šifarnik mera')) throw new Error('sifarnik u Admin kokpitu');
+    a.run("current='sites'; render();");
+    if (!a.g.document.getElementById('view').innerHTML.includes('onclick="formSifrarnik()"')) throw new Error('Gradilišta nema dugme Šifarnik za upravu');
+    a.run("setRole('z1'); current='sites'; render();");
+    if (a.g.document.getElementById('view').innerHTML.includes('formSifrarnik')) throw new Error('rukovodilac vidi dugme Šifarnik');
+    a.run('formSifrarnik()');
+    if (a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('rukovodilac otvorio sifarnik');
+    a.run("setRole('all'); formSifrarnik();");
+    const h = a.g.document.getElementById('modal').innerHTML;
+    if (!h.includes('Šifarnik mera (60)')) throw new Error('nema kartice u modalu');
+    a.run("toggleSifrarnik('sf-i-01')");   // akcija osvezava modal
+    if (!a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('modal nestao posle akcije');
     for (const id of ['sf_naziv', 'sf_jm', 'sf_grupa', 'sf_modul', 'saveSifrarnik()']) if (!h.includes(id)) throw new Error('nema ' + id);
     if (!h.includes("obrisiSifrarnik('sf-i-01')")) throw new Error('direktor nema dugme za brisanje');
     const th = (h.match(/<th/g) || []).length, td = (h.match(/<td/g) || []).length;
@@ -1106,12 +1118,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (const u of ['admin', 'rukovodilac', 'radnik', 'spoljni']) if (!h.includes(`<option value="${u}"`)) throw new Error('nema uloge ' + u);
     const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
     const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
-    set('n_email', 'r@test'); set('n_uloga', 'radnik'); set('n_zap', 'z2'); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const mods = (p, i) => { doc.getElementById('n_mp').checked = p; doc.getElementById('n_mi').checked = i; };   // stub ne cita "checked" iz HTML-a
+    for (const id of ['n_mp', 'n_mi', 'n_modl']) if (!h.includes(`id="${id}"`)) throw new Error('forma nema polje modula ' + id);
+    mods(true, true); set('n_email', 'r@test'); set('n_uloga', 'radnik'); set('n_zap', 'z2');
+    const preA = a.g._calls.alert.length; await a.run('dodeliUlogu()');
+    if (!a.g._calls.alert.slice(preA).some(m => /tačno jedan modul/.test(m))) throw new Error('radnik sa dva modula nije odbijen na klijentu');
+    mods(false, true); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     set('n_email', 's@test'); set('n_uloga', 'spoljni'); set('n_sar', pid); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
-    set('n_email', 'petar@test'); set('n_uloga', 'rukovodilac'); set('n_zap', 'z1'); doc.getElementById('n_fin').checked = true; await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    mods(true, true); set('n_email', 'petar@test'); set('n_uloga', 'rukovodilac'); set('n_zap', 'z1'); doc.getElementById('n_fin').checked = true; await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     const prof = a.g.__mock._db.profili;
     const r = prof.find(p => p.user_id === 'u-r'), s = prof.find(p => p.user_id === 'u-s'), p = prof.find(p => p.user_id === 'u-ruk');
     if (!r || r.uloga !== 'radnik' || r.zaposleni_id !== 'z2') throw new Error('radnik nije dodeljen: ' + JSON.stringify(r));
+    if (JSON.stringify(r.moduli) !== '["izvodjenje"]') throw new Error('radnik moduli: ' + JSON.stringify(r.moduli));
+    if (JSON.stringify(s.moduli) !== '["projektovanje","izvodjenje"]') throw new Error('spoljni mora imati oba modula: ' + JSON.stringify(s.moduli));
+    const rpcR = a.g.__mock._log.find(l => l.op === 'rpc' && l.name === 'dodeli_ulogu' && l.args && l.args.p_email === 'r@test' && l.args.p_moduli && l.args.p_moduli.length === 1);
+    if (!rpcR) throw new Error('klijent nije poslao p_moduli za radnika');
     if (!s || s.uloga !== 'spoljni' || s.saradnik_id !== pid) throw new Error('spoljni nije dodeljen: ' + JSON.stringify(s));
     if (!p || p.uloga !== 'rukovodilac' || p.vidi_finansije !== true) throw new Error('rukovodilac 1 (finansije) nije dodeljen: ' + JSON.stringify(p));
     const preAlert = a.g._calls.alert.length;
@@ -1273,9 +1294,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
     a.run("go('nalozi')"); await cekaj();
     a.g.document.getElementById('n_email').value = 'Novi@test'; a.g.document.getElementById('n_uloga').value = 'rukovodilac'; a.g.document.getElementById('n_zap').value = 'z2';
+    const pre0 = a.g._calls.alert.length; await a.run('dodeliUlogu()');   // stub: nijedan modul cekiran → odbijeno pre RPC-a
+    if (!a.g._calls.alert.slice(pre0).some(m => /bar jedan modul/.test(m))) throw new Error('rukovodilac bez modula nije odbijen');
+    a.g.document.getElementById('n_mp').checked = true;
     await a.run('dodeliUlogu()'); await cekaj();
     const p = (a.g.__mock._db.profili || []).find(x => x.user_id === 'u-novi');
     if (!p || p.uloga !== 'rukovodilac' || p.zaposleni_id !== 'z2') throw new Error('profil nije napravljen: ' + JSON.stringify(p));
+    if (JSON.stringify(p.moduli) !== '["projektovanje"]') throw new Error('moduli rukovodioca: ' + JSON.stringify(p.moduli));
     const lg = a.g.__mock._db.log_koriscenja || [];
     if (!lg.some(l => l.dogadjaj === 'uloga_promena' && l.detalj && l.detalj.email === 'novi@test')) throw new Error('nema uloga_promena u logu');
     const h = a.g.document.getElementById('view').innerHTML;
@@ -3058,6 +3083,76 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
     const loši = a.run(`DATA.gradilista.filter(g=>Object.values(g.adm||{}).some(v=>typeof v!=='object'||v===null)).map(g=>g.id)`);
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
+  });
+
+  /* ---- T42 modul po nalogu (migracija 18) ---- */
+  section('T42 modul po nalogu');
+  await acheck('rukovodilac/radnik vide samo gradilista svog modula; jedan modul = bez segmenta; MODUL se resetuje', async () => {
+    const a = await boot();
+    const z1pro = a.run("DATA.gradilista.filter(g=>g.rukovodilac==='z1'&&jePro(g)).length"), z1izv = a.run("DATA.gradilista.filter(g=>g.rukovodilac==='z1'&&!jePro(g)).length");
+    if (!z1izv) throw new Error('DEMO: z1 nema gradiliste izvodjenja');
+    a.run("MODUL='projektovanje'; primeniUlogu('rukovodilac','z1',false,['izvodjenje']);");
+    if (a.run('MODUL') !== 'sve') throw new Error('MODUL nije resetovan na sve');
+    if (a.run("visibleSites().some(g=>jePro(g))")) throw new Error('rukovodilac izvodjenja vidi projektovanje');
+    if (a.run('visibleSites().length') !== z1izv) throw new Error('broj gradilista: ' + a.run('visibleSites().length') + ' != ' + z1izv);
+    if (a.run('modulSeg()') !== '') throw new Error('segment modula prikazan za jedan modul');
+    a.run("primeniUlogu('rukovodilac','z1',false,['projektovanje']);");
+    if (a.run('visibleSites().length') !== z1pro || a.run("visibleSites().some(g=>!jePro(g))")) throw new Error('rukovodilac projektovanja vidi izvodjenje');
+    a.run("primeniUlogu('rukovodilac','z1',false,null);");
+    if (a.run('visibleSites().length') !== z1pro + z1izv) throw new Error('bez modula = oba');
+    if (!a.run('modulSeg()').includes('Svi moduli')) throw new Error('oba modula bez segmenta');
+    a.run("primeniUlogu('rukovodilac','z1',false,['glupost']);");
+    if (JSON.stringify(a.run('MODULI')) !== '["projektovanje","izvodjenje"]') throw new Error('nepoznat modul nije normalizovan: ' + JSON.stringify(a.run('MODULI')));
+    // radnik: isto preko tima
+    const rz = a.run("DATA.zaposleni.find(z=>(z.grs||[]).some(x=>grById[x]&&!jePro(grById[x]))&&!DATA.gradilista.some(g=>g.rukovodilac===z.id)).id");
+    a.run(`primeniUlogu('radnik',${JSON.stringify(rz)},false,['izvodjenje']);`);
+    if (a.run("visibleSites().some(g=>jePro(g))")) throw new Error('radnik izvodjenja vidi projektovanje');
+    if (a.run("tabDozvoljen('tasks')")) throw new Error('radnik izvodjenja ima tab Zadaci');
+    if (a.run("tabs().some(t=>t.id==='tasks')")) throw new Error('tabs() nudi Zadaci radniku izvodjenja');
+    a.run("renderNav()");
+    const bn = a.g.document.getElementById('bnav').innerHTML;
+    if (bn.includes("go('tasks')") || !bn.includes("go('time')")) throw new Error('bnav: ' + bn.replace(/<svg[\s\S]*?<\/svg>/g, ''));
+    a.run(`primeniUlogu('radnik',${JSON.stringify(rz)},false,['projektovanje']);`);
+    if (!a.run("tabDozvoljen('tasks')")) throw new Error('radnik projektovanja nema Zadatke');
+    a.run("renderNav()");
+    if (!a.g.document.getElementById('bnav').innerHTML.includes("go('tasks')")) throw new Error('bnav bez Zadataka za radnika projektovanja');
+    a.run("setRole('all')");
+    if (a.run("tabDozvoljen('tasks')") !== true || a.run('MODULI.length') !== 2) throw new Error('uprava: sve');
+  });
+  await acheck('setRole sufiks |pro / |izv: parse, roleValue round-trip, roleOptions izvodi modul iz gradilista osobe', async () => {
+    const a = await boot();
+    a.run("setRole('z1|pro')");
+    if (JSON.stringify(a.run('MODULI')) !== '["projektovanje"]' || a.run('roleValue()') !== 'z1|pro') throw new Error('z1|pro: ' + JSON.stringify(a.run('MODULI')) + ' ' + a.run('roleValue()'));
+    a.run("setRole('z1:fin|izv')");
+    if (JSON.stringify(a.run('MODULI')) !== '["izvodjenje"]' || !a.run('VIDI_FIN') || a.run('roleValue()') !== 'z1:fin|izv') throw new Error('z1:fin|izv: ' + a.run('roleValue()'));
+    a.run("setRole('z1')");
+    if (a.run('MODULI.length') !== 2 || a.run('roleValue()') !== 'z1') throw new Error('bez sufiksa = oba');
+    const rz = a.run("DATA.zaposleni.find(z=>(z.grs||[]).some(x=>grById[x])&&!DATA.gradilista.some(g=>g.rukovodilac===z.id)).id");
+    a.run(`setRole('radnik:${rz}|izv')`);
+    if (a.run('roleValue()') !== `radnik:${rz}|izv`) throw new Error('radnik round-trip: ' + a.run('roleValue()'));
+    a.run("setRole('all')");
+    const ro = a.run('roleOptions()');
+    const pro = a.run("DATA.gradilista.find(g=>jePro(g)&&g.rukovodilac)");
+    if (pro && a.run(`DATA.gradilista.every(g=>g.rukovodilac!==${JSON.stringify(pro.rukovodilac)}||jePro(g))`) && !ro.includes(`value="${pro.rukovodilac}|pro"`)) throw new Error('roleOptions: rukovodilac samo projektovanja nema |pro');
+    if (!/value="radnik:z\d+\|(pro|izv)"/.test(ro)) throw new Error('roleOptions: radnici bez modula');
+    if (!ro.includes('· projektovanje') && !ro.includes('· izvođenje')) throw new Error('roleOptions bez labele modula');
+  });
+  await acheck('ulogaLabela + viewNalozi: moduli u redu i formi; mock odbija radnika sa 2 modula, uprava/spoljni uvek oba', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    if (!a.run("ulogaLabela('radnik',false,['izvodjenje'])").includes('izvođenje')) throw new Error('labela radnika bez modula');
+    if (a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])").includes('·')) throw new Error('oba modula ne treba da se ispisuju');
+    if (a.run("ulogaLabela('admin',true,['projektovanje'])").includes('·')) throw new Error('uprava nema modul u labeli');
+    const r1 = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'radnik', p_zaposleni_id: 'z2', p_moduli: ['projektovanje', 'izvodjenje'] });
+    if (!r1.error || !/tačno jedan/.test(r1.error.message)) throw new Error('mock: radnik sa 2 modula prosao');
+    const r2 = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'admin', p_moduli: ['projektovanje'] });
+    if (r2.error) throw new Error('mock admin: ' + r2.error.message);
+    const pa = a.g.__mock._db.profili.find(p => p.user_id === 'u-ruk');
+    if (JSON.stringify(pa.moduli) !== '["projektovanje","izvodjenje"]') throw new Error('uprava mora imati oba: ' + JSON.stringify(pa.moduli));
+    const np = await a.g.__mock.createClient().rpc('nalozi_pregled');
+    if (!np.data.every(r => Array.isArray(r.moduli) && r.moduli.length)) throw new Error('nalozi_pregled bez moduli');
+    a.run("go('nalozi')"); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
+    const h = a.g.document.getElementById('view').innerHTML;
+    for (const x of ['id="n_mp"', 'id="n_mi"', 'nmp_u-ruk', 'nmi_u-ruk', 'tačno jedan']) if (!h.includes(x)) throw new Error('Admin kokpit nema ' + x);
   });
 
   /* ---- T40 Razno: slobodne stavke ispod svezaka (projektovanje, kreiranje) ---- */

@@ -274,7 +274,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       }
       if (name === 'nalozi_pregled') {
         if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor vidi naloge.' } };
-        const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, saradnik_id: p ? (p.saradnik_id || null) : null, vidi_finansije: !!(p && (p.vidi_finansije || p.uloga === 'direktor' || p.uloga === 'admin')), ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
+        const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, saradnik_id: p ? (p.saradnik_id || null) : null, vidi_finansije: !!(p && (p.vidi_finansije || p.uloga === 'direktor' || p.uloga === 'admin')), moduli: (p && p.moduli) ? p.moduli : ['projektovanje', 'izvodjenje'], ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
         return { data: rows, error: null };
       }
       if (name === 'dodeli_ulogu') {   // migracija 14: 5 uloga, vidi_finansije, saradnik; admin ne dira direktore
@@ -289,10 +289,15 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         if (args.p_uloga === 'spoljni' && !(db.podizvodjaci || []).some(x => x.id === sid)) return { data: null, error: { message: 'Spoljni saradnik mora biti vezan za postojećeg podizvođača/saradnika.' } };
         if (['direktor', 'admin'].includes(args.p_uloga)) { zid = null; sid = null; fin = true; }
         if (args.p_uloga !== 'spoljni') sid = null; if (args.p_uloga === 'spoljni') zid = null; if (['radnik', 'spoljni'].includes(args.p_uloga)) fin = false;
+        /* migracija 18: moduli — rukovodilac 1–2, radnik tacno 1, ostali oba */
+        let mods = [...new Set((Array.isArray(args.p_moduli) ? args.p_moduli : ['projektovanje', 'izvodjenje']).filter(x => ['projektovanje', 'izvodjenje'].includes(x)))];
+        if (!mods.length) return { data: null, error: { message: 'Izaberi bar jedan modul (projektovanje / izvođenje).' } };
+        if (args.p_uloga === 'radnik' && mods.length !== 1) return { data: null, error: { message: 'Radnik se vezuje za tačno jedan modul.' } };
+        if (!['rukovodilac', 'radnik'].includes(args.p_uloga)) mods = ['projektovanje', 'izvodjenje'];
         if (stara === 'direktor' && args.p_uloga !== 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor — prvo dodeli ulogu direktora nekom drugom.' } };
         const z = (db.zaposleni || []).find(x => x.id === zid), s = (db.podizvodjaci || []).find(x => x.id === sid); const ime = z ? z.ime : s ? s.naziv : args.p_email;
-        if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.saradnik_id = sid; p.vidi_finansije = fin; p.ime = ime; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin, ime });
-        upisiLog('uloga_promena', { email: args.p_email, stara, nova: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin });
+        if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.saradnik_id = sid; p.vidi_finansije = fin; p.moduli = mods; p.ime = ime; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin, moduli: mods, ime });
+        upisiLog('uloga_promena', { email: args.p_email, stara, nova: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin, moduli: mods });
         return { data: stara ? 'izmenjeno' : 'dodeljeno', error: null };
       }
       if (name === 'ukloni_pristup') {
@@ -307,7 +312,8 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       if (name === 'zdravlja_mojih') {
         if (!profil()) return { data: [], error: null };
         const dir = ctx.isDir(), z = ctx.mojZ();
-        const ids = (db.gradilista || []).filter(g => dir || g.rukovodilac === z).map(g => g.id).sort();
+        const pm = (profil() && profil().moduli) || ['projektovanje', 'izvodjenje'];   // migracija 18: modul po nalogu
+        const ids = (db.gradilista || []).filter(g => dir || (g.rukovodilac === z && pm.includes(g.modul || 'izvodjenje'))).map(g => g.id).sort();
         const sk = faults.zdravlja || {};
         /* migracija 13: + napredak (server ga racuna trigerom na predmer, v. osveziNapredakMock) */
         return { data: ids.map(id => ({ id, zdravlje: sk[id] !== undefined ? sk[id] : 77, napredak: ((db.gradilista || []).find(g => g.id === id) || {}).napredak })), error: null };

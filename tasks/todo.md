@@ -1,3 +1,16 @@
+# Modul po nalogu + 6 test-naloga + Admin kokpit bez sifarnika (2026-10-11)
+Trazeno: rukovodilac = projektovanje | izvodjenje | oba (+ finansije da/ne); radnik = tacno jedan modul
+(projektovanje: meri zadatke start/pauza/stop; izvodjenje: bez zadataka, podizvodjaci). 6 test-profila.
+Iz Admin kokpita ukloniti sifarnik.
+- [x] 1. Migracija 18 (profili.moduli, modul_dozvoljen u vodim/moje_gradiliste, nalozi_pregled, dodeli_ulogu 6-arg + omotac) → zivo + schema.sql
+- [x] 2. Klijent: MODULI/primeniUlogu/modulDozvoljen, visibleSites, modulSeg, tabDozvoljen(tasks), bnav, setRole |pro/|izv, roleOptions
+- [x] 3. Admin kokpit: moduli u formi i redovima, dodeliUlogu p_moduli, ulogaLabela; bez sifarnika → formSifrarnik modal iz Gradilista (uprava)
+- [x] 4. Mock + testovi (T42), e2e 968/0
+- [ ] 5. Podaci: trtr/test 1 → z17; z10 u tim g9 + 3 zadatka; 4 auth naloga (admin, nikola, sara, milos) + profili
+- [ ] 6. Ziva provera: curl login ×4, set local role matrica (ruk-pro, ruk-izv, radnik-pro, radnik-izv)
+- [ ] 7. Docs (CLAUDE.md pravilo 1, README), memorija (nalozi bez lozinki), commit/push
+Nije u opsegu (reci Jovanu): formTim filtriranje radnika po modulu (klijent ne vidi tudje profile).
+
 # Pregled izmena 2026-10-09/10 po skilovima (2026-10-10)
 Opseg: commit d7852b9..de95673 — bez auto-zadataka pri kreiranju, „Razno" ceklista
 (projektovanje), Pauziraj/Nastavi/Zavrsi SAMO u Projektovanju, klikovi na kontrolnoj tabli.
