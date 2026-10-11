@@ -675,7 +675,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!h.includes('moj T38') || h.includes('tudji T38')) throw new Error('kanban prikazuje tudji zadatak radniku');
     a.run(`openSite(${JSON.stringify(gid)})`);
     const d = a.g.document.getElementById('drawer').innerHTML;
-    if (!d.includes('moj T38') || d.includes('tudji T38')) throw new Error('fioka prikazuje tudji zadatak radniku');
+    if (d.includes('moj T38') || d.includes('tudji T38') || d.includes('Zadaci (')) throw new Error('fioka Projektovanja lista zadatke (treba samo sveske po osobi)');
     a.run("current='dash'; render();");
     if (a.g.document.getElementById('view').innerHTML.includes('tudji T38')) throw new Error('tabla prikazuje tudji zadatak radniku');
   });
@@ -3107,6 +3107,75 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T50 fioka Projektovanja: bez tima i zadataka — sveske (tipovi dokumentacije) po osobi, dodela, dokument uz svesku ---- */
+  section('T50 sveske po osobi');
+  await acheck('fioka pro: nema „Tim na gradilištu" ni „Zadaci"; sveske grupisane po zaduzenom; select za dodelu samo ko vodi; dodeliSvesku menja predmer.zaduzen + zadatak + ubacuje u tim; dokument uz svesku stoji uz svesku, ne u opstim; brisanje sveske gasi vezu; Izvodjenje nepromenjeno', async () => {
+    const a = await boot();
+    const doc = a.g.document, dr = () => doc.getElementById('drawer').innerHTML;
+    const gid = a.run("DATA.gradilista.find(g=>jePro(g)&&predmerZa(g.id).length>=3).id");
+    const ruk = a.run(`grById[${JSON.stringify(gid)}].rukovodilac`);
+    a.run("setRole('all'); MODUL='sve';");
+    a.run(`openSite(${JSON.stringify(gid)})`);
+    let h = dr();
+    if (h.includes('Tim na gradilištu') || h.includes('formTim(') || h.includes('Zadaci (') || h.includes('dr-task')) throw new Error('fioka pro i dalje ima tim/zadatke');
+    if (!h.includes('Dokumentacija po osobi (' + a.run(`predmerZa(${JSON.stringify(gid)}).length`) + ')')) throw new Error('nema sekcije Dokumentacija po osobi');
+    const pm = a.run(`predmerZa(${JSON.stringify(gid)})`);
+    for (const p of pm) { if (!h.includes(p.poz) || !h.includes(`uploadDokument('${gid}','${p.id}')`)) throw new Error('sveska bez reda/upload-a: ' + p.poz); }
+    const dodeljeni = [...new Set(pm.map(p => p.zaduzen).filter(Boolean))];
+    for (const z of dodeljeni) { if (!h.includes('<b>' + a.run(`zaduzenIme(${JSON.stringify(z)})`) + '</b>')) throw new Error('nema grupe za osobu ' + z); }
+    if ((h.match(/dodeliSvesku\(/g) || []).length !== pm.length) throw new Error('uprava: select za dodelu nije na svakoj svesci');
+    if (!h.includes("formPredmerRed('" + gid + "')")) throw new Error('nema dugmeta za novu svesku');
+    // radnik u timu: vidi sveske, bez dodele i bez tajmera na tudjoj
+    const zid = a.run(`(DATA.zaposleni.find(z=>z.id!==${JSON.stringify(ruk)}&&(z.grs||[]).includes(${JSON.stringify(gid)}))||{}).id`);
+    a.run(`setRole('radnik:${zid}')`); a.run(`openSite(${JSON.stringify(gid)})`); h = dr();
+    if (!h.includes('Dokumentacija po osobi') || h.includes('dodeliSvesku(')) throw new Error('radnik: nema sekcije ili ima dodelu');
+    const tudja = pm.find(p => p.zaduzen && p.zaduzen !== zid), moja = pm.find(p => p.zaduzen === zid);
+    const tTudja = a.run(`(DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(tudja.id)})||{}).id`);
+    if (tTudja && h.includes("pocniZadatak('" + tTudja + "')")) throw new Error('radnik ima START na tudjoj svesci');
+    if (moja) { const tm = a.run(`(DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(moja.id)})||{}).id`); if (tm && a.run(`DATA.zadaci.find(t=>t.id===${JSON.stringify(tm)}).kol`) !== 'done' && !h.includes("pocniZadatak('" + tm + "')") && !h.includes("zavrsiZadatak('" + tm + "')") && !h.includes("pauzirajZadatak('" + tm + "')")) throw new Error('radnik nema tajmer na svojoj svesci'); }
+    // dodela: radnik ne sme; rukovodilac sme → zaduzen, zadatak.zad, tim (grs), fioka osvezena
+    const novi = a.run(`(DATA.zaposleni.find(z=>!(z.grs||[]).includes(${JSON.stringify(gid)})&&z.id!==${JSON.stringify(ruk)})||{}).id`);
+    a.run(`dodeliSvesku(${JSON.stringify(gid)}, ${JSON.stringify(tudja.id)}, ${JSON.stringify(novi)})`);
+    if (a.run(`DATA.predmer.find(p=>p.id===${JSON.stringify(tudja.id)}).zaduzen`) !== tudja.zaduzen) throw new Error('radnik dodelio svesku');
+    a.run(`setRole(${JSON.stringify(ruk)})`); a.run(`openSite(${JSON.stringify(gid)})`);
+    if (!dr().includes('dodeliSvesku(')) throw new Error('rukovodilac nema select za dodelu');
+    a.run(`dodeliSvesku(${JSON.stringify(gid)}, ${JSON.stringify(tudja.id)}, ${JSON.stringify(novi)})`);
+    if (a.run(`DATA.predmer.find(p=>p.id===${JSON.stringify(tudja.id)}).zaduzen`) !== novi) throw new Error('zaduzen nije promenjen');
+    if (a.run(`DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(tudja.id)}).zad`) !== novi) throw new Error('zadatak sveske nije presao na novu osobu');
+    if (!a.run(`zapById[${JSON.stringify(novi)}].grs`).includes(gid)) throw new Error('nova osoba nije usla u tim (RLS: radnik ne bi video gradiliste)');
+    if (!dr().includes('<b>' + a.run(`zaduzenIme(${JSON.stringify(novi)})`) + '</b>')) throw new Error('fioka nije osvezena posle dodele');
+    // skidanje dodele: sveska pod „Nedodeljeno", zadatak ide rukovodiocu (ne ostaje staroj osobi)
+    a.run(`dodeliSvesku(${JSON.stringify(gid)}, ${JSON.stringify(tudja.id)}, '')`);
+    if (a.run(`DATA.predmer.find(p=>p.id===${JSON.stringify(tudja.id)}).zaduzen`) !== null) throw new Error('zaduzen nije skinut');
+    if (a.run(`DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(tudja.id)}).zad`) !== ruk) throw new Error('zadatak nedodeljene sveske nije presao rukovodiocu');
+    if (!dr().includes('<b>Nedodeljeno</b>')) throw new Error('fioka nema grupu Nedodeljeno');
+    a.run(`dodeliSvesku(${JSON.stringify(gid)}, ${JSON.stringify(tudja.id)}, ${JSON.stringify(novi)})`);
+    // formPredmerRed na pro nudi i osobu van tima
+    const vanTima = a.run(`(DATA.zaposleni.find(z=>!(z.grs||[]).includes(${JSON.stringify(gid)}))||{}).id`);
+    a.run(`formPredmerRed(${JSON.stringify(gid)})`);
+    if (!doc.getElementById('modal').innerHTML.includes('value="' + vanTima + '"')) throw new Error('nova sveska ne nudi osobu van tima');
+    a.run('closeModal()');
+    // dokument uz svesku
+    const d = a.run(`dodajDokument({gr:${JSON.stringify(gid)}, predmer_id:${JSON.stringify(tudja.id)}, naziv:'sveska <1>.pdf', tip:'application/pdf', velicina:10, opis:'', data:'data:,'})`);
+    if (!d || d.predmer_id !== tudja.id || d.naziv !== 'sveska &lt;1&gt;.pdf') throw new Error('dodajDokument: ' + JSON.stringify(d));
+    a.run(`openSite(${JSON.stringify(gid)})`); h = dr();
+    const iS = h.indexOf('sveska &lt;1&gt;.pdf'), iOp = h.indexOf('Dokumenti gradilišta (');
+    if (iS < 0 || iOp < 0 || iS > iOp) throw new Error('dokument uz svesku nije pod sveskom / pre opstih: ' + iS + ' ' + iOp);
+    if (h.slice(iOp).includes('sveska &lt;1&gt;.pdf')) throw new Error('dokument uz svesku i u opstim dokumentima');
+    if (a.run(`dodajDokument({gr:${JSON.stringify(gid)}, predmer_id:'pm-nepostojeci', naziv:'x.pdf', data:'data:,'}).predmer_id`) !== null) throw new Error('predmer_id tudjeg/nepostojeceg reda nije ocisceno');
+    // brisanje sveske (super) gasi vezu dokumenta (=null, ne delete)
+    a.run("setRole('all')");
+    await a.run(`obrisiPredmerRed(${JSON.stringify(tudja.id)})`);
+    const dd = a.run(`DATA.dokumenti.find(x=>x.id===${JSON.stringify(d.id)})`);
+    if (!dd || dd.predmer_id !== null || !('predmer_id' in dd)) throw new Error('posle brisanja sveske: ' + JSON.stringify(dd));
+    // Izvodjenje: fioka i dalje ima tim, nema sekcije svezaka
+    const giz = a.run("DATA.gradilista.find(g=>!jePro(g)).id");
+    a.run(`openSite(${JSON.stringify(giz)})`); h = dr();
+    if (!h.includes('Tim na gradilištu') || h.includes('Dokumentacija po osobi')) throw new Error('fioka Izvodjenja promenjena');
+    a.run('closeDrawer()');
+    if (a.run('FIOKA_GR') !== null) throw new Error('FIOKA_GR nije ociscen');
+  });
+
   /* ---- T49 trebovanje iz ugovorenog predmera: dropdown pozicija, kolicina slobodna, predmer_id/sifra na stavci ---- */
   section('T49 trebovanje iz predmera');
   await acheck('formNarudzba: nar_pm nudi predmer Izvodjenja (ne Projektovanja), dodaj iz predmera → readonly naziv + ugovorena kol kao polazna, saveNarudzba cuva predmer_id/sifra/naziv/JM iz DATA i slobodnu kolicinu; mejl i kartica nose sifru; promena gradilista menja listu', async () => {

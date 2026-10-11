@@ -352,6 +352,12 @@
   .dr-kv .v.link:hover{text-decoration:underline}
   .dr-task{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px}
   .dr-task:last-child{border-bottom:0}
+  .sv-osoba{margin-bottom:14px}
+  .sv-osoba .who{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:13px}
+  .sv-red{padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .sv-red:last-child{border-bottom:0}
+  .sv-red.done .nz{text-decoration:line-through;color:var(--muted)}
+  .sv-red select{border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:11.5px;background:var(--surface);color:var(--ink);max-width:100%}
   .dr-task .tk{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line-strong); flex:none; display:grid; place-items:center}
   .dr-task.done .tk{background:var(--green); border-color:var(--green)}
   .dr-task.done .tk svg{width:10px;height:10px;color:#fff}
@@ -1269,10 +1275,30 @@ function sinhronizujSveske(grId){
       if(p.zaduzen && t.zad!==p.zaduzen) t.zad=p.zaduzen;
     }
   });
+  pm.forEach(p=>{ if(p.zaduzen && p.zaduzen!==g.rukovodilac) osigurajUTimu(grId, p.zaduzen); });   // tim projektantskog gradilista = ko je zaduzen za svesku (fioka nema „Uredi tim")
   const ids=new Set(pm.map(p=>p.id));
   (DATA.zadaci||[]).filter(t=>t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)).forEach(t=>{ if(PUSHED.zadaci) delete PUSHED.zadaci[t.id]; });
   DATA.zadaci=(DATA.zadaci||[]).filter(t=>!(t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)));
   return n;
+}
+/* Osoba (zaposleni ili spoljni saradnik) dobija pristup gradilistu: z.grs / p.grs (join tabele; polisa insert = vodim). Ne uklanja nikoga. */
+function osigurajUTimu(grId, osoba){
+  if(!smemNa(grId)) return false;
+  const z=zapById[osoba];
+  if(z){ if((z.grs||[]).includes(grId)) return false; z.grs=[...(z.grs||[]),grId]; z.bivsi=(z.bivsi||[]).filter(x=>x!==grId); return true; }
+  const sp=(DATA.podizvodjaci||[]).find(x=>x.id===osoba);
+  if(sp){ if((sp.grs||[]).includes(grId)) return false; sp.grs=[...(sp.grs||[]),grId]; return true; }
+  return false;
+}
+/* Dodela sveske osobi iz fioke (Projektovanje): predmer.zaduzen → zadatak sveske (sinhronizujSveske) → tim. */
+function dodeliSvesku(grId, pid, osoba){
+  if(!smemPredmer(grId)) return;
+  const p=(DATA.predmer||[]).find(x=>x.id===pid&&x.gr===grId); if(!p) return;
+  p.zaduzen=osoba||null;
+  sinhronizujSveske(grId);
+  const t=(DATA.zadaci||[]).find(x=>x.predmer_id===pid), g=grById[grId];   // i skidanje dodele: zadatak ide rukovodiocu (sync prenosi samo postavljenog)
+  if(t) t.zad=osoba||(g&&g.rukovodilac)||null;
+  saveState(); osveziFioku(grId);
 }
 function sinhronizujSveskeSve(){ let n=0; (DATA.gradilista||[]).forEach(g=>{ if(jePro(g)&&smemNa(g.id)) n+=sinhronizujSveske(g.id); }); return n; }
 /* status zadatka sveske → izvedeno sveske (lokalno samo ako vodim; server to radi za svakog) */
@@ -2212,7 +2238,7 @@ function pocniZadatak(id){
   DATA.rad_na_zadatku.push({id:'rz'+Date.now(), zadatak:id, gr:t.gr, osoba, start:new Date().toISOString(), kraj:null, minuta:null, napomena:''});
   if(t.kol==='todo') t.kol='inprogress';
   beleziLog('zadatak_start',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr});
-  saveState(); render();
+  saveState(); render(); osveziFioku(t.gr);
 }
 function zatvoriSesiju(s){ s.kraj=new Date().toISOString(); s.minuta=Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000)); }   // procena; server prepisuje (trigger)
 /* Pauza: zatvara SVOJU otvorenu sesiju, zadatak ostaje "u toku"; "Nastavi" otvara novu sesiju (pocniZadatak). */
@@ -2221,7 +2247,7 @@ function pauzirajZadatak(id){
   const s=otvorenaSesija(id, osobaTajmera()); if(!s) return;   // vlasnistvo = SVOJA otvorena sesija (i na Izvodjenju / done zadatku — da se ne zaglavi)
   zatvoriSesiju(s);
   beleziLog('zadatak_pauza',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s.minuta});
-  saveState(); render();
+  saveState(); render(); osveziFioku(t.gr);
 }
 /* Zavrsi: zatvara svoju sesiju (ako je otvorena) i prebacuje zadatak u "Završeno" — bez potvrde (za „samo stani" postoji Pauziraj).
    Bez svoje sesije dozvoljeno samo za zadatak u toku (nastavljen posle pauze); tudja otvorena sesija blokira. */
@@ -2234,7 +2260,7 @@ function zavrsiZadatak(id){
   if(s) zatvoriSesiju(s);
   const staroKol=t.kol; t.kol='done'; uskladiSveskuIzZadatka(t, staroKol);
   beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s?s.minuta:0, ukupno:minutaZadatka(id)});
-  saveState(); render();
+  saveState(); render(); osveziFioku(t.gr);
 }
 /* sesije -> [{osoba,gr,sesija,minuta,poslednji}] za period [od,do] (YYYY-MM-DD, ukljucivo); otvorena sesija se racuna do sada */
 function agregirajAngazovanost(rows, od, do_){
@@ -3218,7 +3244,8 @@ function formPredmerRed(grId,pid){
   const x=pid?(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId):null;
   if(pid&&!x) return;
   const zs=x?x.zaduzen:null, sel=id=>id===zs?' selected':'';
-  const opcije = [...timNa(grId).map(z=>`<option value="${z.id}"${sel(z.id)}>${z.ime}</option>`), ...subsZa(grId).map(s=>`<option value="${s.id}"${sel(s.id)}>${s.naziv} (spoljni)</option>`)].join('');
+  const opcije = pro ? zaduzenOpcije(zs)   // Projektovanje: tim nema UI — ko dobije svesku ulazi u tim (osigurajUTimu)
+    : [...timNa(grId).map(z=>`<option value="${z.id}"${sel(z.id)}>${z.ime}</option>`), ...subsZa(grId).map(s=>`<option value="${s.id}"${sel(s.id)}>${s.naziv} (spoljni)</option>`)].join('');
   const jms=['m³','m²','m','kom','kg','t','h','paušal']; if(x&&x.jm&&!jms.includes(x.jm)) jms.push(x.jm);
   const jmOpc=jms.map(j=>`<option${x&&x.jm===j?' selected':''}>${j}</option>`).join('');
   openModal(`
@@ -3423,7 +3450,16 @@ function ukloniTrosakPrilog(trId){
 /* ---------- DOKUMENTI GRADILISTA (migracija 14): svako ko vidi gradiliste dodaje, brise svoje; super brise sve ---------- */
 function dokumentiZa(grId){ return (DATA.dokumenti||[]).filter(d=>d.gr===grId).sort((a,b)=>dParse(b.datum)-dParse(a.datum)); }
 function smemObrisatiDokument(d){ return !!d && (jeSuper() || (ROLE!=='all' && d.autor===ROLE)); }
-function uploadDokument(grId){
+/* Red dokumenta u DATA (migracija 22: predmer_id = dokument uz svesku Projektovanja). Vraca red ili null. */
+function dodajDokument(o){
+  if(!o || !vidimGr(o.gr)) return null;
+  const pid=o.predmer_id && (DATA.predmer||[]).some(p=>p.id===o.predmer_id&&p.gr===o.gr) ? o.predmer_id : null;
+  const d={ id:'dk'+Date.now(), gr:o.gr, predmer_id:pid, autor:isDirector()?'uprava':ROLE, datum:todayStr(), naziv:esc(o.naziv), tip:o.tip||'', velicina:o.velicina||0, opis:o.opis==null?'':esc(String(o.opis).trim()), data:o.data };
+  DATA.dokumenti.push(d);
+  saveState();
+  return d;
+}
+function uploadDokument(grId, predmerId){
   if(!vidimGr(grId)) return;
   try{
     const inp=document.createElement('input');
@@ -3434,8 +3470,8 @@ function uploadDokument(grId){
       const r=new FileReader();
       r.onload=()=>{
         const opis=prompt('Kratak opis (opciono)');
-        DATA.dokumenti.push({ id:'dk'+Date.now(), gr:grId, autor:isDirector()?'uprava':ROLE, datum:todayStr(), naziv:esc(f.name), tip:f.type||'', velicina:f.size, opis:opis==null?'':esc(String(opis).trim()), data:r.result });
-        saveState(); openSite(grId);
+        dodajDokument({ gr:grId, predmer_id:predmerId||null, naziv:f.name, tip:f.type||'', velicina:f.size, opis, data:r.result });
+        openSite(grId);
       };
       r.readAsDataURL(f);
     };
@@ -3507,7 +3543,7 @@ async function obrisiSituaciju(id){
 }
 function obrisiPredmerRed(id){
   const x=(DATA.predmer||[]).find(r=>r.id===id); if(!x||!jeSuper()) return false;
-  return obrisiStavku('predmer', id, 'poziciju "'+unesc(x.poz)+'"', false, ()=>{ osveziNapredak(x.gr); sinhronizujSveske(x.gr); });   // napredak PRE render(); zadatak sveske odlazi (server: cascade)
+  return obrisiStavku('predmer', id, 'poziciju "'+unesc(x.poz)+'"', false, ()=>{ osveziNapredak(x.gr); sinhronizujSveske(x.gr); (DATA.dokumenti||[]).forEach(d=>{ if(d.predmer_id===id) d.predmer_id=null; }); });   // napredak PRE render(); zadatak sveske odlazi (server: cascade)
 }
 function obrisiResurs(id){
   const r=(DATA.resursi||[]).find(x=>x.id===id); if(!r||!jeSuper()) return false;
@@ -4358,7 +4394,7 @@ function formSite(id){
    (globalan kroz grupe) — saveSite/saveIzSifarnika iteriraju ISTU listu.
    projektovanje: f_nd_k + f_ndz_k (podrazumevano cekirano); izvodjenje: f_sf_k + f_sfk_k (kolicina) + f_sfz_k (podrazumevano necekirano). */
 function sifrarnikPoz(s, modul){ return modul==='projektovanje' ? (s.grupa?s.grupa+' — ':'')+s.naziv : s.naziv; }
-function zaduzenOpcije(){ return [...DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv} (spoljni)</option>`)].join(''); }
+function zaduzenOpcije(sel){ const s=id=>id===sel?' selected':''; return [...DATA.zaposleni.map(z=>`<option value="${z.id}"${s(z.id)}>${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}"${s(p.id)}>${p.naziv} (spoljni)</option>`)].join(''); }
 /* „Razno" (projektovanje, samo pri kreiranju): slobodne stavke ispod svih svezaka — f_nr_k (naziv) + f_nrz_k (zaduzen),
    k = 0..RAZNO_N-1 (brojac, NE getElementById-petlja: dom-stub vraca element za svaki id). Prazne se preskacu u saveSite. */
 let RAZNO_N=0, RAZNO_MODUL='projektovanje';   // RAZNO_MODUL postavlja sifrarnikChecklist(…, razno=true)
@@ -4583,12 +4619,39 @@ function saveDiary(){
    ============================================================ */
 /* Kontakt investitora za fioku: " — osoba, tel, mail" (prazni delovi i '—' se preskaču). */
 function investKontakt(k){ const p=[k.osoba,k.tel,k.mail].filter(x=>x&&x!=='—'); return p.length?' — '+p.join(', '):''; }
+let FIOKA_GR=null;   // gradiliste otvoreno u fioci (osveziFioku posle tajmera / dodele / dokumenta)
+function osveziFioku(grId){ const d=document.getElementById('drawer'); if(FIOKA_GR===grId && d && d.classList.contains('on')) openSite(grId); }
+/* Projektovanje: sveske (redovi specifikacije) PO OSOBI — status zadatka sveske, tajmer, dokumenti uz svesku, dodela. */
+function sveskeHtml(id){
+  const g=grById[id], pm=predmerZa(id), tById={}; (DATA.zadaci||[]).forEach(t=>{ if(t.predmer_id) tById[t.predmer_id]=t; });
+  const grupe={}; pm.forEach(p=>{ const k=p.zaduzen||''; (grupe[k]=grupe[k]||[]).push(p); });
+  const kljucevi=Object.keys(grupe).sort((a,b)=>((a===''?1:0)-(b===''?1:0))||zaduzenIme(a).localeCompare(zaduzenIme(b)));
+  const moze=smemPredmer(id), ST={todo:['Čeka','b-gray'], inprogress:['U toku','b-blue'], done:['Završeno','b-green']};
+  const osobe=kljucevi.map(k=>{
+    const ime=k?zaduzenIme(k):'Nedodeljeno', z=k?zapById[k]:null;
+    const redovi=grupe[k].map(p=>{
+      const t=tById[p.id], st=ST[(t&&t.kol)||'todo']||ST.todo, docs=(DATA.dokumenti||[]).filter(d=>d.predmer_id===p.id);
+      return `<div class="sv-red${t&&t.kol==='done'?' done':''}">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span class="nz" style="font-weight:600">${p.poz}</span><span class="badge ${st[1]}" style="flex:none">${st[0]}</span></div>
+        ${t&&minutaZadatka(t.id)>0?`<div class="sub" style="font-size:11.5px">⏱ ukupno ${fmtTrajanje(minutaZadatka(t.id))}</div>`:''}
+        ${moze?`<div style="margin-top:6px"><select onchange="dodeliSvesku('${id}','${p.id}',this.value)" title="Dodeli osobu"><option value="">— dodeli osobu —</option>${zaduzenOpcije(p.zaduzen)}</select></div>`:''}
+        ${t?tajmerLinija(t):''}
+        ${docs.map(d=>`<div class="sub" style="font-size:12px;margin-top:6px">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span> · ${fmtDate(d.datum)} · ${osobaIme(d.autor)}${smemObrisatiDokument(d)?` <span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</div>`).join('')}
+        <div style="margin-top:6px"><button class="btn ghost" style="padding:4px 10px;font-size:11.5px" onclick="uploadDokument('${id}','${p.id}')">⬆ Učitaj dokument</button></div>
+      </div>`; }).join('');
+    return `<div class="sv-osoba"><div class="who">${z?`<div class="av" style="width:26px;height:26px;font-size:11px">${initials(z.ime)}</div>`:''}<b>${ime}</b><span class="sub">· ${grupe[k].length}</span></div>${redovi}</div>`;
+  }).join('');
+  return (osobe||'<div class="sub">Još nema svezaka — dodaj ih dugmetom ispod ili u Specifikaciji usluga.</div>')
+    + (moze?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="formPredmerRed('${id}')">＋ Nova sveska / dokument</button>`:'');
+}
 function openSite(id){
   const g=grById[id]; if(!g)return;
   if(!vidimGr(id)) return;   // citanje: i radnik/spoljni na svom gradilistu; akcije unutra su iza smemNa/canFinance
+  FIOKA_GR=id;
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
-  const tim=timNa(id);
+  const tim=timNa(id), pro=jePro(g);
   const zad=zadaciVidljivi().filter(t=>t.gr===id);   // radnik u fioci vidi samo svoje zadatke
+  const dokOpsti=pro?dokumentiZa(id).filter(d=>!d.predmer_id):dokumentiZa(id);   // Projektovanje: dokument uz svesku stoji uz svesku
   const dd=dParse(g.rok), diff=daysBetween(TODAY,dd);
   const pot=potroseno(g), trSt=troskoviZa(id), subs=subsZa(id);
   const budPct=g.budzet?Math.round(pot/g.budzet*100):0;
@@ -4596,13 +4659,6 @@ function openSite(id){
   const rokTekst = g.status==='zavrseno'?'Projekat predat'
     : diff<0?`<span style="color:var(--red)">Prekoračen za ${Math.abs(diff)} dana</span>`
     : `Preostalo ${diff} dana`;
-
-  const zadHtml = zad.length? zad.map(t=>`
-    <div class="dr-task ${t.kol==='done'?'done':''}">
-      <div class="tk">${t.kol==='done'?icon('check'):''}</div>
-      <div class="lb">${t.naziv}${minutaZadatka(t.id)>0?`<div class="sub">⏱ ${fmtTrajanje(minutaZadatka(t.id))}</div>`:''}</div>
-      <span class="prio ${PRIO[t.prio].c}">${PRIO[t.prio].t}</span>
-    </div>`).join('') : `<div style="color:var(--faint);font-size:13px">Nema zadataka za ovaj projekat.</div>`;
 
   const timHtml = tim.length? tim.map(z=>`
     <div class="dr-kv"><span class="k"><div class="who"><div class="av" style="width:26px;height:26px;font-size:11px">${initials(z.ime)}</div><span class="v link" style="font-weight:600" onclick="openEmp('${z.id}')">${z.ime}</span></div></span>
@@ -4668,11 +4724,14 @@ function openSite(id){
         }).join('')}</div>`:''}
       </div>`:''}
 
-      <div class="dr-sec">
+      ${pro?`<div class="dr-sec">
+        <h4>Dokumentacija po osobi (${predmerZa(id).length})</h4>
+        ${sveskeHtml(id)}
+      </div>`:`<div class="dr-sec">
         <h4 style="display:flex;justify-content:space-between;align-items:center">Tim na gradilištu (${tim.length})
           ${(isDirector()||g.rukovodilac===ROLE)?`<button class="btn ghost" style="padding:3px 10px;font-size:11px" onclick="formTim('${id}')">✎ Uredi tim</button>`:''}</h4>
         ${timHtml}
-      </div>
+      </div>`}
 
       ${(g.povrsina||g.nadzor||g.nivo)?`<div class="dr-sec">
         <h4>Osnovni podaci</h4>
@@ -4704,20 +4763,17 @@ function openSite(id){
         ${smemNa(id)?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="formSituacija('${id}')">＋ Nova situacija</button>`:''}
       </div>
       <div class="dr-sec">
-        <h4>Dokumenti (${dokumentiZa(id).length})</h4>
-        ${dokumentiZa(id).map(d=>`<div class="dr-kv"><span class="k">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span><div class="sub" style="font-size:11.5px">${fmtDate(d.datum)} · ${osobaIme(d.autor)}${d.velicina?' · '+Math.round(d.velicina/1024)+' KB':''}${d.opis?' · '+d.opis:''}</div></span><span class="v">${smemObrisatiDokument(d)?`<span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</span></div>`).join('')}
+        <h4>Dokumenti${pro?' gradilišta':''} (${dokOpsti.length})</h4>
+        ${dokOpsti.map(d=>`<div class="dr-kv"><span class="k">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span><div class="sub" style="font-size:11.5px">${fmtDate(d.datum)} · ${osobaIme(d.autor)}${d.velicina?' · '+Math.round(d.velicina/1024)+' KB':''}${d.opis?' · '+d.opis:''}</div></span><span class="v">${smemObrisatiDokument(d)?`<span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</span></div>`).join('')}
         ${vidimGr(id)?`<div style="margin-top:8px"><button class="btn ghost" onclick="uploadDokument('${id}')">⬆ Dodaj dokument / fotografiju</button></div>`:''}
       </div>
-      ${jePro(g)?`<div class="dr-sec">
-        <h4>Zadaci (${zad.length})</h4>
-        ${zadHtml}
-      </div>`:''}
       ${jeSuper()?`<div class="dr-sec"><button class="btn ghost" style="color:var(--red)" onclick="obrisiGradiliste('${id}')">Obriši gradilište</button></div>`:''}
     </div>`;
   document.getElementById('drawer').classList.add('on');
   document.getElementById('scrim').classList.add('on');
 }
 function closeDrawer(){
+  FIOKA_GR=null;
   document.getElementById('drawer').classList.remove('on');
   document.getElementById('scrim').classList.remove('on');
   document.getElementById('side').classList.remove('open');   // scrim je zajednicki: tap van sidebara ga zatvara

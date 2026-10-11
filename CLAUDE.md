@@ -128,7 +128,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..21.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..22.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -148,6 +148,15 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   Rukovodilac projektovanja dodaje/menja sveske (`smemPredmer`: predmer insert policy + `zastiti_kolone_predmer`
   za pro dozvoljava poz/jm/kol/zaduzen/sifra, ne cenu); Izvođenje: predmer i dalje samo uprava, zadataka nema.
   Ručni zadaci bez `predmer_id` (= „razno") i dalje postoje (`formTask`). T44.
+  **Fioka projektantskog gradilišta (2026-10-12, migracija 22, odluka klijenta):** NEMA „Tim na gradilištu" ni
+  listu „Zadaci" — sekcija „Dokumentacija po osobi" (`sveskeHtml`): sveske grupisane po `zaduzen` (nedodeljene na
+  kraju), status zadatka sveske, `tajmerLinija`, dokumenti uz svesku (`dokumenti.predmer_id`, FK on delete set null,
+  u `dokumenti_v` i column grantu; `dodajDokument(o)` je testabilan deo `uploadDokument(gr, predmerId)`),
+  „⬆ Učitaj dokument" po svesci, select „dodeli osobu" (`dodeliSvesku`, `smemPredmer`) i „＋ Nova sveska"
+  (`formPredmerRed`, na pro nudi SVE ljude). Tim se IZVODI iz dodela: `sinhronizujSveske` → `osigurajUTimu`
+  (z.grs / p.grs; rukovodilac se preskače) — bez toga radnik ne bi video gradilište (RLS `moje_gradiliste`). Nikoga ne
+  uklanja. Opšti „Dokumenti gradilišta" na pro = samo bez `predmer_id`. `FIOKA_GR` + `osveziFioku(gr)` posle
+  start/pauza/kraj tajmera i dodele. Ručni zadaci (bez `predmer_id`) se u fioci ne vide (Kanban ih i dalje ima). T50.
 - **Šifarnik artikala + situacije sa stavkama** (2026-10-11, migracija 19): `sifrarnik.sifra` + 81
   artikal „ELOM projekt" (`ARTIKLI_ELOM` u index.html = seed u migraciji, ISTI sadržaj; izvor PDF
   „Sifarnik artikala" + 3 dopune 46/47/M029; `sf-a-NNN`, grupa „Artikli (ELOM)"); `predmer.sifra`

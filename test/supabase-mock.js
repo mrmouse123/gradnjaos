@@ -28,7 +28,7 @@ const DATE_COLS = new Set(['pocetak', 'rok', 'datum', 'izdato', 'valuta', 'istic
 
 /* view -> osnovna tabela; kolone koje view NULL-uje ne-direktoru */
 const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci', dokumenti_v: 'dokumenti', situacije_v: 'situacije' };
-const FK = { zadaci: { predmer_id: 'predmer' }, situacija_stavke: { sit: 'situacije', predmer_id: 'predmer' }, rad_na_zadatku: { zadatak: 'zadaci' } };   // migracije 15/19/20
+const FK = { zadaci: { predmer_id: 'predmer' }, situacija_stavke: { sit: 'situacije', predmer_id: 'predmer' }, rad_na_zadatku: { zadatak: 'zadaci' }, dokumenti: { predmer_id: 'predmer' } };   // migracije 15/19/20/22
 const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'], situacije: ['iznos'] };
 const SKRIVENE_KOLONE = { dokumenti: ['data'] };   // migracija 14: dokumenti.data nema SELECT grant — view ga nema ni za koga
 
