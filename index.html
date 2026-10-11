@@ -3048,13 +3048,15 @@ async function zipCitaj(buf){
     const lnl=dv.getUint16(z.off+26,true), lxl=dv.getUint16(z.off+28,true), s=z.off+30+lnl+lxl;   // velicine iz CENTRALNOG dir-a (lokalne su 0 uz data descriptor)
     return td.decode(await zipInflate(u.subarray(s,s+z.csz), z.metod)); } };
 }
-async function citajXlsx(buf){
+async function citajXlsx(buf, sveListove){   // sveListove: redovi svih listova redom (situacija ima list po vrsti radova)
   const z=await zipCitaj(buf);
   const ss=[]; const ssx=await z.citaj('xl/sharedStrings.xml');
   if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)) ss.push([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''));
   const list=z.ime.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort((a,b)=>(+a.match(/\d+/)[0])-(+b.match(/\d+/)[0]));
   if(!list.length) throw new Error('U fajlu nema radnog lista.');
-  const x=await z.citaj(list[0]); const redovi=[];
+  const redovi=[];
+  for(const ime of (sveListove?list:[list[0]])){
+  const x=await z.citaj(ime);
   for(const r of x.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)){
     const red=[];
     for(const c of r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)){
@@ -3070,6 +3072,7 @@ async function citajXlsx(buf){
     for(let i=0;i<red.length;i++) if(red[i]===undefined) red[i]='';
     if(red.some(c=>c!=='')) redovi.push(red);
     if(redovi.length>5000) break;
+  }
   }
   return redovi;
 }
@@ -3936,6 +3939,58 @@ function preracunajSituacijeLokalno(grId){
     if(st.length && imaCene) s.iznos=Math.round(iznos*100)/100;
   });
 }
+/* Situacija iz Excela (format investitorske privremene/okoncane situacije: list po vrsti radova; kolone
+   br. poz | opis | JM | UGOVORENO kol, cena, ukupno | KUMULATIVNO IZVEDENO kol, cena, ukupno). Red stavke = prvi
+   kratak tekst posle opisa je JM pa slede brojevi; opis prazan → opis prethodnog reda (tehnicka zastita);
+   zaglavlje sa „кумулативно/kumulativ" odredjuje kolonu, inace 4. broj posle JM. Uparivanje po normalizovanom
+   nazivu (kao izvedeno), rezervno po sifri kad je jedinstvena. Ova situacija = kumulativ − dosadasnje stavke. */
+function upariSituaciju(grId, redovi){
+  const lista=predmerZa(grId), spojeni=[], nepovezani=[];
+  const poIme=new Map(lista.map(x=>[normPoz(x.poz),x]));
+  const brSifra={}; lista.forEach(x=>{ if(x.sifra){ const k=String(x.sifra).trim().toLowerCase(); brSifra[k]=(brSifra[k]||0)+1; } });
+  const poSifri=new Map(lista.filter(x=>x.sifra&&brSifra[String(x.sifra).trim().toLowerCase()]===1).map(x=>[String(x.sifra).trim().toLowerCase(),x]));
+  const doSada={}; (DATA.situacija_stavke||[]).filter(x=>x.gr===grId).forEach(x=>{ const k=x.predmer_id||kljucStavke(x); doSada[k]=(doSada[k]||0)+(+x.kol||0); });
+  let lastDesc='', lastCode='', kumCol=-1; const videno=new Set();
+  const broj2=v=>{ if(typeof v==='number') return v; if(v===''||v==null||!/\d/.test(String(v))) return null; const n=broj(v); return Number.isFinite(n)?n:null; };   // „кол." nije broj (broj() bi dao 0)
+  (redovi||[]).forEach(r=>{
+    const low=r.map(c=>String(c??'').toLowerCase());
+    const hi=low.findIndex(c=>/кумулатив|kumulativ/.test(c)); if(hi>=0){ kumCol=hi; return; }
+    const code=String(r[0]??'').trim(), desc=String(r[1]??'').replace(/\s+/g,' ').trim();
+    let jmIdx=-1;
+    for(let i=2;i<r.length;i++){ const v=r[i]; if(typeof v==='string'&&v.trim()&&v.trim().length<=10&&i+1<r.length&&broj2(r[i+1])!=null){ jmIdx=i; break; } }
+    if(jmIdx<0){ if(code&&desc){ lastCode=code; lastDesc=desc; } else if(desc){ lastDesc=desc; } else if(code){ lastCode=code; } return; }
+    if(/^(укупно|ukupno)/i.test(desc)||/^(укупно|ukupno)/i.test(code)) return;   // zbirni redovi (i „УКУПНО | ВИДЕО НАДЗОР")
+    const nums=[]; for(let i=jmIdx+1;i<r.length;i++){ const n=broj2(r[i]); if(n!=null) nums.push({i,n}); }
+    let kum=null; if(kumCol>=0){ const f=nums.find(x=>x.i>=kumCol); if(f) kum=f.n; } else if(nums.length>=4) kum=nums[3].n;
+    if(kum==null) return;   // list bez kumulativne kolone (obican predmer) — nista za situaciju
+    const ime=desc||lastDesc, sifra=code||lastCode;
+    if(desc) lastDesc=desc; if(code) lastCode=code;   // prazan red-nastavak ispod stavke nasledjuje STAVKU, ne naslov sekcije
+    let x=poIme.get(normPoz(ime)); if(!x&&sifra) x=poSifri.get(sifra.toLowerCase());
+    if(!x){ nepovezani.push(ime||sifra||'?'); return; }
+    if(videno.has(x.id)) return; videno.add(x.id);
+    const ds=doSada[x.id]||0;
+    spojeni.push({x, kum, doSada:ds, ova:Math.max(0, kum-ds)});
+  });
+  return {spojeni, nepovezani};
+}
+async function situacijaIzFajla(grId, inp){
+  if(!smemNa(grId)) return;
+  const f=inp&&inp.files&&inp.files[0]; if(!f) return;
+  const p=document.getElementById('st_pregled');
+  try{
+    if(!/\.xlsx$/i.test(f.name)) throw new Error('Učitaj .xlsx (stari .xls sačuvaj kao .xlsx u Excelu).');
+    const rez=upariSituaciju(grId, await citajXlsx(await f.arrayBuffer(), true));
+    popuniSituacijuIzRedova(grId, rez);
+  }catch(e){ if(p) p.innerHTML='<div class="banner">'+esc(e.message||String(e))+'</div>'; }
+}
+function popuniSituacijuIzRedova(grId, rez){
+  let n=0; rez.spojeni.forEach(s=>{ const i=document.getElementById('st_k_'+s.x.id); if(i){ i.value=s.ova>0?String(s.ova):''; if(s.ova>0) n++; } });
+  const p=document.getElementById('st_pregled'); if(!p) return n;
+  const preko=rez.spojeni.filter(s=>s.kum>(+s.x.kol||0)).length;
+  p.innerHTML=`<div class="sub" style="margin:6px 0">${rez.spojeni.length} pozicija prepoznato iz fajla · ${n} ulazi u ovu situaciju (kumulativ − do sada)${preko?` · <b style="color:var(--amber)">${preko} kumulativno preko ugovorene količine</b>`:''}</div>`
+    +(rez.nepovezani.length?`<div class="banner">Nisu pronađene u predmeru (preskaču se): ${rez.nepovezani.slice(0,12).map(esc).join('; ')}${rez.nepovezani.length>12?' … (+'+(rez.nepovezani.length-12)+')':''}</div>`:'');
+  return n;
+}
 let SIT_N=0, SIT_DODATNE={};   // k → sifrarnik.id (ne skriveno polje: dom-stub ne cita innerHTML)
 function formSituacija(grId){
   if(!smemNa(grId)) return;
@@ -3957,6 +4012,7 @@ function formSituacija(grId){
         <div class="f-row"><label>Datum izdavanja</label><input id="f_sizdato" type="date" value="${todayStr()}"></div>
         <div class="f-row"><label>Valuta plaćanja</label><input id="f_svaluta" type="date" value="${plusDays(15)}"></div>
       </div>
+      ${pm.length&&!jePro(g)?`<div class="tools" style="margin:0 0 8px"><label class="btn ghost" style="cursor:pointer">⇧ Učitaj iz Excela (privremena / okončana situacija) <input id="st_fajl" type="file" accept=".xlsx" style="display:none" onchange="situacijaIzFajla('${grId}',this)"></label><span class="sub">kumulativne količine iz fajla − dosadašnje situacije = ova situacija</span></div><div id="st_pregled"></div>`:''}
       <div class="f-row"><label>Količine u ovoj situaciji (iz ${jePro(g)?'specifikacije':'predmera'}; prazno = ne ulazi)</label>
         <div style="overflow-x:auto;max-height:300px;overflow-y:auto"><table>
           <thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th><th class="r">Do sada</th><th class="r">Ova situacija</th></tr></thead>

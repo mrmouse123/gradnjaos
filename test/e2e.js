@@ -3108,6 +3108,49 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
   });
 
+  /* ---- T46 situacija iz Excela (format investitorske PPS / okoncane situacije) ---- */
+  section('T46 situacija iz Excela');
+  await acheck('citajXlsx(sve listove) + upariSituaciju: kumulativ − do sada, prazan opis → prethodni, srpski broj, nepoznato preskoceno, list bez kumulativa ignorisan; popuni formu', async () => {
+    const a = await boot();
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'situacija.xlsx'));
+    a.g.__buf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const redovi = await a.run('citajXlsx(__buf, true)');
+    if (redovi.length < 10) throw new Error('nisu procitani svi listovi: ' + redovi.length);
+    a.run("ROLE='all';");
+    const rez = a.run(`upariSituaciju('g5', ${JSON.stringify(redovi)})`);
+    const by = Object.fromEntries(rez.spojeni.map(s => [s.x.id, s]));
+    if (!by.pm1 || by.pm1.kum !== 150 || by.pm1.doSada !== 190 || by.pm1.ova !== 0) throw new Error('pm1: ' + JSON.stringify(by.pm1));   // st1+st3 = 190 do sada
+    if (!by.pm3 || by.pm3.kum !== 300 || by.pm3.doSada !== 260 || by.pm3.ova !== 40) throw new Error('pm3 (prazan opis → prethodni): ' + JSON.stringify(by.pm3));
+    if (!by.pm4 || by.pm4.kum !== 1830.5 || by.pm4.ova !== 1830.5) throw new Error('pm4 (srpski broj): ' + JSON.stringify(by.pm4));
+    if (by.pm5) throw new Error('list bez kumulativne kolone ne sme da daje stavke');
+    if (rez.nepovezani.length !== 1 || !/Nepostoje/.test(rez.nepovezani[0])) throw new Error('nepovezani: ' + JSON.stringify(rez.nepovezani));
+    a.run("formSituacija('g5')");
+    const n = a.run(`popuniSituacijuIzRedova('g5', ${JSON.stringify(rez)})`);
+    const doc = a.g.document;
+    if (n !== 2 || doc.getElementById('st_k_pm3').value !== '40' || doc.getElementById('st_k_pm1').value !== '' || doc.getElementById('st_k_pm4').value !== '1830.5') throw new Error('forma nije popunjena: ' + n);
+    if (!doc.getElementById('st_pregled').innerHTML.includes('1 kumulativno preko ugovorene')) throw new Error('pregled ne upozorava na prekoracenje');
+    if (!doc.getElementById('modal').innerHTML.includes('id="st_fajl"')) throw new Error('forma nema dugme za Excel');
+    a.run("saveSituacija('g5')");   // bez broja → odbija; sa brojem → stavke 40 i 1830.5
+    doc.getElementById('f_sbr').value = 'PS-T46'; a.run("formSituacija('g5')"); doc.getElementById('f_sbr').value = 'PS-T46';
+    a.run(`popuniSituacijuIzRedova('g5', ${JSON.stringify(rez)}); saveSituacija('g5');`);
+    const st = a.run("stavkeZa(DATA.situacije.find(x=>x.br==='PS-T46').id)");
+    if (st.length !== 2 || !st.some(x => x.predmer_id === 'pm3' && x.kol === 40 && x.razlika === 0) || !st.some(x => x.predmer_id === 'pm4' && x.razlika === 1600.5)) throw new Error('stavke: ' + JSON.stringify(st));
+    // prava investitorska PPS (ako postoji lokalno): vecina pozicija OŠ Dušan Radović mora da se prepozna
+    const pps = 'C:/Users/jovan/AppData/Local/Temp/claude/C--gradnjaos/b2cb9afe-8121-4031-9026-1be809ea2dca/scratchpad/dr/pps.xlsx';
+    const pj = 'C:/Users/jovan/AppData/Local/Temp/claude/C--gradnjaos/b2cb9afe-8121-4031-9026-1be809ea2dca/scratchpad/dr/predmer.json';
+    if (fs.existsSync(pps) && fs.existsSync(pj)) {
+      const pred = JSON.parse(fs.readFileSync(pj, 'utf8'));
+      a.run(`DATA.gradilista.push({id:'g-osdr',naziv:'OŠ',modul:'izvodjenje',tip:'visokogradnja',lok:'NS',klijent:'c1',rukovodilac:'z1',pocetak:'2026-09-01',rok:'2027-03-31',napredak:0,status:'u toku',faza:'x',budzet:1,troskovi:1,potroseno:0,naplaceno:0,adm:{}}); rebuildMaps(); ${JSON.stringify(pred)}.forEach(r=>DATA.predmer.push(r));`);
+      const b2 = fs.readFileSync(pps); a.g.__buf2 = b2.buffer.slice(b2.byteOffset, b2.byteOffset + b2.byteLength);
+      const r2 = a.run(`upariSituaciju('g-osdr', null)`); // sanity: null redovi
+      const red2 = await a.run('citajXlsx(__buf2, true)');
+      const rz = a.run(`upariSituaciju('g-osdr', ${JSON.stringify(red2)})`);
+      // PPS nema list Masinske instalacije (20 pozicija) → ocekujemo svih 67 ostalih, bez ijednog nepovezanog
+      if (rz.spojeni.length !== 67 || rz.nepovezani.length !== 0) throw new Error('prava PPS: prepoznato ' + rz.spojeni.length + ' (ocekujem 67 — bez masinskih), nepovezano ' + rz.nepovezani.length + ': ' + rz.nepovezani.slice(0, 5).join(' | '));
+      console.log('      (prava PPS: ' + rz.spojeni.length + '/87 prepoznato, ' + rz.spojeni.filter(x => x.ova > 0).length + ' sa kolicinom, nepovezano ' + rz.nepovezani.length + ')');
+    }
+  });
+
   /* ---- T45 siroki modal + pamcenje sirine ---- */
   section('T45 siroki modal');
   await acheck('formSite/formIzSifarnika/formSituacija otvaraju .siroka modal, formTask ne; sirina se pamti po kljucu samo >900px', async () => {

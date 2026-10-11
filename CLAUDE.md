@@ -97,6 +97,14 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `Razno — <naziv>` (esc, prazne preskače). Samo pri kreiranju. T40.
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
+- **Situacija iz Excela** (2026-10-11): `formSituacija` (Izvođenje, kad ima predmera) ima „⇧ Učitaj iz Excela" —
+  `citajXlsx(buf, true)` čita SVE listove (investitorska PPS/okončana: list po vrsti radova), `upariSituaciju`
+  prepoznaje stavke (JM = prvi kratak tekst posle opisa iza koga je broj; prazan opis → prethodni red; zaglavlje
+  „кумулативно/kumulativ" bira kolonu, inače 4. broj posle JM; zbirni redovi „укупно" u opisu ILI šifri se
+  preskaču; `broj2` traži cifru — „кол." nije 0), uparuje po `normPoz`, rezervno po jedinstvenoj `sifra`, i
+  puni `st_k_<pm>` sa kumulativ − dosadašnje stavke. Fixture `test/fixtures/situacija.xlsx`; T46 uz pravu PPS
+  (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
+  Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
   helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..21.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
