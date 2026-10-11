@@ -3107,6 +3107,28 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
   });
 
+  /* ---- T45 siroki modal + pamcenje sirine ---- */
+  section('T45 siroki modal');
+  await acheck('formSite/formIzSifarnika/formSituacija otvaraju .siroka modal, formTask ne; sirina se pamti po kljucu samo >900px', async () => {
+    const a = await boot();
+    const m = a.g.document.getElementById('modal');
+    a.run("ROLE='all'; formSite();");
+    if (!m.classList.contains('siroka')) throw new Error('formSite nije siroka');
+    a.run("formTask()");
+    if (m.classList.contains('siroka')) throw new Error('formTask je ostala siroka (klasa se ne skida)');
+    a.run("formIzSifarnika('g1')"); if (!m.classList.contains('siroka')) throw new Error('formIzSifarnika nije siroka');
+    a.run("formSituacija('g5')"); if (!m.classList.contains('siroka') || a.run('MODAL_KLJUC') !== 'situacija') throw new Error('formSituacija nije siroka / kljuc');
+    a.run("formSite('g1')"); if (m.classList.contains('siroka')) throw new Error('izmena gradilista ne treba da bude siroka');
+    // pamcenje: na 1200px sirina se primeni iz localStorage; na 375px ne
+    a.run("var _ls={}; localStorage={getItem:k=>(k in _ls?_ls[k]:null), setItem:(k,v)=>{_ls[k]=String(v)}, removeItem:k=>{delete _ls[k]}};");   // stub nema localStorage (kao T27)
+    a.run("localStorage.setItem('gos_modal_w_gradiliste','900'); window.innerWidth=1200; formSite();");
+    if (a.run("document.getElementById('modal').style.width") !== '900px') throw new Error('zapamcena sirina nije primenjena: ' + a.run("document.getElementById('modal').style.width"));
+    a.run("window.innerWidth=375; formSite();");
+    if (a.run("document.getElementById('modal').style.width") !== '') throw new Error('na telefonu ne sme da se primeni sirina');
+    const css = HTML.slice(0, HTML.indexOf('</style>'));
+    if (!/@media\(min-width:901px\)\{ \.modal\{resize:horizontal/.test(css) || !css.includes('.modal.siroka{width:min(1040px, 100%)}')) throw new Error('CSS: resize / siroka');
+  });
+
   /* ---- T44 Projektovanje: sveske = zadaci (migracija 20) ---- */
   section('T44 sveske = zadaci');
   await acheck('sinhronizujSveske: svaka stavka specifikacije ima zadatak (predmer_id, zaduzen), naziv/zaduzen se prate, obrisana sveska nosi zadatak; demo je vec usklaen', async () => {

@@ -380,6 +380,10 @@ Provera: u browser panelu `resize_window colorScheme:'dark'` + skener elemenata 
 **Gantt osa (2026-10-08):** `.gantt-inner` dobija inline `min-width:max(--g-min, --g-lab + N*--g-col)`
 (64px/52px po mesecu), kolone `minmax(0,1fr)`, `.gm{overflow:hidden}` — zaglavlje meseci
 i traka MORAJU biti iste širine, inače štapići/„danas" (u % trake) klize (lekcija 28, T39).
+**Modal (2026-10-11):** `openModal(html,{siroka,kljuc})` — `.siroka` = 1040px za forme sa tabelom/ček-listom
+(novo gradilište, artikli iz šifarnika, situacija); na >900px `.modal{resize:horizontal}` pa korisnik vuče
+donji desni ugao, širina se pamti u `localStorage gos_modal_w_<kljuc>` (mouseup) i primenjuje samo na >900px
+(telefon = pun ekran). T45.
 Pravila: široka tabela UVEK u `<div style="overflow-x:auto">`; nikad `1fr`
 grid bez `minmax(0,…)` ako sadržaj može biti širok; nikad `white-space:nowrap`
 na tekstu koji može premašiti 300px; hamburger nikad ne sme biti jedini način

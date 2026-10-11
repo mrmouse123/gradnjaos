@@ -368,6 +368,8 @@
   .modal-wrap .bg{position:absolute; inset:0; background:rgba(20,25,30,.4)}
   .modal{position:relative; background:var(--surface); border-radius:16px; box-shadow:var(--shadow-lg); width:480px; max-width:100%; max-height:88vh; overflow-y:auto; transform:translateY(8px); transition:.18s}
   .modal-wrap.on .modal{transform:translateY(0)}
+  .modal.siroka{width:min(1040px, 100%)}   /* forme sa tabelom/ceklistom (gradiliste, artikli, situacija) */
+  @media(min-width:901px){ .modal{resize:horizontal; overflow:auto; min-width:420px; max-width:calc(100vw - 40px)} }   /* tablet/racunar: korisnik vuce donji desni ugao; sirina se pamti po formi (gos_modal_w_*) */
   .modal .m-h{padding:18px 22px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center}
   .modal .m-h h3{margin:0; font-size:16px}
   .modal .m-b{padding:18px 22px 22px}
@@ -2925,7 +2927,7 @@ function formIzSifarnika(grId){
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
         <button class="btn" onclick="saveIzSifarnika('${grId}')">Dodaj u predmer</button>
       </div>
-    </div>`);
+    </div>`, {siroka:true, kljuc:'artikli'});
 }
 function saveIzSifarnika(grId){
   if(!isDirector()) return;
@@ -3964,7 +3966,7 @@ function formSituacija(grId){
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
         <button class="btn" onclick="saveSituacija('${grId}')">Sačuvaj situaciju</button>
       </div>
-    </div>`);
+    </div>`, {siroka:true, kljuc:'situacija'});
 }
 function dodajStavkuIzSifarnika(){
   const sel=document.getElementById('st_sf'); const s=(DATA.sifrarnik||[]).find(x=>x.id===(sel&&sel.value)); if(!s) return;
@@ -4013,7 +4015,7 @@ function detaljSituacije(id){
         ${fin&&s.status!=='placeno'?`<button class="btn ghost" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}
         <button class="btn" onclick="closeModal()">Zatvori</button>
       </div>
-    </div>`);
+    </div>`, {siroka:true, kljuc:'situacija'});
 }
 function osveziDetaljSituacije(id){ const m=document.getElementById('modal'); if(m && String(m.innerHTML||'').includes('situacija '+((DATA.situacije||[]).find(x=>x.id===id)||{}).br)) detaljSituacije(id); }
 /* Naplata → "Nova situacija": izbor gradilista (vodim), pa formSituacija */
@@ -4068,10 +4070,27 @@ function saveUpdate(id){
 /* ============================================================
    MODAL + FORME
    ============================================================ */
-function openModal(html){
-  document.getElementById('modal').innerHTML=html;
+let MODAL_KLJUC=null, MODAL_W0=0;
+/* openModal(html, {siroka, kljuc}): siroka = 1040px (tabele/cekliste); kljuc = ime forme pod kojim se pamti sirina
+   koju je korisnik razvukao (localStorage gos_modal_w_<kljuc>), samo na >900px — na telefonu je modal uvek pun ekran. */
+function openModal(html, opt){
+  opt=opt||{};
+  const m=document.getElementById('modal');
+  m.innerHTML=html;
+  if(m.classList) m.classList.toggle('siroka', !!opt.siroka);
+  MODAL_KLJUC=opt.kljuc||null;
+  let w=null; try{ w=MODAL_KLJUC&&window.innerWidth>900?+localStorage.getItem('gos_modal_w_'+MODAL_KLJUC):null; }catch(e){}
+  if(m.style) m.style.width=(w&&w>=420)?w+'px':'';
   document.getElementById('modalWrap').classList.add('on');
+  MODAL_W0=m.offsetWidth||0;
 }
+/* posle rucnog razvlacenja (mouseup) zapamti sirinu za ovu formu */
+function zapamtiSirinuModala(){
+  const m=document.getElementById('modal'); if(!m||!MODAL_KLJUC||!(window.innerWidth>900)) return;
+  const w=m.offsetWidth||0; if(!w||w===MODAL_W0) return;
+  MODAL_W0=w; try{ localStorage.setItem('gos_modal_w_'+MODAL_KLJUC, String(Math.round(w))); }catch(e){}
+}
+if(typeof document!=='undefined'&&document.addEventListener) document.addEventListener('mouseup', zapamtiSirinuModala);
 function closeModal(){ document.getElementById('modalWrap').classList.remove('on'); }
 
 /* formSite() = novo gradilište; formSite(id) = izmena osnovnih podataka postojećeg (samo direktor; modul se ne menja). */
@@ -4127,7 +4146,7 @@ function formSite(id){
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
         <button class="btn" onclick="${ed?`saveSite('${id}')`:'saveSite()'}">${ed?'Sačuvaj izmene':'Sačuvaj gradilište'}</button>
       </div>
-    </div>`);
+    </div>`, {siroka:!ed, kljuc:'gradiliste'});
 }
 /* Projektovanje pri kreiranju: sve 3 faze (IDR / IDP-PGD / PZI) sa svim podfazama,
    svaka sa čekboksom (ukloni ako ne treba) i zaduženim (zaposleni ili spoljni saradnik).
@@ -4183,8 +4202,8 @@ function sifrarnikChecklist(modul, razno){   // razno=true SAMO tamo gde saveSit
     ${pro?'':`<input placeholder="🔍 filtriraj po šifri, nazivu ili grupi" oninput="filtrirajSifrarnik(this)" style="margin-bottom:6px">`}
     <div class="chk-list" style="max-height:260px;overflow-y:auto">${grupe.map(gr=>`
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">${gr.naziv||'—'}</div>
-      ${gr.red.map(([s,k])=>`<div class="sf-red" data-txt="${((s.sifra||'')+' '+s.naziv+' '+(s.grupa||'')).toLowerCase()}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <label class="chk" style="flex:1;min-width:0;margin:0"><input type="checkbox" id="${cid}${k}" data-naziv="${s.naziv}" data-jm="${s.jm||''}" data-grupa="${s.grupa||''}" data-sifra="${s.sifra||''}"${pro?' checked':''}> ${s.sifra?`<span class="num sub">${s.sifra}</span> `:''}${s.naziv}${pro?'':` <span class="sub">(${s.jm||'kom'})</span>`}</label>
+      ${gr.red.map(([s,k])=>`<div class="sf-red" data-txt="${((s.sifra||'')+' '+s.naziv+' '+(s.grupa||'')).toLowerCase()}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <label class="chk" style="flex:1 1 240px;min-width:0;margin:0"><input type="checkbox" id="${cid}${k}" data-naziv="${s.naziv}" data-jm="${s.jm||''}" data-grupa="${s.grupa||''}" data-sifra="${s.sifra||''}"${pro?' checked':''}> ${s.sifra?`<span class="num sub">${s.sifra}</span> `:''}${s.naziv}${pro?'':` <span class="sub">(${s.jm||'kom'})</span>`}</label>
         ${pro?'':`<input type="number" id="f_sfk_${k}" placeholder="količina" style="width:84px;font-size:12px;padding:5px 6px">`}
         ${pro||!canFinance()?'':`<input type="number" id="f_sfc_${k}" placeholder="cena €" style="width:84px;font-size:12px;padding:5px 6px">`}
         <select id="${zid}${k}" style="width:${pro?'46%':'34%'};min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
