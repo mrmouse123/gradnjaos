@@ -3875,6 +3875,7 @@ function kljucStavke(x){ return x.predmer_id||(x.sifra?'sifra:'+x.sifra:'poz:'+S
 function preracunajSituacijeLokalno(grId){
   const sits=sitZa(grId).slice().sort((a,b)=>String(a.izdato).localeCompare(String(b.izdato))||String(a.id).localeCompare(String(b.id)));
   const pmById={}; predmerZa(grId).forEach(p=>pmById[p.id]=p);
+  const imaCene=predmerZa(grId).some(p=>p.cena!=null);   // bez finansija su cene null → iznos ostaje kakav je sa servera (null), kao i na serveru: iznos pise samo definer
   const kum={};
   sits.forEach(s=>{
     const st=stavkeZa(s.id).slice().sort((a,b)=>String(a.id).localeCompare(String(b.id)));
@@ -3886,7 +3887,7 @@ function preracunajSituacijeLokalno(grId){
       x.kumulativ=kum[k]; x.razlika=Math.max(0, x.kumulativ-x.kol_ugovoreno);
       iznos+=(+x.kol||0)*(p&&p.cena!=null?+p.cena:0);
     });
-    if(st.length && canFinance()) s.iznos=Math.round(iznos*100)/100;
+    if(st.length && imaCene) s.iznos=Math.round(iznos*100)/100;
   });
 }
 let SIT_N=0, SIT_DODATNE={};   // k → sifrarnik.id (ne skriveno polje: dom-stub ne cita innerHTML)

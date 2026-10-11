@@ -215,3 +215,12 @@ vraca fajl kao CRLF i svaki sledeci patch sa `
 checkout-a OBAVEZNO normalizovati EOL (python replace) pre patch-a; `grep -c $''` u Git
 Bash-u nije pouzdan, koristiti node/python.
 
+## Lekcija 32 (2026-10-11, nova tabela sa FK + stub)
+1) Nova tabela sa FK na drugu iz `TABLES` mora u `TABLES` da stoji POSLE nje — `pushAll` ide
+redom, pa bi seed/insert na pravoj bazi pao na FK (mock to nije uhvatio direktno, nego kroz
+pogresan `iznos` jer predmer jos nije postojao). 2) dom-stub ne parsira innerHTML: skriveni
+`<input type=hidden>` u dinamicki dodatom redu se ne vidi kroz `getElementById` (vraca prazan
+auto-element) — stanje forme ide u JS mapu (`SIT_DODATNE`, kao `RAZNO_N`). 3) Posle
+`apply_migration` OBAVEZNO i REST proba (curl sa pravim tokenom): PGRST203 i column-grant greske
+se vide samo tu, SQL matrica ih ne hvata.
+

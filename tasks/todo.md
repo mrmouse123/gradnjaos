@@ -6,7 +6,7 @@ materijale sa kolicinom i cenom; rukovodilac pravi privremenu/okoncanu situaciju
 - [x] 2. Artikli: PDF → 81 red (prelomljeni redovi, zalepljene JM) → ARTIKLI_ELOM + seed
 - [x] 3. Klijent: ceklista (sifra, cena, filter), dodajIzSifarnika, predmer sifra, formSituacija/saveSituacija/detaljSituacije, fioka, Naplata, alert razlike, brisanje
 - [x] 4. Mock + T43, e2e 973/0
-- [ ] 5. Browser smoke (demo), docs, commit/push, Pages
+- [x] 5. Browser smoke (demo: 105 redova + filter + cena; z7 fioka bez iznosa; detalj), docs, REST proba (Petar/direktor, pociscena), commit/push, Pages
 Odluke (reci Jovanu): predmer.izv se NE menja iz situacije; okoncana = samo oznaka; stavke van predmera nemaju cenu (0 u iznosu) dok ih uprava ne doda u predmer.
 
 # Modul po nalogu + 6 test-naloga + Admin kokpit bez sifarnika (2026-10-11)
