@@ -4200,7 +4200,7 @@ function sifrarnikChecklist(modul, razno){   // razno=true SAMO tamo gde saveSit
   const lista=sifrarnikZa(modul), grupe=[];
   lista.forEach((s,k)=>{ let gr=grupe.find(x=>x.naziv===s.grupa); if(!gr){ gr={naziv:s.grupa,red:[]}; grupe.push(gr); } gr.red.push([s,k]); });
   const cid=pro?'f_nd_':'f_sf_', zid=pro?'f_ndz_':'f_sfz_';
-  const label=pro?'Specifikacija — sveske po nivoima dokumentacije (odčekiraj što ne treba, dodeli zaduženog)':'Predmer — artikli iz šifarnika (čekiraj što ulazi, upiši količinu'+(canFinance()?' i jediničnu cenu bez PDV u RSD':'')+')';
+  const label=pro?'Specifikacija — sveske po nivoima dokumentacije (odčekiraj šta ne treba, dodeli zaduženog)':'Predmer — artikli iz šifarnika (čekiraj šta ulazi, upiši količinu'+(canFinance()?' i jediničnu cenu bez PDV u RSD':'')+')';
   return `<div class="f-row"><label>${label}</label>
     ${pro?'':`<input placeholder="🔍 filtriraj po šifri, nazivu ili grupi" oninput="filtrirajSifrarnik(this)" style="margin-bottom:6px">`}
     <div class="chk-list" style="max-height:260px;overflow-y:auto">${grupe.map(gr=>`
