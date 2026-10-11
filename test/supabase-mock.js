@@ -28,6 +28,7 @@ const DATE_COLS = new Set(['pocetak', 'rok', 'datum', 'izdato', 'valuta', 'istic
 
 /* view -> osnovna tabela; kolone koje view NULL-uje ne-direktoru */
 const VIEWS = { gradilista_v: 'gradilista', predmer_v: 'predmer', podizvodjaci_v: 'podizvodjaci', dokumenti_v: 'dokumenti', situacije_v: 'situacije' };
+const FK = { zadaci: { predmer_id: 'predmer' }, situacija_stavke: { sit: 'situacije', predmer_id: 'predmer' }, rad_na_zadatku: { zadatak: 'zadaci' } };   // migracije 15/19/20
 const FIN_COLS = { gradilista: ['budzet', 'troskovi', 'potroseno', 'naplaceno'], predmer: ['cena'], podizvodjaci: ['cena'], situacije: ['iznos'] };
 const SKRIVENE_KOLONE = { dokumenti: ['data'] };   // migracija 14: dokumenti.data nema SELECT grant — view ga nema ni za koga
 
@@ -160,6 +161,11 @@ class Query {
         for (const [k, v] of Object.entries(r)) {
           if (DATE_COLS.has(k) && v === '')
             return { data: null, error: { message: `invalid input syntax for type date: "" (${t}.${k})` } };
+        }
+        /* FK kao na serveru (23503): red koji pokazuje na nepostojeci id pada — hvata pogresan redosled u TABLES (lekcija 32) */
+        for (const [col, ref] of Object.entries(FK[t] || {})) {
+          if (r[col] != null && !(this.db[ref] || []).some(x => x.id === r[col]))
+            return { data: null, error: { code: '23503', message: `insert or update on table "${t}" violates foreign key constraint (${col} → ${ref}: ${r[col]})` } };
         }
       }
       for (const r of this._rows) {

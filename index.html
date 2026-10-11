@@ -802,7 +802,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
    SLOJ ZA CUVANJE: supabase -> ugradjeno skladiste -> memorija
    ============================================================ */
 const SKEY = 'gradnjaos_v3';
-const TABLES = ['clijenti','zaposleni','gradilista','zadaci','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','situacija_stavke','resursi','magacin','mag_promene','dokumenti','sifrarnik','rad_na_zadatku'];
+const TABLES = ['clijenti','zaposleni','gradilista','dnevnik','situacije','narudzbe','troskovi_st','podizvodjaci','predmer','zadaci','situacija_stavke','resursi','magacin','mag_promene','dokumenti','sifrarnik','rad_na_zadatku'];
 /* dokumenti.data (data-URL) NEMA select grant: lista ide iz dokumenti_v (bez data), sadrzaj po kliku
    kroz rpc dokument_podaci(id); insert nosi data, update ga NE salje (v. rowsZa). */
 let DATA = JSON.parse(JSON.stringify(DEMO));
@@ -1254,12 +1254,12 @@ function zadatakPro(t){ const g=grById[t.gr]; return !!g && jePro(g); }
 function sinhronizujSveske(grId){
   const g=grById[grId]; if(!g||!jePro(g)||!smemNa(grId)) return 0;
   const pm=predmerZa(grId), poId={}; (DATA.zadaci||[]).forEach(t=>{ if(t.predmer_id) poId[t.predmer_id]=t; });
-  const ts=Date.now(); let n=0;
+  let n=0;
   pm.forEach(p=>{
     let t=poId[p.id];
     if(!t){
       const gotova=(+p.kol||0)>0 && (+p.izv||0)>=(+p.kol||0);
-      DATA.zadaci.push({ id:'t'+ts+'-'+(n++), naziv:p.poz, opis:'', gr:grId, zad:p.zaduzen||g.rukovodilac||null, prio:'mid', kol:gotova?'done':'todo', rok:g.rok||plusDays(30), predmer_id:p.id });
+      DATA.zadaci.push({ id:'tsv-'+p.id, naziv:p.poz, opis:'', gr:grId, zad:p.zaduzen||g.rukovodilac||null, prio:'mid', kol:gotova?'done':'todo', rok:g.rok||plusDays(30), predmer_id:p.id });   // deterministican id = isti na serveru (backfill) i u dva taba → PK konflikt, ne duplikat
     } else {
       if(t.naziv!==p.poz) t.naziv=p.poz;
       if(p.zaduzen && t.zad!==p.zaduzen) t.zad=p.zaduzen;

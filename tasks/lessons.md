@@ -224,3 +224,12 @@ auto-element) — stanje forme ide u JS mapu (`SIT_DODATNE`, kao `RAZNO_N`). 3) 
 `apply_migration` OBAVEZNO i REST proba (curl sa pravim tokenom): PGRST203 i column-grant greske
 se vide samo tu, SQL matrica ih ne hvata.
 
+## Lekcija 33 (2026-10-11, FK redosled — drugi put u istom danu)
+Lekcija 32 je zapisana, pa ipak ponovljena sat kasnije (`zadaci.predmer_id` → `predmer`, a `zadaci`
+je stajao PRE `predmer` u `TABLES`). Zapis u lessons.md nije zastita; zastita je harness: mock sad
+ima `FK` mapu i vraca 23503 na insert/upsert kad ciljni id ne postoji — pogresan redosled obara
+16 testova (seed, log, timer…), sa ispravnim 975/0. Pravilo: svaka nova FK kolona ide u `FK`
+mapu mock-a ISTOG trenutka kad i u migraciju. Drugo: id-jevi redova koje vise klijenata mogu
+nezavisno da naprave (sinhronizacija, backfill) moraju biti deterministicki (`tsv-<predmer_id>`),
+inace dva taba = dva reda; sa istim id-om sudar je PK konflikt koji nestane na reload-u.
+
