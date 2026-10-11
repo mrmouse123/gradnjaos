@@ -686,6 +686,12 @@ zadaci: [
   {id:'t17', naziv:'Prebacivanje krana br. 2 na Karaburmu', gr:'g7', zad:'z16', prio:'mid', kol:'todo', rok:'2026-08-24'},
   {id:'t18', naziv:'Odgovor na primedbe revizione komisije — statika', gr:'g8', zad:'z4', prio:'high', kol:'inprogress', rok:'2026-08-13'},
   {id:'t19', naziv:'Predaja PZI elaborata investitoru', gr:'g9', zad:'z17', prio:'mid', kol:'todo', rok:'2026-08-21'},
+  /* Projektovanje: sveske iz specifikacije g8 SU zadaci (migracija 20) — predmer_id, status iz izvedenog */
+  {id:'t20', naziv:'Idejno rešenje (IDR)', gr:'g8', zad:'z4', prio:'mid', kol:'done', rok:'2026-11-30', predmer_id:'pm6'},
+  {id:'t21', naziv:'PGD — sveska arhitekture', gr:'g8', zad:'z4', prio:'mid', kol:'inprogress', rok:'2026-11-30', predmer_id:'pm7'},
+  {id:'t22', naziv:'PGD — projekat konstrukcije', gr:'g8', zad:'p4', prio:'mid', kol:'inprogress', rok:'2026-11-30', predmer_id:'pm8'},
+  {id:'t23', naziv:'PZI — kompletna dokumentacija', gr:'g8', zad:'z17', prio:'mid', kol:'todo', rok:'2026-11-30', predmer_id:'pm9'},
+  {id:'t24', naziv:'Koordinacija tehničke kontrole', gr:'g8', zad:'z17', prio:'mid', kol:'inprogress', rok:'2026-11-30', predmer_id:'pm10'},
 ],
 dnevnik: [
   {id:'d1', datum:'2026-08-04', gr:'g1', autor:'z1', tekst:'Završena oplata ploče 4. sprata na lameli B. Betoniranje zakazano za sredu, naručeno 86 m³ betona MB30. Ekipa armirača prebačena na lamelu C.'},
@@ -1239,6 +1245,41 @@ function visibleSiteIds(){ return new Set(visibleSites().map(g=>g.id)); }
 /* Zadaci postoje SAMO u Projektovanju (odluka 2026-10-11): na gradilistima Izvodjenja ih nema (radove nose podizvodjaci) —
    ne prikazuju se, ne nude se u formi, ne ulaze u rokove/upozorenja. Stari redovi u bazi ostaju, samo su sakriveni. */
 function zadatakPro(t){ const g=grById[t.gr]; return !!g && jePro(g); }
+/* U Projektovanju zadaci SU sveske (+ razno) iz specifikacije (migracija 20, odluka klijenta): svaka stavka predmera
+   projektantskog gradilista ima zadatak sa predmer_id, dodeljen zaduzenom (ili rukovodiocu); covek na njemu klikne
+   play/pauza/stop. sinhronizujSveske(gr): napravi zadatke koji fale, uskladi naziv/zaduzenog, ukloni zadatke obrisanih
+   stavki (server: on delete cascade). Zove se posle svake izmene specifikacije i pri pokretanju (samo ko VODI gradiliste —
+   on sme da pise zadatke). Status zadatka ↔ sveska: 'done' → predmer.izv = kol, povratak iz 'done' → izv = 0 ako je bila
+   puna — isto radi server (trg_zadatak_sveska_izv, definer — radnik ne sme u predmer), klijent samo lokalno ako vodi. */
+function sinhronizujSveske(grId){
+  const g=grById[grId]; if(!g||!jePro(g)||!smemNa(grId)) return 0;
+  const pm=predmerZa(grId), poId={}; (DATA.zadaci||[]).forEach(t=>{ if(t.predmer_id) poId[t.predmer_id]=t; });
+  const ts=Date.now(); let n=0;
+  pm.forEach(p=>{
+    let t=poId[p.id];
+    if(!t){
+      const gotova=(+p.kol||0)>0 && (+p.izv||0)>=(+p.kol||0);
+      DATA.zadaci.push({ id:'t'+ts+'-'+(n++), naziv:p.poz, opis:'', gr:grId, zad:p.zaduzen||g.rukovodilac||null, prio:'mid', kol:gotova?'done':'todo', rok:g.rok||plusDays(30), predmer_id:p.id });
+    } else {
+      if(t.naziv!==p.poz) t.naziv=p.poz;
+      if(p.zaduzen && t.zad!==p.zaduzen) t.zad=p.zaduzen;
+    }
+  });
+  const ids=new Set(pm.map(p=>p.id));
+  (DATA.zadaci||[]).filter(t=>t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)).forEach(t=>{ if(PUSHED.zadaci) delete PUSHED.zadaci[t.id]; });
+  DATA.zadaci=(DATA.zadaci||[]).filter(t=>!(t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)));
+  return n;
+}
+function sinhronizujSveskeSve(){ let n=0; (DATA.gradilista||[]).forEach(g=>{ if(jePro(g)&&smemNa(g.id)) n+=sinhronizujSveske(g.id); }); return n; }
+/* status zadatka sveske → izvedeno sveske (lokalno samo ako vodim; server to radi za svakog) */
+function uskladiSveskuIzZadatka(t, staroKol){
+  if(!t||!t.predmer_id||!smemNa(t.gr)) return;
+  const p=(DATA.predmer||[]).find(x=>x.id===t.predmer_id); if(!p) return;
+  const k=+p.kol||0;
+  if(t.kol==='done'){ if((+p.izv||0)!==k) p.izv=k; }
+  else if(staroKol==='done' && k>0 && (+p.izv||0)>=k) p.izv=0;
+  osveziNapredak(t.gr);
+}
 function zadaciVidljivi(){
   const v=vrstaUloge(), ids=visibleSiteIds();
   if(v==='uprava') return DATA.zadaci.filter(t=>zadatakPro(t)&&(MODUL==='sve'||ids.has(t.gr)));
@@ -2134,7 +2175,7 @@ function dropTask(e,col){
   if(!id || !KOLONE.some(k=>k.id===col)) return;
   const t=DATA.zadaci.find(x=>x.id===id);
   if(!t || !(smemNa(t.gr) || (vidimGr(t.gr) && t.zad===ROLE))) return;   // radnik: samo svoj zadatak (server: trigger pusta samo kol)
-  t.kol=col;
+  const staroKol=t.kol; t.kol=col; uskladiSveskuIzZadatka(t, staroKol);
   if(col==='done'){ const s=otvorenaSesija(id, osobaTajmera()); if(s){ zatvoriSesiju(s); beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s.minuta, ukupno:minutaZadatka(id)}); } }   // da sesija ne ostane otvorena bez dugmeta
   saveState(); render();
 }
@@ -2184,7 +2225,7 @@ function zavrsiZadatak(id){
   const tuda=radZa(id).find(x=>!x.kraj && x.osoba!==osobaTajmera());
   if(tuda){ alert(imeTajmera(tuda.osoba)+' još radi na ovom zadatku — ne može se završiti dok ne stane.'); return; }
   if(s) zatvoriSesiju(s);
-  t.kol='done';
+  const staroKol=t.kol; t.kol='done'; uskladiSveskuIzZadatka(t, staroKol);
   beleziLog('zadatak_kraj',{zadatak:id, naziv:unesc(t.naziv), opis:unesc(t.opis||''), gr:t.gr, minuta:s?s.minuta:0, ukupno:minutaZadatka(id)});
   saveState(); render();
 }
@@ -2861,7 +2902,7 @@ function ubaciSablonNivoa(grId){
   if(!nove.length){ alert('Sve stavke šablona već postoje u specifikaciji.'); return; }
   const ts=Date.now();
   nove.forEach((s,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:null}));
-  osveziNapredak(grId); saveState(); render();
+  osveziNapredak(grId); sinhronizujSveske(grId); saveState(); render();
 }
 /* Izvodjenje: ceklirane pozicije iz sifrarnika (sifrarnikChecklist('izvodjenje')) → redovi predmera.
    Preskace nazive koji vec postoje na gradilistu. Vraca broj dodatih. Poziva ga saveSite (novo) i saveIzSifarnika (postojece). */
@@ -2943,7 +2984,7 @@ function viewPredmer(){
       <td class="r"><input class="izv-in num" value="${x.izv||0}" onchange="setIzv('${x.id}',this.value)"></td>
       <td class="r" style="min-width:90px"><div class="bar" style="height:6px"><span style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--blue)'}"></span></div><div class="sub num" style="text-align:right">${pct}%</div></td>
       <td>${zaduzenIme(x.zaduzen)}</td>
-      ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button>${jeSuper()?' '+BRISI_DUGME('obrisiPredmerRed',x.id):''}</td>`:''}
+      ${smemPredmer(g.id)?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button>${jeSuper()?' '+BRISI_DUGME('obrisiPredmerRed',x.id):''}</td>`:''}
     </tr>`;
   }).join('');
   return `
@@ -2958,6 +2999,7 @@ function viewPredmer(){
   </div>`:''}
   <div class="tools">
     ${smem?`<button class="btn${isDirector()?' ghost':''}" onclick="formIzvedeno('${g.id}')">⇧ Učitaj izvedeno (Excel)</button>`:''}
+    ${!isDirector()&&smemPredmer(g.id)?`<button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj svesku / uslugu</button>`:''}
     ${isDirector()?`<button class="btn" onclick="formPredmerImport('${g.id}')">${icon('plus')} Uvezi iz Excela (nalepi)</button>
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
     <button class="btn ghost" onclick="izvozPredmer('${g.id}')">⇩ Izvoz izvedenih (CSV)</button>
@@ -3114,8 +3156,9 @@ function primeniIzvedeno(grId){
   osveziNapredak(grId); saveState(); closeModal(); render();
 }
 /* formPredmerRed(grId) = nova pozicija; formPredmerRed(grId,pid) = izmena postojece (samo direktor). */
+function smemPredmer(grId){ const g=grById[grId]; return !!g && (isDirector() || (jePro(g) && smemNa(grId))); }   // rukovodilac dodaje/menja sveske (projektovanje), ne cenu
 function formPredmerRed(grId,pid){
-  if(!isDirector()) return;
+  if(!smemPredmer(grId)) return;
   const g=grById[grId]; if(!g) return;
   const pro=jePro(g);
   const x=pid?(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId):null;
@@ -3127,18 +3170,18 @@ function formPredmerRed(grId,pid){
   openModal(`
     <div class="m-h"><h3>${x?'Izmena pozicije':'Nova pozicija'}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
-      <div class="f-row"><label>${pro?'Usluga':'Opis pozicije'}</label><input id="f_pm_poz"${x?` value="${x.poz}"`:''}></div>
+      <div class="f-row"><label>${pro?'Sveska / usluga (postaje zadatak zaduženog)':'Opis pozicije'}</label><input id="f_pm_poz"${x?` value="${x.poz}"`:''}></div>
       <div class="f-2">
         <div class="f-row"><label>JM</label><select id="f_pm_jm">${jmOpc}</select></div>
         <div class="f-row"><label>Količina</label><input id="f_pm_kol" type="number" value="${x?x.kol:1}"></div>
       </div>
-      <div class="f-row"><label>Jedinična cena (€)</label><input id="f_pm_cena" type="number"${x?` value="${x.cena}"`:''}></div>
+      ${canFinance()?`<div class="f-row"><label>Jedinična cena (€)</label><input id="f_pm_cena" type="number"${x?` value="${x.cena}"`:''}></div>`:''}
       <div class="f-row"><label>Zadužen</label><select id="f_pm_zad"><option value="">—</option>${opcije}</select></div>
       <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}'${x?`,'${x.id}'`:''})">${x?'Sačuvaj izmene':'Sačuvaj'}</button></div>
     </div>`);
 }
 function savePredmerRed(grId,pid){
-  if(!isDirector()) return;
+  if(!smemPredmer(grId)) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const poz=esc(String(v('f_pm_poz')).trim()); if(!poz){ alert('Unesi opis pozicije.'); return; }
   if(pid){
@@ -3148,10 +3191,10 @@ function savePredmerRed(grId,pid){
     x.izv=Math.min(x.izv||0, x.kol);                      // izvedeno ne sme preko nove ugovorene kolicine
     const ct=String(v('f_pm_cena')).trim(); if(canFinance()&&ct!==''&&Number.isFinite(+ct)) x.cena=+ct;
     x.zaduzen=v('f_pm_zad')||null;
-    osveziNapredak(grId); saveState(); closeModal(); render(); return;
+    osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render(); return;
   }
   DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
-  osveziNapredak(grId); saveState(); closeModal(); render();
+  osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render();
 }
 function formPredmerImport(grId){
   if(!isDirector()) return;
@@ -3406,7 +3449,7 @@ async function obrisiSituaciju(id){
 }
 function obrisiPredmerRed(id){
   const x=(DATA.predmer||[]).find(r=>r.id===id); if(!x||!jeSuper()) return false;
-  return obrisiStavku('predmer', id, 'poziciju "'+unesc(x.poz)+'"', false, ()=>osveziNapredak(x.gr));   // napredak PRE render()
+  return obrisiStavku('predmer', id, 'poziciju "'+unesc(x.poz)+'"', false, ()=>{ osveziNapredak(x.gr); sinhronizujSveske(x.gr); });   // napredak PRE render(); zadatak sveske odlazi (server: cascade)
 }
 function obrisiResurs(id){
   const r=(DATA.resursi||[]).find(x=>x.id===id); if(!r||!jeSuper()) return false;
@@ -4205,7 +4248,8 @@ function saveSite(grId){
     rebuildMaps();
     /* Zadaci se pri kreiranju NE seju (odluka 2026-10-09): šablon faza ostaje opciono dugme u fioci (ubaciSablonFaza). */
   }
-  rebuildMaps(); saveState(); closeModal(); renderNav(); render();
+  rebuildMaps(); if(jeProNovi) sinhronizujSveske(gid);
+  saveState(); closeModal(); renderNav(); render();
 }
 
 function formTask(){
@@ -4628,6 +4672,7 @@ async function pokreni(){
   normalizeData();
   if(mode==='supabase') zapamtiSnapshot(DATA);   // posle normalize, da prvi diff ne gura sve
   rebuildMaps();
+  if(sinhronizujSveskeSve()) saveState();   // sveske bez zadatka (migracija 20) — samo ko vodi gradiliste
   renderNalog();
   osveziTemuUI();
   renderNav();

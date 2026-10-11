@@ -98,7 +98,19 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..19.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..20.sql` redom.
+- **Projektovanje: sveske SU zadaci** (2026-10-11, migracija 20, odluka klijenta): svaka stavka
+  specifikacije (`predmer` projektantskog gradilišta) ima zadatak sa `zadaci.predmer_id` (FK, on delete
+  cascade), dodeljen `zaduzen`-u (ili rukovodiocu); čovek na njemu klikne play/pauza/stop.
+  `sinhronizujSveske(gr)` (samo ko VODI: pravi zadatke koji fale, prati naziv/zaduzen, uklanja zadatke
+  obrisanih stavki) zove se pri pokretanju (`sinhronizujSveskeSve` posle snapshota → diff gurne nove),
+  posle `saveSite` (pro), `savePredmerRed`, `ubaciSablonNivoa`, `obrisiPredmerRed`. DEMO g8 ima t20–t24 sa
+  `predmer_id` (inače bi boot-sync slao zadatke i rušio „nepromenjen DATA ne šalje ništa"). Status ↔ sveska:
+  `done` → `predmer.izv=kol`, povratak iz done → `izv=0` ako je bila puna — server `trg_zadatak_sveska_izv`
+  (definer, pa radi i za radnika), klijent `uskladiSveskuIzZadatka` SAMO ako vodi (radnik ne sme u predmer).
+  Rukovodilac projektovanja dodaje/menja sveske (`smemPredmer`: predmer insert policy + `zastiti_kolone_predmer`
+  za pro dozvoljava poz/jm/kol/zaduzen/sifra, ne cenu); Izvođenje: predmer i dalje samo uprava, zadataka nema.
+  Ručni zadaci bez `predmer_id` (= „razno") i dalje postoje (`formTask`). T44.
 - **Šifarnik artikala + situacije sa stavkama** (2026-10-11, migracija 19): `sifrarnik.sifra` + 81
   artikal „ELOM projekt" (`ARTIKLI_ELOM` u index.html = seed u migraciji, ISTI sadržaj; izvor PDF
   „Sifarnik artikala" + 3 dopune 46/47/M029; `sf-a-NNN`, grupa „Artikli (ELOM)"); `predmer.sifra`

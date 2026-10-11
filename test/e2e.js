@@ -3101,6 +3101,61 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
   });
 
+  /* ---- T44 Projektovanje: sveske = zadaci (migracija 20) ---- */
+  section('T44 sveske = zadaci');
+  await acheck('sinhronizujSveske: svaka stavka specifikacije ima zadatak (predmer_id, zaduzen), naziv/zaduzen se prate, obrisana sveska nosi zadatak; demo je vec usklaen', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; MODUL='sve';");
+    if (a.run('sinhronizujSveskeSve()') !== 0) throw new Error('demo nije uskladjen (sync je napravio zadatke)');
+    const pm = a.run("predmerZa('g8')"), tz = a.run("DATA.zadaci.filter(t=>t.gr==='g8'&&t.predmer_id)");
+    if (pm.length !== 5 || tz.length !== 5 || !pm.every(p => tz.some(t => t.predmer_id === p.id && t.naziv === p.poz && t.zad === p.zaduzen))) throw new Error('g8 sveske/zadaci: ' + pm.length + '/' + tz.length);
+    if (a.run("DATA.zadaci.find(t=>t.predmer_id==='pm6').kol") !== 'done') throw new Error('predata sveska (izv=kol) nije done');
+    // nova sveska kroz formu (direktor) → zadatak
+    a.run("formPredmerRed('g8')");
+    const doc = a.g.document; doc.getElementById('f_pm_poz').value = 'Elaborat <b>EE</b>'; doc.getElementById('f_pm_kol').value = '1'; doc.getElementById('f_pm_zad').value = 'z4';
+    a.run("savePredmerRed('g8')");
+    const np = a.run("DATA.predmer[DATA.predmer.length-1]"), nt = a.run(`DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(a.run("DATA.predmer[DATA.predmer.length-1].id"))})`);
+    if (!nt || nt.zad !== 'z4' || nt.naziv !== np.poz || nt.kol !== 'todo' || nt.naziv.includes('<b>')) throw new Error('zadatak sveske: ' + JSON.stringify(nt));
+    // promena zaduzenog → zadatak prati
+    a.run(`formPredmerRed('g8',${JSON.stringify(np.id)})`); doc.getElementById('f_pm_poz').value = np.poz; doc.getElementById('f_pm_zad').value = 'z17'; doc.getElementById('f_pm_kol').value = '1';
+    a.run(`savePredmerRed('g8',${JSON.stringify(np.id)})`);
+    if (a.run(`DATA.zadaci.find(t=>t.predmer_id===${JSON.stringify(np.id)}).zad`) !== 'z17') throw new Error('zaduzen nije prenet na zadatak');
+    // zadatak u done → sveska izvedena (izv=kol), nazad → 0
+    a.run(`dragId=${JSON.stringify(nt.id)}; dropTask({preventDefault(){}}, 'done');`);
+    if (a.run(`DATA.predmer.find(p=>p.id===${JSON.stringify(np.id)}).izv`) !== 1) throw new Error('done nije upisao izv');
+    a.run(`dragId=${JSON.stringify(nt.id)}; dropTask({preventDefault(){}}, 'inprogress');`);
+    if (a.run(`DATA.predmer.find(p=>p.id===${JSON.stringify(np.id)}).izv`) !== 0) throw new Error('povratak iz done nije vratio izv na 0');
+    // brisanje sveske nosi zadatak
+    a.g._calls.confirm.length = 0;
+    await a.run(`obrisiPredmerRed(${JSON.stringify(np.id)})`);
+    if (a.run(`DATA.zadaci.some(t=>t.predmer_id===${JSON.stringify(np.id)})`)) throw new Error('zadatak ostao posle brisanja sveske');
+    // rukovodilac projektovanja dodaje svesku (bez cene); rukovodilac izvodjenja ne moze
+    const rukPro = a.run("grById['g8'].rukovodilac");
+    a.run(`setRole(${JSON.stringify(rukPro + '|pro')}); formPredmerRed('g8');`);
+    const h = doc.getElementById('modal').innerHTML;
+    if (!h.includes('f_pm_poz') || h.includes('f_pm_cena')) throw new Error('rukovodilac: forma sveske nema polje ili nudi cenu');
+    doc.getElementById('f_pm_poz').value = 'Sveska rukovodioca'; doc.getElementById('f_pm_kol').value = '1'; doc.getElementById('f_pm_zad').value = 'z4';
+    const pre = a.run('DATA.zadaci.length'); a.run("savePredmerRed('g8')");
+    if (a.run('DATA.zadaci.length') !== pre + 1 || !a.run("DATA.zadaci.some(t=>t.naziv==='Sveska rukovodioca'&&t.zad==='z4'&&t.predmer_id)")) throw new Error('rukovodilac nije dodao svesku kao zadatak');
+    a.run("current='predmer'; PRED_ID='g8'; render();");
+    if (!doc.getElementById('view').innerHTML.includes("formPredmerRed('g8')")) throw new Error('rukovodilac nema dugme + Dodaj svesku');
+    doc.getElementById('modal').innerHTML = '';   // stub ne brise modal sam
+    a.run("setRole('z1'); formPredmerRed('g1');");
+    if (doc.getElementById('modal').innerHTML.includes('f_pm_poz')) throw new Error('rukovodilac izvodjenja otvorio formu predmera');
+    a.run("setRole('all')");
+  });
+  await acheck('radnik: zadatak sveske done ne dira predmer lokalno (server trigger), start/pauza/zavrsi rade na sveski', async () => {
+    const a = await boot();
+    const t = a.run("DATA.zadaci.find(x=>x.predmer_id==='pm9')");
+    a.run(`setRole('radnik:${t.zad}|pro'); current='tasks'; render();`);
+    if (!a.g.document.getElementById('view').innerHTML.includes(`pocniZadatak('${t.id}')`)) throw new Error('radnik ne vidi svoju svesku kao zadatak');
+    a.run(`pocniZadatak(${JSON.stringify(t.id)}); pauzirajZadatak(${JSON.stringify(t.id)}); zavrsiZadatak(${JSON.stringify(t.id)});`);
+    if (a.run(`DATA.zadaci.find(x=>x.id===${JSON.stringify(t.id)}).kol`) !== 'done') throw new Error('zavrsi nije done');
+    if (a.run("DATA.predmer.find(p=>p.id==='pm9').izv") !== 0) throw new Error('radnik lokalno menjao predmer (server to radi)');
+    if (a.run(`DATA.rad_na_zadatku.filter(s=>s.zadatak===${JSON.stringify(t.id)}).length`) !== 1) throw new Error('sesija nije zabelezena');
+    a.run("setRole('all')");
+  });
+
   /* ---- T43 situacije sa stavkama + sifarnik artikala (migracija 19) ---- */
   section('T43 situacije sa stavkama');
   await acheck('ceklista: izabrani artikal → predmer red sa cenom i sifrom; dedupe po sifri; cena samo uz finansije', async () => {

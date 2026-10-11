@@ -1,3 +1,9 @@
+# Zadaci = sveske (Projektovanje), bez zadataka u Izvodjenju (2026-10-11)
+- [x] Izvodjenje: fioka bez Zadataka/sablona, Kanban/rokovi/forma samo projektantska gradilista (dd22bd8)
+- [x] Migracija 20: zadaci.predmer_id, predmer insert za rukovodioca pro, trigger done→izv (zivo, SQL matrica Nikola/Sara/Petar)
+- [x] Klijent: sinhronizujSveske/uskladiSveskuIzZadatka, smemPredmer, demo t20–t24, T44, e2e 975/0
+- [ ] Browser smoke, commit/push, Pages
+
 # Sifarnik artikala + situacije sa stavkama (2026-10-11)
 Trazeno: PDF „Sifarnik artikala" (ELOM, 78) + 3 dopune u sifarnik Izvodjenja; uprava iz cekliste bira
 materijale sa kolicinom i cenom; rukovodilac pravi privremenu/okoncanu situaciju iz istih stavki
