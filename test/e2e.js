@@ -3108,6 +3108,62 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
   });
 
+  /* ---- T47 predmer iz investitorskog sablona (novo gradiliste + uvoz na postojece) ---- */
+  section('T47 predmer iz sablona');
+  await acheck('upariPredmerSablon: svi listovi, prazan opis → prethodni, bez cene preskoci, tekst-brojevi, kol uskladjena sa ukupnim, dedupe; formSite + savePredmerImport primenjuju', async () => {
+    const a = await boot();
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'predmer-sablon.xlsx'));
+    a.g.__buf = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const redovi = await a.run('citajXlsx(__buf, true)');
+    const rez = a.run(`upariPredmerSablon(${JSON.stringify(redovi)})`);
+    const by = Object.fromEntries(rez.redovi.map(r => [r.poz, r]));
+    if (rez.redovi.length !== 5) throw new Error('ocekujem 5 pozicija: ' + JSON.stringify(rez.redovi.map(r => r.sifra + ' ' + r.poz)));
+    const dem = by['Демонтажа у објектима од 500m² до 1000m²'];
+    if (!dem || dem.sifra !== '4.0.1' || dem.cena !== 350000 || dem.jm !== 'kompl') throw new Error('demontaza: ' + JSON.stringify(dem));
+    const p20 = by['Једнополни аутоматски прекидач 20A'];
+    if (!p20 || p20.kol !== 1830 || p20.cena !== 810) throw new Error('tekst-brojevi: ' + JSON.stringify(p20));
+    const kam = by['Bullet IP kamera 4 MP'];
+    if (!kam || kam.kol !== 3 || kam.sifra !== '3Д') throw new Error('prazan opis: ' + JSON.stringify(kam));
+    const rad = by['Панел радијатор К22 600x2000'];
+    if (!rad || Math.abs(rad.kol - 0.6667) > 0.001 || rez.uskladjeno !== 1) throw new Error('uskladjivanje: ' + JSON.stringify(rad) + ' uskl ' + rez.uskladjeno);
+    if (rez.redovi.some(r => /ВИДЕО НАДЗОР|РЕКАПИТУЛАЦИЈА|УКУПНО/.test(r.poz))) throw new Error('zbirni/recap red kao pozicija');
+    // novo gradiliste: priprema → saveSite dodaje pozicije
+    a.run("ROLE='all'; formSite();");
+    const doc = a.g.document;
+    if (!doc.getElementById('modal').innerHTML.includes('id="pm_fajl"')) throw new Error('formSite nema upload predmera');
+    a.run(`prikaziPredmerPripremu(${JSON.stringify(rez)}, 'pm_pregled')`);
+    if (!doc.getElementById('pm_pregled').innerHTML.includes('5</b> pozicija') || !a.run('PREDMER_PRIPREMA')) throw new Error('pregled/priprema');
+    const set = (id, v) => { doc.getElementById(id).value = v; };
+    set('f_naziv', 'T47 skola'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja'); set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', 'z1');
+    set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(120)')); set('f_cena', '1000'); set('f_tro', '800');
+    a.run('saveSite()');
+    const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    const pm = a.run(`predmerZa(${JSON.stringify(gid)})`);
+    if (pm.length !== 5 || !pm.every(x => x.cena > 0) || !pm.some(x => x.sifra === '4.0.1') || pm.some(x => x.poz.includes('<'))) throw new Error('predmer novog gradilista: ' + JSON.stringify(pm.map(x => [x.sifra, x.kol, x.cena])));
+    if (a.run('PREDMER_PRIPREMA') !== null) throw new Error('priprema nije potrosena');
+    // uvoz na postojece: isti fajl → 0 novih (dedupe), + jedan nalepljen red
+    a.run(`formPredmerImport(${JSON.stringify(gid)})`);
+    if (!doc.getElementById('modal').innerHTML.includes('id="pm_fajl2"')) throw new Error('uvoz nema upload');
+    a.run(`prikaziPredmerPripremu(${JSON.stringify(rez)}, 'pm_pregled2')`);
+    doc.getElementById('f_pm_paste').value = 'Nova nalepljena\tkom\t2\t50';
+    a.run(`savePredmerImport(${JSON.stringify(gid)})`);
+    if (a.run(`predmerZa(${JSON.stringify(gid)}).length`) !== 6) throw new Error('dedupe/nalepljeno: ' + a.run(`predmerZa(${JSON.stringify(gid)}).length`));
+    a.run("setRole('z1')");
+    a.run(`prikaziPredmerPripremu(${JSON.stringify(rez)}, 'pm_pregled2'); dodajPredmerIzPripreme(${JSON.stringify(gid)})`);
+    if (a.run(`predmerZa(${JSON.stringify(gid)}).length`) !== 6) throw new Error('rukovodilac dodao predmer iz fajla');
+    a.run("setRole('all')");
+    // pravi investitorski predmer (ako postoji lokalno): 87 pozicija, 20.935.367 RSD
+    const pf = 'C:/Users/jovan/AppData/Local/Temp/claude/C--gradnjaos/b2cb9afe-8121-4031-9026-1be809ea2dca/scratchpad/dr/predmer.xlsx';
+    if (fs.existsSync(pf)) {
+      const b2 = fs.readFileSync(pf); a.g.__buf2 = b2.buffer.slice(b2.byteOffset, b2.byteOffset + b2.byteLength);
+      const red2 = await a.run('citajXlsx(__buf2, true)');
+      const r2 = a.run(`upariPredmerSablon(${JSON.stringify(red2)})`);
+      const uk = Math.round(r2.redovi.reduce((x, r) => x + r.kol * r.cena, 0));
+      if (r2.redovi.length !== 87 || uk !== 20935367) throw new Error('pravi predmer: ' + r2.redovi.length + ' pozicija, ukupno ' + uk + ' (ocekujem 87 / 20935367), uskladjeno ' + r2.uskladjeno);
+      console.log('      (pravi predmer OŠ: ' + r2.redovi.length + ' pozicija, ' + uk + ' RSD, uskladjeno ' + r2.uskladjeno + ')');
+    }
+  });
+
   /* ---- T46 situacija iz Excela (format investitorske PPS / okoncane situacije) ---- */
   section('T46 situacija iz Excela');
   await acheck('citajXlsx(sve listove) + upariSituaciju: kumulativ − do sada, prazan opis → prethodni, srpski broj, nepoznato preskoceno, list bez kumulativa ignorisan; popuni formu', async () => {

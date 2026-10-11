@@ -3199,19 +3199,25 @@ function savePredmerRed(grId,pid){
 }
 function formPredmerImport(grId){
   if(!isDirector()) return;
+  PREDMER_PRIPREMA=null;
   openModal(`
     <div class="m-h"><h3>Uvoz predmera iz Excela</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
+      <div class="f-row"><label>Investitorski šablon (.xlsx, list po vrsti radova)</label>
+        <div class="tools" style="margin:0"><label class="btn" style="cursor:pointer">⇧ Učitaj predmer (.xlsx) <input id="pm_fajl2" type="file" accept=".xlsx" style="display:none" onchange="predmerIzFajla(this,'pm_pregled2')"></label><span class="sub">pozicije kojih već ima (ista šifra i naziv) se preskaču</span></div>
+        <div id="pm_pregled2"></div>
+      </div>
+      <div class="sub" style="margin:4px 0 10px">— ili nalepi kolone —</div>
       <div style="font-size:12.5px;color:var(--muted);margin-bottom:10px">U Excelu selektuj kolone <b>Opis | JM | Količina | Jedinična cena</b> (bez zaglavlja), kopiraj (Ctrl+C) i nalepi ovde (Ctrl+V). Radi i sa ; kao razdvajačem.</div>
       <div class="f-row"><textarea id="f_pm_paste" style="min-height:160px;font-family:'JetBrains Mono',monospace;font-size:12px" placeholder="Iskop temelja	m³	180	22&#10;Temelji AB	m³	64	210"></textarea></div>
       <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerImport('${grId}')">Uvezi pozicije</button></div>
-    </div>`);
+    </div>`, {siroka:true, kljuc:'predmer'});
 }
 function savePredmerImport(grId){
   if(!isDirector()) return;
   const e=document.getElementById('f_pm_paste'); const txt=e?String(e.value):'';
   const lines=txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  let n=0, ts=Date.now();
+  let n=dodajPredmerIzPripreme(grId), ts=Date.now();   // prvo fajl (ako je ucitan), pa nalepljeno
   lines.forEach(l=>{
     const c=l.split(/\t|;/).map(x=>x.trim());
     if(c.length<2) return;
@@ -3221,7 +3227,7 @@ function savePredmerImport(grId){
     DATA.predmer.push({ id:'pm'+ts+'-'+n, gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null });
     n++;
   });
-  if(!n){ alert('Nijedna pozicija nije prepoznata — proveri da su kolone razdvojene tabom ili tačka-zarezom.'); return; }
+  if(!n){ alert('Nijedna pozicija nije prepoznata — učitaj .xlsx šablon ili proveri da su nalepljene kolone razdvojene tabom ili tačka-zarezom.'); return; }
   osveziNapredak(grId); saveState(); closeModal(); render();
 }
 function izvozPredmer(grId){
@@ -3939,6 +3945,62 @@ function preracunajSituacijeLokalno(grId){
     if(st.length && imaCene) s.iznos=Math.round(iznos*100)/100;
   });
 }
+/* Predmer iz Excela (investitorski sablon „ПРЕДМЕР И ПРЕДРАЧУН": list po vrsti radova; kolone br. poz | opis | JM |
+   kol | jed. cena bez PDV | ukupno). Isti nacin citanja reda kao kod situacije (JM = prvi kratak tekst iza opisa pa broj;
+   prazan opis → prethodni red; „укупно" se preskace). Stavka traži kol I cenu odmah iza JM (red bez cene, npr. prazan
+   duplikat kamere, se preskace). Ukupno se NE cita — racuna se kol × cena; ako fajl ima ukupno koje odstupa > 0,5,
+   kolicina se uskladi sa ukupnim (Excel formule sa skrivenim udelom) i to se prijavi. Vraca {redovi:[{sifra,poz,jm,kol,cena}], uskladjeno, listova}. */
+function upariPredmerSablon(redovi){
+  const out=[], kljucevi=new Set(); let lastDesc='', lastCode='', uskladjeno=0;
+  const broj2=v=>{ if(typeof v==='number') return v; if(v===''||v==null||!/\d/.test(String(v))) return null; const n=broj(v); return Number.isFinite(n)?n:null; };
+  (redovi||[]).forEach(r=>{
+    const code=String(r[0]??'').trim(), desc=String(r[1]??'').replace(/\s+/g,' ').trim();
+    let jmIdx=-1;
+    for(let i=2;i<r.length;i++){ const v=r[i]; if(typeof v==='string'&&v.trim()&&v.trim().length<=10&&i+1<r.length&&broj2(r[i+1])!=null){ jmIdx=i; break; } }
+    if(jmIdx<0){ if(code&&desc){ lastCode=code; lastDesc=desc; } else if(desc){ lastDesc=desc; } else if(code){ lastCode=code; } return; }
+    if(/^(укупно|ukupno|рекапитулација|rekapitulacija)/i.test(desc)||/^(укупно|ukupno)/i.test(code)) return;
+    const ime=desc||lastDesc, sifra=code||lastCode;
+    if(desc) lastDesc=desc; if(code) lastCode=code;
+    const kol=broj2(r[jmIdx+1]), cena=broj2(r[jmIdx+2]), tot=broj2(r[jmIdx+3]);
+    if(kol==null||kol<=0||cena==null||!ime) return;
+    let k=kol; if(tot!=null&&cena>0&&Math.abs(kol*cena-tot)>0.5){ k=Math.round(tot/cena*10000)/10000; uskladjeno++; }
+    const kljuc=(sifra+'|'+normPoz(ime)); if(kljucevi.has(kljuc)) return; kljucevi.add(kljuc);
+    out.push({sifra:sifra||null, poz:ime, jm:String(r[jmIdx]).trim(), kol:k, cena});
+  });
+  return {redovi:out, uskladjeno};
+}
+let PREDMER_PRIPREMA=null;   // {redovi} iz fajla u formi novog gradilista / uvoza — primenjuje se pri cuvanju
+async function predmerIzFajla(inp, cilj){
+  if(!isDirector()) return;
+  const f=inp&&inp.files&&inp.files[0]; if(!f) return;
+  const p=document.getElementById(cilj||'pm_pregled');
+  try{
+    if(!/\.xlsx$/i.test(f.name)) throw new Error('Učitaj .xlsx (stari .xls sačuvaj kao .xlsx u Excelu).');
+    const rez=upariPredmerSablon(await citajXlsx(await f.arrayBuffer(), true));
+    prikaziPredmerPripremu(rez, cilj);
+  }catch(e){ PREDMER_PRIPREMA=null; if(p) p.innerHTML='<div class="banner">'+esc(e.message||String(e))+'</div>'; }
+}
+function prikaziPredmerPripremu(rez, cilj){
+  PREDMER_PRIPREMA=rez.redovi.length?{redovi:rez.redovi}:null;
+  const p=document.getElementById(cilj||'pm_pregled'); if(!p) return;
+  const uk=rez.redovi.reduce((a,r)=>a+r.kol*r.cena,0);
+  p.innerHTML=rez.redovi.length?`<div class="sub" style="margin:6px 0"><b>${rez.redovi.length}</b> pozicija iz fajla · ukupno bez PDV <b class="num">${fmtEur(uk)}</b> (računa se količina × cena)${rez.uskladjeno?` · ${rez.uskladjeno} ${rez.uskladjeno===1?'red':'reda'}: količina usklađena sa ukupnim iznosom iz fajla`:''}</div>
+    <div style="overflow-x:auto;max-height:200px;overflow-y:auto"><table><thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Kol.</th><th class="r">Jed. cena</th></tr></thead><tbody>
+    ${rez.redovi.slice(0,200).map(r=>`<tr><td class="num sub">${esc(r.sifra||'')}</td><td>${esc(r.poz)}</td><td>${esc(r.jm)}</td><td class="r num">${r.kol}</td><td class="r num">${fmtEur(r.cena)}</td></tr>`).join('')}
+    </tbody></table></div>`:'<div class="banner">U fajlu nije prepoznata nijedna pozicija (očekujem kolone: br. poz | opis | JM | količina | jed. cena bez PDV).</div>';
+}
+/* primena pripreme na gradiliste: nove pozicije (dedupe po sifra+naziv), vraca broj dodatih */
+function dodajPredmerIzPripreme(grId){
+  if(!isDirector()||!PREDMER_PRIPREMA) return 0;
+  const ima=new Set(predmerZa(grId).map(x=>String(x.sifra||'')+'|'+normPoz(x.poz)));
+  const ts=Date.now(); let n=0;
+  PREDMER_PRIPREMA.redovi.forEach(r=>{
+    const poz=esc(r.poz), k=String(r.sifra||'')+'|'+normPoz(poz); if(ima.has(k)) return; ima.add(k);
+    DATA.predmer.push({id:'pm'+ts+'-x'+(n++), gr:grId, poz, jm:esc(r.jm)||'kom', kol:r.kol, cena:canFinance()?r.cena:0, izv:0, zaduzen:null, sifra:r.sifra?esc(String(r.sifra)):null});
+  });
+  PREDMER_PRIPREMA=null;
+  return n;
+}
 /* Situacija iz Excela (format investitorske privremene/okoncane situacije: list po vrsti radova; kolone
    br. poz | opis | JM | UGOVORENO kol, cena, ukupno | KUMULATIVNO IZVEDENO kol, cena, ukupno). Red stavke = prvi
    kratak tekst posle opisa je JM pa slede brojevi; opis prazan → opis prethodnog reda (tehnicka zastita);
@@ -4154,6 +4216,7 @@ function closeModal(){ document.getElementById('modalWrap').classList.remove('on
 
 /* formSite() = novo gradilište; formSite(id) = izmena osnovnih podataka postojećeg (samo direktor; modul se ne menja). */
 function formSite(id){
+  PREDMER_PRIPREMA=null;
   const g=id?grById[id]:null, ed=!!g;
   if(id&&!g) return;
   if(ed&&!isDirector()) return;
@@ -4177,7 +4240,11 @@ function formSite(id){
         <div class="f-row" id="nivoBox" style="display:none"><label>Trenutni nivo (faza)</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
       <div id="nivoFillBox" style="display:none">${sifrarnikChecklist('projektovanje', true)}</div>
-      <div id="mereFillBox">${sifrarnikChecklist('izvodjenje', true)}</div>`}
+      <div id="mereFillBox">${sifrarnikChecklist('izvodjenje', true)}
+        <div class="f-row"><label>Ili učitaj ceo ugovoreni predmer iz Excela (investitorski šablon: list po vrsti radova, br. poz | opis | JM | količina | jed. cena bez PDV)</label>
+          <div class="tools" style="margin:0"><label class="btn ghost" style="cursor:pointer">⇧ Učitaj predmer (.xlsx) <input id="pm_fajl" type="file" accept=".xlsx" style="display:none" onchange="predmerIzFajla(this,'pm_pregled')"></label><span class="sub">ukupno bez PDV se računa automatski; pozicije iz fajla se dodaju uz čekirane artikle</span></div>
+          <div id="pm_pregled"></div>
+        </div></div>`}
       <div class="f-2">
         <div class="f-row"><label>Klijent</label><select id="f_kli"${ed?'':' onchange="toggleNoviKlijent(this.value)"'}>${DATA.clijenti.map(c=>`<option value="${c.id}"${sel(g&&g.klijent,c.id)}>${c.naziv}</option>`).join('')}${ed?'':'<option value="__novi__">＋ Novi klijent…</option>'}</select></div>
         <div class="f-row"><label>Rukovodilac</label><select id="f_ruk">${rukLista.map(z=>`<option value="${z.id}"${sel(g&&g.rukovodilac,z.id)}>${z.ime}</option>`).join('')}</select></div>
@@ -4337,7 +4404,7 @@ function saveSite(grId){
     }
     RAZNO_N=0;
   } else {
-    dodajIzSifarnika(gid); dodajRaznoIzvodjenje(gid);
+    dodajIzSifarnika(gid); dodajRaznoIzvodjenje(gid); dodajPredmerIzPripreme(gid);
     rebuildMaps();
     /* Zadaci se pri kreiranju NE seju (odluka 2026-10-09): šablon faza ostaje opciono dugme u fioci (ubaciSablonFaza). */
   }

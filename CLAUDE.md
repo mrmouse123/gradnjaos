@@ -97,6 +97,14 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `Razno — <naziv>` (esc, prazne preskače). Samo pri kreiranju. T40.
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
+- **Predmer iz investitorskog šablona** (2026-10-11): `upariPredmerSablon(redovi)` (isti način čitanja reda kao
+  situacija; stavka = JM + količina + cena odmah iza JM, red bez cene se preskače; ukupno se NE čita nego računa
+  kol×cena, a kad fajl ima ukupno koje odstupa >0,5 količina se uskladi sa njim i broji u `uskladjeno`; dedupe
+  šifra+naziv; zbirni/recap redovi preskočeni). `predmerIzFajla(inp,cilj)` → `prikaziPredmerPripremu` →
+  `PREDMER_PRIPREMA` → `dodajPredmerIzPripreme(gr)` (uprava; cena samo uz `canFinance`). Ulazi: novo gradilište
+  Izvođenja (`formSite`, `pm_fajl`, primena u `saveSite` uz čekirane artikle i Razno) i „Uvezi iz Excela" na
+  strani Predmer (`formPredmerImport`, `pm_fajl2`, pre nalepljenog). Fixture `test/fixtures/predmer-sablon.xlsx`;
+  T47 uz pravi predmer OŠ (87 pozicija, 20.935.367 RSD) kad postoji lokalno.
 - **Situacija iz Excela** (2026-10-11): `formSituacija` (Izvođenje, kad ima predmera) ima „⇧ Učitaj iz Excela" —
   `citajXlsx(buf, true)` čita SVE listove (investitorska PPS/okončana: list po vrsti radova), `upariSituaciju`
   prepoznaje stavke (JM = prvi kratak tekst posle opisa iza koga je broj; prazan opis → prethodni red; zaglavlje
