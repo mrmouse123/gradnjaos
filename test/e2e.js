@@ -433,17 +433,15 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T9 ne-HTML izlazi moraju biti RAW (ne &amp;) ---- */
   section('T9 ne-HTML izlazi (CSV / mailto)');
-  check('CSV izvoz nosi & i < kao prave znake', () => {
+  check('Excel izvoz (xlsx) nosi & i < kao prave znake i cita se nazad', () => {
     const gid = app.run('DATA.gradilista[0].id');
-    app.run(`(()=>{ DATA.predmer.push({id:'pm_t9', gr:${JSON.stringify(gid)}, poz:esc('Beton & čelik <C25>'), jm:esc('m³'), kol:2, cena:100, izv:1, zaduzen:null}); })()`);
+    app.run(`(()=>{ DATA.predmer.push({id:'pm_t9', gr:${JSON.stringify(gid)}, poz:esc('Beton & čelik <C25>'), jm:esc('m³'), kol:2, cena:100, izv:1, zaduzen:null, sifra:'9.9'}); })()`);
     app.run(`ROLE='all'; izvozPredmer(${JSON.stringify(gid)});`);
-    const a = app.g.document._created.filter(c => c.tagName === 'A' && String(c.href).includes('text/csv')).pop();
-    if (!a) throw new Error('CSV link nije napravljen');
-    const csv = decodeURIComponent(String(a.href).split(',').slice(1).join(','));
-    if (csv.includes('&amp;') || csv.includes('&lt;'))
-      throw new Error('CSV sadrži HTML entitete: ' + csv.split('\n').find(l => l.includes('Beton')));
-    if (!csv.includes('Beton & čelik <C25>'))
-      throw new Error('tekst nije ispravno dekodiran: ' + csv.split('\n').find(l => l.includes('Beton')));
+    const a = app.g.document._created.filter(c => c.tagName === 'A' && String(c.href).includes('spreadsheetml')).pop();
+    if (!a || !/\.xlsx$/.test(String(a.download))) throw new Error('xlsx link nije napravljen: ' + (a && a.download));
+    const xml = Buffer.from(String(a.href).split(',')[1], 'base64').toString('utf8');   // sirov XML u paketu (STORED zip, inline stringovi)
+    if (xml.includes('&amp;amp;') || xml.includes('&amp;lt;') || !xml.includes('Beton &amp; čelik &lt;C25&gt;'))
+      throw new Error('xlsx: HTML entiteti iz DATA nisu vraceni u prave znake pre XML escape-a: ' + (xml.match(/Beton[^<]*/) || [''])[0]);
   });
   check('telo mejla trebovanja nosi & kao pravi znak', () => {
     const gid = app.run('DATA.gradilista[0].id');
@@ -3106,6 +3104,33 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
     const loši = a.run(`DATA.gradilista.filter(g=>Object.values(g.adm||{}).some(v=>typeof v!=='object'||v===null)).map(g=>g.id)`);
     if (loši.length) throw new Error('adm nije normalizovan posle reseta: ' + loši.join(', '));
+  });
+
+  /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  section('T48 xlsx pisac');
+  await acheck('napraviXlsx → citajXlsx roundtrip: brojevi, tekst sa &<>", prazne celije, dva lista; izvozPredmer = sablon situacije; rukovodilac bez cena', async () => {
+    const a = await boot();
+    const u = a.run(`napraviXlsx([{ime:'Prvi', redovi:[['Br.','Opis','JM',null,'Kol.'],['4.1','Beton & čelik <C25> "x"','m³','',12.5],[],['', 'poslednji', 'kom', null, 0]]},{ime:'Drugi/List',redovi:[['a',1]]}])`);
+    const bytes = Uint8Array.from(Object.values(u)); a.g.__xb = bytes.buffer;
+    const r1 = await a.run('citajXlsx(__xb)');   // prvi list
+    if (r1.length !== 3 || r1[1][1] !== 'Beton & čelik <C25> "x"' || r1[1][4] !== 12.5 || r1[1][2] !== 'm³' || r1[2][1] !== 'poslednji' || r1[2][4] !== 0) throw new Error('roundtrip prvi list: ' + JSON.stringify(r1));
+    const r2 = await a.run('citajXlsx(__xb, true)');
+    if (r2.length !== 4 || r2[3][0] !== 'a' || r2[3][1] !== 1) throw new Error('svi listovi: ' + JSON.stringify(r2));
+    // ZIP: EOCD na kraju, broj stavki = 4 + 2 lista
+    const dv = new DataView(bytes.buffer); const e = bytes.length - 22;
+    if (dv.getUint32(e, true) !== 0x06054b50 || dv.getUint16(e + 10, true) !== 6) throw new Error('ZIP EOCD / broj stavki');
+    // izvozPredmer: zaglavlje sablona + ukupno za upravu; rukovodilac bez cena
+    const gid = a.run("DATA.predmer[0].gr");
+    a.run(`ROLE='all'; __ex=izvozPredmer(${JSON.stringify(gid)});`);
+    const link = a.g.document._created.filter(c => c.tagName === 'A' && String(c.href).includes('spreadsheetml')).pop();
+    a.g.__xb2 = Uint8Array.from(Buffer.from(String(link.href).split(',')[1], 'base64')).buffer;
+    const ex = await a.run('citajXlsx(__xb2)');
+    const hdr = ex.find(r => r[0] === 'Br. poz.');
+    if (!hdr || hdr.length !== 9 || !ex.some(r => r[1] === 'UKUPNO bez PDV' && typeof r[5] === 'number' && r[5] > 0)) throw new Error('izvoz: zaglavlje/ukupno: ' + JSON.stringify(hdr));
+    const preL = a.g.document._created.filter(c => c.tagName === 'A').length;
+    a.run(`setRole(${JSON.stringify(a.run("grById[DATA.predmer[0].gr].rukovodilac"))}); izvozPredmer(${JSON.stringify(gid)});`);
+    if (a.g.document._created.filter(c => c.tagName === 'A').length !== preL) throw new Error('rukovodilac je izvezao predmer (izvoz je samo za upravu)');
+    a.run("setRole('all')");
   });
 
   /* ---- T47 predmer iz investitorskog sablona (novo gradiliste + uvoz na postojece) ---- */

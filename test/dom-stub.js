@@ -105,7 +105,7 @@ function makeGlobals(opts = {}){
     Blob: class Blob { constructor(p){ this.parts = p; } },
     // .xlsx citanje u browseru (citajXlsx): pravi Node primitivi kad postoje (Node 18+)
     ReadableStream: globalThis.ReadableStream, DecompressionStream: globalThis.DecompressionStream,
-    Response: globalThis.Response, TextDecoder: globalThis.TextDecoder,
+    Response: globalThis.Response, TextDecoder: globalThis.TextDecoder, TextEncoder: globalThis.TextEncoder, btoa: globalThis.btoa, atob: globalThis.atob,
     URL: { createObjectURL: ()=>'blob:stub', revokeObjectURL: ()=>{} },
     FileReader: class FileReader {
       readAsText(){ this.result=''; if(this.onload) this.onload({target:this}); }

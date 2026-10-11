@@ -516,6 +516,8 @@
   .rpt{position:fixed; inset:0; background:rgba(20,25,30,.5); z-index:70; display:none; overflow-y:auto; padding:30px 16px}
   .rpt.on{display:block}
   .rpt-page{background:#fff; max-width:720px; margin:0 auto; border-radius:14px; padding:34px 40px; box-shadow:var(--shadow-lg); overflow-x:auto}
+  .rpt-page.siroka{max-width:1040px}   /* kumulativni pregled: tabela sa 7 kolona (zahtev 2026-10-11) */
+  @media print{ .rpt-page.siroka{max-width:none} }
   .rpt-actions{flex-wrap:wrap}
 
   /* ---------- Print / PDF ---------- */
@@ -3025,6 +3027,57 @@ function setIzv(pid,val){
    se izvodi iz predmera (pravilo 5). .xlsx se cita u browseru bez biblioteke: ZIP centralni
    direktorijum + DecompressionStream('deflate-raw') + regex nad sheet XML-om. */
 function smemIzvedeno(grId){ const g=grById[grId]; return !!g && (isDirector()||g.rukovodilac===ROLE); }
+/* ---------- XLSX PISAC (bez biblioteke) ----------
+   napraviXlsx([{ime, redovi:[[...]]}]) → Uint8Array: minimalan OOXML paket (Content_Types, rels, workbook, sheet-ovi),
+   celije: broj → <v>, ostalo → inlineStr. ZIP bez kompresije (STORED) + CRC32, pa Excel/LibreOffice otvaraju bez pitanja.
+   preuzmiXlsx(ime, listovi) pravi <a download> sa data:…;base64 (radi i u dom-stubu — test dekodira i cita nazad kroz citajXlsx). */
+const CRC_TAB=(()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(u){ let c=0xFFFFFFFF; for(let i=0;i<u.length;i++) c=CRC_TAB[(c^u[i])&0xFF]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+function xmlEsc(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function xlsxKolona(n){ let s=''; n++; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+function napraviXlsx(listovi){
+  const enc=new TextEncoder();
+  const sheetXml=redovi=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+    +redovi.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>{ const ref=xlsxKolona(ci)+(ri+1);
+      if(v==null||v==='') return '';
+      if(typeof v==='number'&&Number.isFinite(v)) return '<c r="'+ref+'"><v>'+v+'</v></c>';
+      return '<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+xmlEsc(v)+'</t></is></c>'; }).join('')+'</row>').join('')
+    +'</sheetData></worksheet>';
+  const fajlovi=[
+    ['[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      +listovi.map((l,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>'],
+    ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ['xl/workbook.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+      +listovi.map((l,i)=>'<sheet name="'+xmlEsc(String(l.ime||('List'+(i+1))).slice(0,31).replace(/[\\/*?:\[\]]/g,' '))+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('')+'</sheets></workbook>'],
+    ['xl/_rels/workbook.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      +listovi.map((l,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('')+'</Relationships>'],
+    ...listovi.map((l,i)=>['xl/worksheets/sheet'+(i+1)+'.xml', sheetXml(l.redovi||[])]),
+  ];
+  const delovi=[], centralni=[]; let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>>24)&255];
+  fajlovi.forEach(([ime,xml])=>{
+    const nb=enc.encode(ime), db=enc.encode(xml), crc=crc32(db);
+    const lok=new Uint8Array([0x50,0x4b,3,4, ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0)]);
+    delovi.push(lok, nb, db);
+    centralni.push(new Uint8Array([0x50,0x4b,1,2, ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), nb);
+    off+=lok.length+nb.length+db.length;
+  });
+  const cdLen=centralni.reduce((a,b)=>a+b.length,0);
+  const eocd=new Uint8Array([0x50,0x4b,5,6, ...u16(0), ...u16(0), ...u16(fajlovi.length), ...u16(fajlovi.length), ...u32(cdLen), ...u32(off), ...u16(0)]);
+  const sve=[...delovi, ...centralni, eocd]; const out=new Uint8Array(sve.reduce((a,b)=>a+b.length,0)); let p=0; sve.forEach(b=>{ out.set(b,p); p+=b.length; });
+  return out;
+}
+function bytesBase64(u){ let s=''; for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null, u.subarray(i,i+0x8000)); return btoa(s); }
+function preuzmiXlsx(ime, listovi){
+  const u=napraviXlsx(listovi);
+  try{
+    const a=document.createElement('a');
+    a.href='data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+bytesBase64(u);
+    a.download=/\.xlsx$/i.test(ime)?ime:ime+'.xlsx';
+    document.body.appendChild&&document.body.appendChild(a); a.click&&a.click(); a.remove&&a.remove();
+  }catch(err){ console.error('xlsx:', err); }
+  return u;
+}
 function xmlDek(s){ return String(s||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&'); }
 async function zipInflate(bytes, metod){
   if(metod===0) return bytes;
@@ -3233,15 +3286,13 @@ function savePredmerImport(grId){
 function izvozPredmer(grId){
   if(!isDirector()) return;
   const g=grById[grId]; const list=predmerZa(grId);
-  const head=['Pozicija','JM','Ugovorena kol.','Jed. cena RSD bez PDV','Izvedeno','Izvedena vrednost RSD','Preostalo kol.'];
-  const rows=list.map(x=>[unesc(x.poz).replace(/;/g,','),unesc(x.jm),x.kol,x.cena,(x.izv||0),Math.round(Math.min(x.izv||0,x.kol)*x.cena*100)/100,Math.max(0,x.kol-(x.izv||0))]);
-  const csv=[head.join(';'),...rows.map(r=>r.join(';'))].join('\n');
-  try{
-    const a=document.createElement('a');
-    a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
-    a.download='izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-'):grId)+'.csv';
-    document.body.appendChild&&document.body.appendChild(a); a.click&&a.click(); a.remove&&a.remove();
-  }catch(err){}
+  /* Excel (zahtev 2026-10-11): isti sablon kolona kao investitorska situacija — br. poz | opis | JM | UGOVORENO kol, cena, ukupno | IZVEDENO kol, cena, ukupno | preostalo */
+  const fin=canFinance();
+  const head=['Br. poz.','Pozicija','JM','Ugovorena kol.','Jed. cena bez PDV (RSD)','Ukupno ugovoreno (RSD)','Izvedena kol.','Izvedena vrednost (RSD)','Preostalo kol.'];
+  const rows=list.map(x=>{ const c=fin?(+x.cena||0):null, iz=Math.min(+x.izv||0,+x.kol||0);
+    return [unesc(x.sifra||''), unesc(x.poz), unesc(x.jm||''), +x.kol||0, c, c==null?null:Math.round((+x.kol||0)*c*100)/100, +x.izv||0, c==null?null:Math.round(iz*c*100)/100, Math.max(0,(+x.kol||0)-(+x.izv||0))]; });
+  const uk=fin?[ '', 'UKUPNO bez PDV', '', null, null, Math.round(rows.reduce((a,r)=>a+(r[5]||0),0)*100)/100, null, Math.round(rows.reduce((a,r)=>a+(r[7]||0),0)*100)/100, null ]:null;
+  return preuzmiXlsx('izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-'):grId), [{ime:'Izvedeno', redovi:[[g?unesc(g.naziv):grId], [], head, ...rows, ...(uk?[[], uk]:[])]}]);
 }
 function openKumulativ(id){
   if(!canFinance()) return;
@@ -3250,7 +3301,7 @@ function openKumulativ(id){
   const ugUk=list.reduce((a,b)=>a+b.kol*b.cena,0);
   const izUk=list.reduce((a,b)=>a+Math.min(b.izv||0,b.kol)*b.cena,0);
   document.getElementById('rpt').innerHTML=`
-    <div class="rpt-page">
+    <div class="rpt-page siroka">
       <div class="rpt-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:18px">
         <button class="btn ghost" onclick="closeIzvestaj()">Zatvori</button>
         <button class="btn" onclick="window.print()">Štampaj / Sačuvaj PDF</button>

@@ -97,6 +97,12 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `Razno — <naziv>` (esc, prazne preskače). Samo pri kreiranju. T40.
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
+- **XLSX pisač bez biblioteke** (2026-10-11): `napraviXlsx([{ime, redovi}])` → Uint8Array (OOXML minimum: Content_Types,
+  rels, workbook, sheet-ovi; broj → `<v>`, ostalo inlineStr sa `xmlEsc`; ZIP STORED + `crc32`), `preuzmiXlsx(ime, listovi)`
+  pravi `<a download>` sa `data:…;base64` (nema Blob/URL u stubu; test dekodira base64 i čita nazad kroz `citajXlsx`).
+  `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
+  kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
+  Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
 - **Predmer iz investitorskog šablona** (2026-10-11): `upariPredmerSablon(redovi)` (isti način čitanja reda kao
   situacija; stavka = JM + količina + cena odmah iza JM, red bez cene se preskače; ukupno se NE čita nego računa
   kol×cena, a kad fajl ima ukupno koje odstupa >0,5 količina se uskladi sa njim i broji u `uskladjeno`; dedupe
