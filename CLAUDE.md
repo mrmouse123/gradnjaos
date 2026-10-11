@@ -98,7 +98,14 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..20.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..21.sql` redom.
+- **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
+  koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
+  predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
+  su OBRISANE iz baze i iz demo-a. Projektovanje NEMA šifarnik u UI: sveske su tipovi dokumentacije
+  (IDR / IDP-PGD / PZI + poddokumenti); redovi `sf-p-*` ostaju u tabeli kao izvor ček-liste, ali ih
+  `sifrarnikKartica` ne prikazuje, dugme „Šifarnik artikala" se ne nudi u modulu Projektovanje, a
+  `formSituacija` na projektantskom gradilištu nema „＋ iz šifarnika". Demo: 36 + 81 = 117 redova.
 - **Projektovanje: sveske SU zadaci** (2026-10-11, migracija 20, odluka klijenta): svaka stavka
   specifikacije (`predmer` projektantskog gradilišta) ima zadatak sa `zadaci.predmer_id` (FK, on delete
   cascade), dodeljen `zaduzen`-u (ili rukovodiocu); čovek na njemu klikne play/pauza/stop.

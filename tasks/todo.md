@@ -1,3 +1,9 @@
+# Sifarnik samo Izvodjenje (81 + Razno), Projektovanje bez sifarnika (2026-10-11)
+- [x] Migracija 21: delete sf-i-* (24 pozicije radova) — zivo + schema.sql
+- [x] Klijent: demo bez SIFRARNIK_IZV, kartica samo Izvodjenje (bez izbora modula), dugme skriveno u Projektovanju, Razno u Izvodjenju (naziv/JM/kol/cena/zaduzen), situacija pro bez sifarnika
+- [x] Testovi: brojevi 117/81, sf-a-001, Razno izvodjenje; e2e 976/0
+- [x] Docs, commit/push
+
 # Zadaci = sveske (Projektovanje), bez zadataka u Izvodjenju (2026-10-11)
 - [x] Izvodjenje: fioka bez Zadataka/sablona, Kanban/rokovi/forma samo projektantska gradilista (dd22bd8)
 - [x] Migracija 20: zadaci.predmer_id, predmer insert za rukovodioca pro, trigger done→izv (zivo, SQL matrica Nikola/Sara/Petar)

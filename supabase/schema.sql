@@ -1,7 +1,7 @@
 -- ============================================================
 -- GradnjaOS — šema baze za Supabase (SVEŽA baza)
 -- Pokreni ceo fajl u: Supabase konzola -> SQL Editor -> New query
--- Postojeća baza: NE ovo, nego migracija-01..20.sql redom.
+-- Postojeća baza: NE ovo, nego migracija-01..21.sql redom.
 -- Stanje: posle migracije 11 (Auth + RLS + hardening finansija, 2026-09-23)
 -- ============================================================
 
@@ -1488,3 +1488,15 @@ end $$;
 drop trigger if exists trg_zadatak_sveska_izv on zadaci;
 create trigger trg_zadatak_sveska_izv after insert or update of kol on zadaci
   for each row execute function trg_zadatak_sveska_izv();
+
+-- ============================================================
+-- Migracija 21 (identican sadrzaj) — sifarnik Izvodjenja samo artikli
+-- ============================================================
+-- ============================================================
+-- Migracija 21 (2026-10-11): sifarnik Izvodjenja = SAMO artikli (81, ELOM, migracija 19) + Razno (slobodne stavke u formi);
+--   24 "pozicije radova" (sf-i-*, migracija 14) se brisu (odluka klijenta). Usluge uprava dodaje u sifarnik rucno.
+--   Projektovanje NEMA sifarnik u UI: sveske su tipovi dokumentacije (IDR / IDP-PGD / PZI + poddokumenti);
+--   redovi sf-p-* ostaju u tabeli kao izvor cek-liste pri kreiranju gradilista, ali se ne prikazuju u sifarniku.
+-- Idempotentna.
+-- ============================================================
+delete from sifrarnik where id like 'sf-i-%';

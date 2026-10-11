@@ -150,7 +150,7 @@ const MUTATORS = [
   ['saveTask', ''], ['saveDiary', ''], ['obrisiDokument', "'dk_x'"],
   ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
-  ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-i-01'"], ['obrisiSifrarnik', "'sf-i-01'"], ['saveIzSifarnika', "'g1'"],
+  ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-a-001'"], ['obrisiSifrarnik', "'sf-a-001'"], ['saveIzSifarnika', "'g1'"],
   ['pocniZadatak', "'t3'"], ['pauzirajZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
   ['obrisiSituaciju', "'s1'"], ['obrisiPredmerRed', "'pm1'"], ['obrisiResurs', "'r1'"], ['obrisiNarudzbu', "'n1'"],
   ['obrisiKlijenta', "'c1'"], ['obrisiZaposlenog', "'z2'"], ['obrisiPodizvodjaca', "'p1'"], ['obrisiGradiliste', "'g2'"],
@@ -833,12 +833,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T34 sifarnik mera (C2) ---- */
   section('T34 sifarnik');
-  await acheck('a) DATA.sifrarnik: 141 redova (60 + 81 artikala ELOM), unikatni id, 36 projektovanje / 105 izvodjenje, sifrarnikZa sortiran po redosledu', async () => {
+  await acheck('a) DATA.sifrarnik: 117 redova (36 sveske projektovanja + 81 artikal ELOM, bez pozicija radova), unikatni id, sifrarnikZa sortiran po redosledu', async () => {
     const a = await boot();
-    if (a.run('DATA.sifrarnik.length') !== 141) throw new Error('ukupno ' + a.run('DATA.sifrarnik.length'));
-    if (a.run('new Set(DATA.sifrarnik.map(s=>s.id)).size') !== 141) throw new Error('id-jevi nisu unikatni');
+    if (a.run('DATA.sifrarnik.length') !== 117) throw new Error('ukupno ' + a.run('DATA.sifrarnik.length'));
+    if (a.run('new Set(DATA.sifrarnik.map(s=>s.id)).size') !== 117) throw new Error('id-jevi nisu unikatni');
     const p = a.run("DATA.sifrarnik.filter(s=>s.modul==='projektovanje').length"), i = a.run("DATA.sifrarnik.filter(s=>s.modul==='izvodjenje').length");
-    if (p !== 36 || i !== 105) throw new Error('projektovanje ' + p + ', izvodjenje ' + i);
+    if (p !== 36 || i !== 81) throw new Error('projektovanje ' + p + ', izvodjenje ' + i);
+    if (a.run("DATA.sifrarnik.some(s=>s.id.startsWith('sf-i-'))") || a.run("typeof SIFRARNIK_IZV") !== 'undefined') throw new Error('pozicije radova (sf-i-*) jos postoje (obrisane migracijom 21)');
     const art = a.run("DATA.sifrarnik.filter(s=>s.grupa==='Artikli (ELOM)')");
     if (art.length !== 81 || new Set(art.map(x => x.sifra)).size !== 81) throw new Error('artikli: ' + art.length);
     for (const sf of ['01-1', '46', '47', 'M029', 'M009']) if (!art.some(x => x.sifra === sf)) throw new Error('nema sifre ' + sf);
@@ -852,9 +853,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
     if (!html.includes('id="mereFillBox"') || !html.includes('id="nivoFillBox"')) throw new Error('nema kontejnera');
     const c = re => (html.match(re) || []).length;
-    if (c(/id="f_sf_\d+"/g) !== 105 || c(/id="f_sfk_\d+"/g) !== 105 || c(/id="f_sfz_\d+"/g) !== 105) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
-    if (c(/id="f_sfc_\d+"/g) !== 105) throw new Error('cena po stavci (uprava): ' + c(/id="f_sfc_\d+"/g));
-    if (!html.includes('oninput="filtrirajSifrarnik(this)"') || c(/class="sf-red"/g) !== 141) throw new Error('nema filtera / sf-red redova: ' + c(/class="sf-red"/g));
+    if (c(/id="f_sf_\d+"/g) !== 81 || c(/id="f_sfk_\d+"/g) !== 81 || c(/id="f_sfz_\d+"/g) !== 81) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
+    if (c(/id="f_sfc_\d+"/g) !== 81) throw new Error('cena po stavci (uprava): ' + c(/id="f_sfc_\d+"/g));
+    if (!html.includes('oninput="filtrirajSifrarnik(this)"') || c(/class="sf-red"/g) !== 117) throw new Error('nema filtera / sf-red redova: ' + c(/class="sf-red"/g));
+    if (c(/id="raznoBox"/g) !== 2) throw new Error('Razno mora biti i u Izvodjenju i u Projektovanju: ' + c(/id="raznoBox"/g));
     if (c(/id="f_nd_\d+"/g) !== 36) throw new Error('f_nd_ ' + c(/id="f_nd_\d+"/g));
     if (!/id="f_sfk_0"[^>]*type="number"|type="number"[^>]*id="f_sfk_0"/.test(html)) throw new Error('kolicina nije type=number');
     a.run("toggleTipRadova('izvodjenje')");
@@ -920,28 +922,28 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const set = (id, v) => { doc.getElementById(id).value = v; };
     set('sf_naziv', '<b>Nova poz</b>'); set('sf_jm', 'm²'); set('sf_grupa', 'Zemljani radovi'); set('sf_modul', 'izvodjenje');
     a.run("ROLE='z1'; saveSifrarnik(); ROLE='all';");
-    if (N() !== 141) throw new Error('rukovodilac je dodao u sifarnik');
+    if (N() !== 117) throw new Error('rukovodilac je dodao u sifarnik');
     const maxR = a.run('Math.max(...DATA.sifrarnik.map(s=>s.redosled))');
     a.run('saveSifrarnik()');
-    if (N() !== 142) throw new Error('direktor nije dodao: ' + N());
+    if (N() !== 118) throw new Error('direktor nije dodao: ' + N());
     const nov = a.run('DATA.sifrarnik[DATA.sifrarnik.length-1]');
     if (nov.naziv.includes('<b>') || nov.redosled !== maxR + 1 || nov.aktivan !== true || nov.jm !== 'm²' || nov.modul !== 'izvodjenje' || nov.grupa !== 'Zemljani radovi') throw new Error('red: ' + JSON.stringify(nov));
-    a.run("ROLE='z1'; toggleSifrarnik('sf-i-01'); ROLE='all';");
-    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== true) throw new Error('rukovodilac je promenio aktivan');
-    a.run("toggleSifrarnik('sf-i-01')");
-    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== false) throw new Error('toggle nije prebacio na false');
-    if (a.run("sifrarnikZa('izvodjenje').some(s=>s.id==='sf-i-01')")) throw new Error('neaktivan se i dalje nudi');
-    a.run("toggleSifrarnik('sf-i-01')");
-    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-i-01').aktivan") !== true) throw new Error('toggle nazad');
+    a.run("ROLE='z1'; toggleSifrarnik('sf-a-001'); ROLE='all';");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-a-001').aktivan") !== true) throw new Error('rukovodilac je promenio aktivan');
+    a.run("toggleSifrarnik('sf-a-001')");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-a-001').aktivan") !== false) throw new Error('toggle nije prebacio na false');
+    if (a.run("sifrarnikZa('izvodjenje').some(s=>s.id==='sf-a-001')")) throw new Error('neaktivan se i dalje nudi');
+    a.run("toggleSifrarnik('sf-a-001')");
+    if (a.run("DATA.sifrarnik.find(s=>s.id==='sf-a-001').aktivan") !== true) throw new Error('toggle nazad');
     a.run("setRole('admin')");
-    await a.run("obrisiSifrarnik('sf-i-01')");
-    if (N() !== 142) throw new Error('admin je obrisao');
+    await a.run("obrisiSifrarnik('sf-a-001')");
+    if (N() !== 118) throw new Error('admin je obrisao');
     a.run('formSifrarnik()');
     if (a.g.document.getElementById('modal').innerHTML.includes('obrisiSifrarnik')) throw new Error('admin vidi dugme brisanja');
     if (a.run("viewNalozi()").includes('Šifarnik mera')) throw new Error('sifarnik je i dalje u Admin kokpitu (izbacen 2026-10-11)');
     a.run("setRole('all')");
-    await a.run("obrisiSifrarnik('sf-i-01')");
-    if (N() !== 141 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-i-01')")) throw new Error('direktor nije obrisao');
+    await a.run("obrisiSifrarnik('sf-a-001')");
+    if (N() !== 117 || a.run("DATA.sifrarnik.some(s=>s.id==='sf-a-001')")) throw new Error('direktor nije obrisao');
   });
   await acheck('g) Šifarnik: modal sa taba Gradilišta (uprava), NE u Admin kokpitu; kartica "Šifarnik mera (60)" + polja', async () => {
     const a = await boot();
@@ -955,12 +957,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('rukovodilac otvorio sifarnik');
     a.run("setRole('all'); formSifrarnik();");
     const h = a.g.document.getElementById('modal').innerHTML;
-    if (!h.includes('Šifarnik mera (141)')) throw new Error('nema kartice u modalu');
+    if (!h.includes('Šifarnik artikala i usluga (81)')) throw new Error('nema kartice u modalu (samo Izvodjenje, 81 artikal)');
+    if (h.includes('sf-p-01') || /<option value="projektovanje"/.test(h)) throw new Error('sifarnik prikazuje/nudi Projektovanje');
+    a.run("MODUL='projektovanje'; current='sites'; render();");
+    if (a.g.document.getElementById('view').innerHTML.includes('formSifrarnik')) throw new Error('dugme Šifarnik u modulu Projektovanje');
+    a.run("MODUL='sve';");
     if (!h.includes('id="sf_sifra"') || !h.includes('<th>Šifra</th>')) throw new Error('sifarnik bez sifre');
-    a.run("toggleSifrarnik('sf-i-01')");   // akcija osvezava modal
+    a.run("toggleSifrarnik('sf-a-001')");   // akcija osvezava modal
     if (!a.g.document.getElementById('modal').innerHTML.includes('sf_naziv')) throw new Error('modal nestao posle akcije');
     for (const id of ['sf_naziv', 'sf_jm', 'sf_grupa', 'sf_modul', 'saveSifrarnik()']) if (!h.includes(id)) throw new Error('nema ' + id);
-    if (!h.includes("obrisiSifrarnik('sf-i-01')")) throw new Error('direktor nema dugme za brisanje');
+    if (!h.includes("obrisiSifrarnik('sf-a-001')")) throw new Error('direktor nema dugme za brisanje');
     const th = (h.match(/<th/g) || []).length, td = (h.match(/<td/g) || []).length;
     if (!(th > 0 && td > 0)) throw new Error('prazna tabela');
   });
@@ -3179,6 +3185,27 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('z1'); formSite();");   // rukovodilac ne otvara formu; ali ceklista bez finansija nema polje cene
     if (a.run("sifrarnikChecklist('izvodjenje')").includes('f_sfc_')) throw new Error('cena ponudjena bez finansija');
     a.run("setRole('all')");
+  });
+  await acheck('Razno u Izvodjenju: slobodna stavka (naziv, JM, kolicina, cena, zaduzen) → predmer red bez sifre; i kroz formIzSifarnika; Projektovanje bez sifarnika u situaciji', async () => {
+    const a = await boot();
+    a.run("ROLE='all'; formSite(); document.getElementById('f_modul').value='izvodjenje'; toggleTipRadova('izvodjenje'); RAZNO_MODUL='izvodjenje'; dodajRaznoRed(); dodajRaznoRed();");
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    if (a.run('RAZNO_N') !== 2) throw new Error('RAZNO_N ' + a.run('RAZNO_N'));
+    set('f_nr_0', ' Usluga montaže <i>x</i> '); set('f_nrj_0', 'h'); set('f_nrk_0', '12'); set('f_nrc_0', '45'); set('f_nrz_0', 'z2');
+    set('f_nr_1', '');
+    set('f_naziv', 'T43 razno'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja'); set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', 'z1');
+    set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(90)')); set('f_cena', '1000'); set('f_tro', '800');
+    a.run('saveSite()');
+    const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    const rows = a.run(`predmerZa(${JSON.stringify(gid)})`);
+    if (rows.length !== 1 || rows[0].jm !== 'h' || rows[0].kol !== 12 || rows[0].cena !== 45 || rows[0].zaduzen !== 'z2' || rows[0].sifra !== null || rows[0].poz.includes('<i>') || !rows[0].poz.includes('&lt;i&gt;')) throw new Error('razno red: ' + JSON.stringify(rows));
+    a.run(`formIzSifarnika(${JSON.stringify(gid)}); dodajRaznoRed();`);
+    set('f_nr_0', 'Dodatna usluga'); set('f_nrk_0', '3');
+    a.run(`saveIzSifarnika(${JSON.stringify(gid)})`);
+    if (a.run(`predmerZa(${JSON.stringify(gid)}).length`) !== 2 || !a.run(`predmerZa(${JSON.stringify(gid)}).some(r=>r.poz==='Dodatna usluga'&&r.kol===3)`)) throw new Error('razno kroz formIzSifarnika');
+    a.run("formSituacija('g8')");
+    if (doc.getElementById('modal').innerHTML.includes('id="st_sf"')) throw new Error('Projektovanje nudi sifarnik u situaciji');
+    a.run('closeModal()');
   });
   await acheck('rukovodilac BEZ finansija: formSituacija → stavke, iznos null, razlika za stavku van predmera; nijedan pogled bez NaN', async () => {
     const s0 = await boot({ supabase: true, seed: {} });   // direktor zaseje demo; Petar (u-ruk, bez finansija) radi nad tim seed-om

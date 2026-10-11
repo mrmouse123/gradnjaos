@@ -33,7 +33,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | zadaci (samo Projektovanje) | vidi sve | vidi sve | vidi sve zadatke svojih projektantskih gradilišta | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
 | dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
 | Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktore) | ne | ne | ne |
-| šifarnik mera i artikala (dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
+| šifarnik artikala i usluga (samo Izvođenje; dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
 | situacije (privremena / okončana) sa stavkama | pravi, vidi iznose i razlike | isto | pravi na svojim gradilištima; iznose vidi samo uz finansije | pravi, bez iznosa | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
 
@@ -67,7 +67,7 @@ Sad se trebovanje šalje kroz mailto (otvori mail klijent). Za pravo slanje: `su
 
 - Prevlačenje zadataka (drag & drop) radi mišem; na telefonu koristi klik na karticu.
 - Upis u bazu je „poslednji piše — pobeđuje" po redu: ako dvoje menja ISTI zapis istovremeno, kasniji pregazi raniji. Različite zapise više ljudi menja bez sukoba (čuva se samo ono što se promenilo).
-- **Naplata po stavkama:** uprava pri kreiranju gradilišta bira pozicije i artikle iz šifarnika (81 artikal ELOM + pozicije radova) sa ugovorenom količinom i cenom. Rukovodilac pravi privremenu ili okončanu situaciju iz istog predmera (plus artikli iz šifarnika kojih nema u predmeru); količine mogu da odstupe. Server računa kumulativ po stavci kroz sve situacije i **razliku preko ugovorenog**, koju uprava vidi kao upozorenje na tabli i u detalju situacije, a iznos iz ugovorenih cena. Rukovodilac bez finansija ne vidi iznose.
+- **Naplata po stavkama:** uprava pri kreiranju gradilišta bira artikle iz šifarnika (81 artikal ELOM, plus usluge koje uprava doda u šifarnik, plus „Razno" slobodne stavke) sa ugovorenom količinom i cenom. Projektovanje nema šifarnik: tamo su sveske tipovi dokumentacije (IDR, IDP/PGD, PZI i poddokumenti) plus Razno. Rukovodilac pravi privremenu ili okončanu situaciju iz istog predmera (plus artikli iz šifarnika kojih nema u predmeru); količine mogu da odstupe. Server računa kumulativ po stavci kroz sve situacije i **razliku preko ugovorenog**, koju uprava vidi kao upozorenje na tabli i u detalju situacije, a iznos iz ugovorenih cena. Rukovodilac bez finansija ne vidi iznose.
 - Zadaci postoje samo na gradilištima Projektovanja i to su **sveske iz specifikacije** (+ razno): svaka sveska dodeljena čoveku je njegov zadatak sa Počni / Pauziraj / Završi; „Završi" označava svesku kao predatu (izvedeno = ugovoreno) i podiže napredak projekta. Rukovodilac projektovanja dodaje sveske i dodeljuje ih. Gradilišta Izvođenja nemaju zadatke (radove nose podizvođači, naplata ide po situacijama iz šifarnika). Novo gradilište (Projektovanje) nudi sve sveske po fazama + sekciju **Razno**.
 - Brisanje: samo direktor (red po red, dugme u fioci); radnik/spoljni brišu svoje unose dnevnika i dokumenta.
 - Prilozi (fakture, dokumenta) se čuvaju u bazi kao data-URL, limit 2.5 MB po fajlu — do prelaska na Supabase Storage.
