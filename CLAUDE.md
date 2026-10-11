@@ -103,6 +103,14 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
   Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
+- **Trebovanje iz ugovorenog predmera** (2026-10-12): `formNarudzba` (široka, `kljuc:'trebovanje'`) ima dropdown
+  `#nar_pm` sa pozicijama predmera izabranog gradilišta Izvođenja (`narPredmerOpcije`; Projektovanje = ništa),
+  `osveziNarPredmer(grId)` na promenu gradilišta (grId = podrazumevano, jer select u stubu nema vrednost),
+  „＋ Dodaj iz predmera" → `addStavka(p)`: red sa `readonly` nazivom, ugovorenom količinom kao POLAZNOM (slobodno se
+  menja, nema klampa — odluka klijenta) i JM iz predmera (dodat u listu ako ga nema). `NAR_PM` = indeks reda →
+  `predmer.id` (JS mapa, lekcija 32); `saveNarudzba` za takve redove čita naziv/JM/šifru iz DATA (već esc) i pamti
+  `predmer_id`+`sifra` u `narudzbe.stavke` (jsonb, bez migracije). Mejl i kartica nose šifru i oznaku „predmer".
+  Stub: `insertAdjacentHTML` je no-op — test proverava `stavkaRed(i,p)` direktno. T49.
 - **Predmer iz investitorskog šablona** (2026-10-11): `upariPredmerSablon(redovi)` (isti način čitanja reda kao
   situacija; stavka = JM + količina + cena odmah iza JM, red bez cene se preskače; ukupno se NE čita nego računa
   kol×cena, a kad fajl ima ukupno koje odstupa >0,5 količina se uskladi sa njim i broji u `uskladjeno`; dedupe

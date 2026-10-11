@@ -3740,7 +3740,7 @@ function narudzbaMailBody(n){
     'Datum trebovanja: '+fmtDate(n.datum),
     'Potrebno na gradili\u0161tu do: '+fmtDate(n.rok),'',
     'STAVKE:'];
-  (n.stavke||[]).forEach((st,i)=>lines.push((i+1)+'. '+unesc(st.naziv)+' \u2014 '+unesc(st.kolicina)+' '+unesc(st.jm)));
+  (n.stavke||[]).forEach((st,i)=>lines.push((i+1)+'. '+(st.sifra?unesc(st.sifra)+' \u00b7 ':'')+unesc(st.naziv)+' \u2014 '+unesc(st.kolicina)+' '+unesc(st.jm)+(st.predmer_id?' (iz ugovorenog predmera)':'')));
   if(n.napomena) lines.push('','Napomena: '+unesc(n.napomena));
   lines.push('','\u2014 Poslato iz GradnjaOS');
   return lines.join('\n');
@@ -3779,7 +3779,7 @@ function viewNabavka(){
         ${st}
       </div>
       <div class="card-b">
-        ${(n.stavke||[]).map(x=>`<div class="dr-kv"><span class="k">${x.naziv}</span><span class="v num">${x.kolicina} ${x.jm}</span></div>`).join('')}
+        ${(n.stavke||[]).map(x=>`<div class="dr-kv"><span class="k">${x.sifra?`<span class="num sub">${x.sifra}</span> \u00b7 `:''}${x.naziv}${x.predmer_id?' <span class="badge b-blue" title="Pozicija iz ugovorenog predmera">predmer</span>':''}</span><span class="v num">${x.kolicina} ${x.jm}</span></div>`).join('')}
         ${n.napomena?`<div style="font-size:12.5px;color:var(--muted);margin-top:10px">\uD83D\uDCDD ${n.napomena}</div>`:''}
         <div style="display:flex;gap:8px;margin-top:14px">
           <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="posaljiMejlNabavci('${n.id}')">\u2709 Po\u0161alji mejl ponovo</button>
@@ -3794,30 +3794,51 @@ function viewNabavka(){
   <div class="tools">${mogaDaUpravljam()?`<button class="btn" onclick="formNarudzba()">${icon('plus')} Novo trebovanje</button>`:'<span class="sub">Trebovanje šalje rukovodilac gradilišta.</span>'}</div>
   ${cards}`;
 }
-let stavkaSeq=1;
-function stavkaRed(i){
+let stavkaSeq=1, NAR_PM={};   // NAR_PM: indeks reda → predmer.id (JS mapa, ne skriveno polje — lekcija 32)
+const JM_TREBOVANJE=['kom','m\u00b3','m\u00b2','m','t','kg','l','paleta','d\u017eak'];
+function stavkaRed(i, p){   // p = red predmera (opciono): naziv zakljucan, kolicina = ugovorena kao polazna, JM iz predmera
+  const jm=p&&p.jm?p.jm:'kom', opts=(JM_TREBOVANJE.includes(jm)?JM_TREBOVANJE:[jm,...JM_TREBOVANJE]).map(j=>`<option${j===jm?' selected':''}>${j}</option>`).join('');
   return `<div class="f-2" style="grid-template-columns:2fr 74px 92px;gap:8px;margin-bottom:8px">
-    <input id="st_n_${i}" placeholder="Materijal (npr. Cement CEM II 42.5)">
-    <input id="st_k_${i}" placeholder="Kol.">
-    <select id="st_j_${i}"><option>kom</option><option>m\u00b3</option><option>m\u00b2</option><option>m</option><option>t</option><option>kg</option><option>l</option><option>paleta</option><option>d\u017eak</option></select>
+    <input id="st_n_${i}" placeholder="Materijal (npr. Cement CEM II 42.5)"${p?` value="${(p.sifra?p.sifra+' \u00b7 ':'')+p.poz}" readonly title="Pozicija iz ugovorenog predmera (ugovoreno ${p.kol} ${jm})"`:''}>
+    <input id="st_k_${i}" placeholder="Kol."${p?` value="${p.kol}"`:''}>
+    <select id="st_j_${i}">${opts}</select>
   </div>`;
 }
-function addStavka(){
+function addStavka(p){
   stavkaSeq++;
   const box=document.getElementById('stavkeBox');
-  if(box&&box.insertAdjacentHTML) box.insertAdjacentHTML('beforeend', stavkaRed(stavkaSeq));
+  if(box&&box.insertAdjacentHTML) box.insertAdjacentHTML('beforeend', stavkaRed(stavkaSeq, p));
+  if(p){ NAR_PM[stavkaSeq]=p.id; const k=document.getElementById('st_k_'+stavkaSeq); if(k&&k.focus){ k.focus(); if(k.select) k.select(); } }
+}
+/* Trebovanje iz ugovorenog predmera (2026-10-11): dropdown pozicija izabranog gradilista Izvodjenja; „Dodaj iz predmera"
+   otvara red sa zakljucanim nazivom i ugovorenom kolicinom kao polaznom — rukovodilac je slobodno menja (kolicina
+   trebovanja NIJE ogranicena ugovorenom). Stavka pamti predmer_id + sifra; naziv/JM se pri cuvanju citaju iz DATA. */
+function narPredmerOpcije(grId){
+  const g=grById[grId]; if(!g||jePro(g)) return '';   // Projektovanje nema materijal — sveske nisu za trebovanje
+  return predmerZa(grId).map(p=>`<option value="${p.id}">${p.sifra?p.sifra+' \u00b7 ':''}${p.poz} (${p.jm||'kom'}, ugovoreno ${p.kol})</option>`).join('');
+}
+function osveziNarPredmer(grId){   // grId = podrazumevano gradiliste pri otvaranju (select jos nema vrednost u stubu)
+  const sel=document.getElementById('f_ngr'), box=document.getElementById('nar_pm_box'); if(!box) return;
+  const opt=narPredmerOpcije((sel&&sel.value)||grId||'');
+  box.innerHTML=opt?`<div class="tools" style="margin:6px 0 0"><select id="nar_pm" style="min-width:0;flex:1">${opt}</select><button type="button" class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="dodajIzPredmeraTrebovanje()">\uFF0B Dodaj iz predmera</button></div><div class="sub" style="margin-top:4px">Ugovorena koli\u010dina je samo polazna \u2014 unesi koliko stvarno treba.</div>`:'';
+}
+function dodajIzPredmeraTrebovanje(){
+  const sel=document.getElementById('nar_pm'), gr=document.getElementById('f_ngr'); if(!sel||!gr||!smemNa(gr.value)) return;
+  const p=predmerZa(gr.value).find(x=>x.id===sel.value); if(!p) return;
+  addStavka(p);
 }
 function formNarudzba(){
   const sites=DATA.gradilista.filter(g=>isDirector()||g.rukovodilac===ROLE);
   if(!sites.length){ alert('Nema gradili\u0161ta za koja mo\u017ee\u0161 da poru\u010di\u0161 trebovanje.'); return; }
-  stavkaSeq=1;
+  stavkaSeq=1; NAR_PM={};
   openModal(`
     <div class="m-h"><h3>Novo trebovanje materijala</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
       <div class="f-2">
-        <div class="f-row"><label>Gradili\u0161te</label><select id="f_ngr">${sites.map(g=>`<option value="${g.id}">${g.naziv}</option>`).join('')}</select></div>
+        <div class="f-row"><label>Gradili\u0161te</label><select id="f_ngr" onchange="osveziNarPredmer()">${sites.map(g=>`<option value="${g.id}">${g.naziv}</option>`).join('')}</select></div>
         <div class="f-row"><label>Potrebno do</label><input id="f_nrok" type="date" value="${plusDays(5)}"></div>
       </div>
+      <div class="f-row"><label>Iz ugovorenog predmera</label><div id="nar_pm_box"></div></div>
       <div class="f-row"><label>Stavke</label>
         <div id="stavkeBox">${stavkaRed(1)}</div>
         <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="addStavka()">${icon('plus')} Dodaj stavku</button>
@@ -3827,21 +3848,26 @@ function formNarudzba(){
         <button class="btn ghost" onclick="closeModal()">Otka\u017ei</button>
         <button class="btn" onclick="saveNarudzba()">Sa\u010duvaj i otvori mejl</button>
       </div>
-    </div>`);
+    </div>`, {siroka:true, kljuc:'trebovanje'});
+  osveziNarPredmer(sites[0].id);
 }
 function saveNarudzba(){
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
-  const stavke=[];
-  for(let i=1;i<=stavkaSeq;i++){
-    const nz=esc(String(v('st_n_'+i)).trim());
-    if(nz) stavke.push({naziv:nz, kolicina:esc(String(v('st_k_'+i)).trim())||'1', jm:v('st_j_'+i)||'kom'});
-  }
-  if(!stavke.length){ alert('Unesi bar jednu stavku materijala.'); return; }
   const gr=v('f_ngr');
   const g=grById[gr];
   if(!g || !(isDirector()||g.rukovodilac===ROLE)){ alert('Nema\u0161 pravo trebovanja za ovo gradili\u0161te.'); return; }
+  const pmById={}; predmerZa(gr).forEach(p=>pmById[p.id]=p);
+  const stavke=[];
+  for(let i=1;i<=stavkaSeq;i++){
+    const p=NAR_PM[i]?pmById[NAR_PM[i]]:null;
+    const kol=esc(String(v('st_k_'+i)).trim())||'1';
+    if(p){ stavke.push({naziv:p.poz, kolicina:kol, jm:p.jm||'kom', predmer_id:p.id, sifra:p.sifra||null}); continue; }   // naziv/JM iz DATA (vec esc), kolicina slobodna
+    const nz=esc(String(v('st_n_'+i)).trim());
+    if(nz) stavke.push({naziv:nz, kolicina:kol, jm:v('st_j_'+i)||'kom'});
+  }
+  if(!stavke.length){ alert('Unesi bar jednu stavku materijala.'); return; }
   const n={ id:'n'+Date.now(), gr, autor:(ROLE==='all'?'direkcija':ROLE), datum:todayStr(), rok:v('f_nrok')||plusDays(5), status:'poslato', napomena:esc(String(v('f_nnap')).trim()), stavke };
-  DATA.narudzbe.push(n);
+  DATA.narudzbe.push(n); NAR_PM={};
   saveState(); closeModal(); render();
   posaljiMejlNabavci(n.id);
 }

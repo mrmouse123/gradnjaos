@@ -3107,6 +3107,56 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T49 trebovanje iz ugovorenog predmera: dropdown pozicija, kolicina slobodna, predmer_id/sifra na stavci ---- */
+  section('T49 trebovanje iz predmera');
+  await acheck('formNarudzba: nar_pm nudi predmer Izvodjenja (ne Projektovanja), dodaj iz predmera → readonly naziv + ugovorena kol kao polazna, saveNarudzba cuva predmer_id/sifra/naziv/JM iz DATA i slobodnu kolicinu; mejl i kartica nose sifru; promena gradilista menja listu', async () => {
+    const a = await boot();
+    const doc = a.g.document;
+    a.run("DATA.predmer.push({id:'pm49', gr:'g1', sifra:'4.0.1', poz:esc('Kabl N2XH 3x2,5 <test>'), jm:'kompl', kol:120, cena:50, izv:0});");
+    a.run("setRole('z1'); formNarudzba();");
+    doc.getElementById('f_ngr').value = 'g1';   // u browseru select vec ima prvu opciju; stub nema
+    const m = () => doc.getElementById('nar_pm_box').innerHTML;   // stub: innerHTML deteta se ne vidi u #modal, insertAdjacentHTML je no-op
+    if (!doc.getElementById('modal').innerHTML.includes('id="nar_pm_box"') || !m().includes('id="nar_pm"') || !m().includes('value="pm49"') || !m().includes('ugovoreno 120')) throw new Error('nema dropdown-a predmera za g1: ' + m().slice(0, 300));
+    if (a.run("predmerZa('g1').length") !== m().split('<option value="pm').length - 1) throw new Error('broj opcija != predmer g1');
+    // dodaj iz predmera: red 2 zakljucan, kol = ugovorena, JM iz predmera (kompl nije u standardnoj listi)
+    doc.getElementById('nar_pm').value = 'pm49';
+    a.run('dodajIzPredmeraTrebovanje()');
+    if (a.run('NAR_PM[2]') !== 'pm49') throw new Error('NAR_PM nije upisan: ' + JSON.stringify(a.run('NAR_PM')));
+    const box = a.run("stavkaRed(2, predmerZa('g1').find(x=>x.id==='pm49'))");
+    if (!box.includes('id="st_n_2"') || !box.includes('readonly') || !box.includes('value="120"') || !box.includes('<option selected>kompl</option>') || !box.includes('4.0.1 · Kabl')) throw new Error('red iz predmera: ' + box);
+    if (a.run('stavkaRed(1)').includes('readonly')) throw new Error('slobodan red je readonly');
+    // kolicina razlicita od ugovorene + slobodan red 3
+    doc.getElementById('st_k_2').value = '150';
+    a.run('addStavka()');
+    doc.getElementById('st_n_3').value = 'Slobodni materijal'; doc.getElementById('st_k_3').value = '7'; doc.getElementById('st_j_3').value = 'kg';
+    const pre = a.run('DATA.narudzbe.length');
+    a.run('saveNarudzba()');
+    if (a.run('DATA.narudzbe.length') !== pre + 1) throw new Error('trebovanje nije sacuvano');
+    const n = a.run('DATA.narudzbe[DATA.narudzbe.length-1]');
+    if (n.gr !== 'g1' || n.autor !== 'z1' || n.stavke.length !== 2) throw new Error('narudzba: ' + JSON.stringify(n));
+    const s1 = n.stavke[0], s3 = n.stavke[1];
+    if (s1.predmer_id !== 'pm49' || s1.sifra !== '4.0.1' || s1.jm !== 'kompl' || s1.kolicina !== '150' || s1.naziv !== 'Kabl N2XH 3x2,5 &lt;test&gt;') throw new Error('stavka iz predmera: ' + JSON.stringify(s1));
+    if (s3.predmer_id || s3.naziv !== 'Slobodni materijal' || s3.kolicina !== '7' || s3.jm !== 'kg') throw new Error('slobodna stavka: ' + JSON.stringify(s3));
+    if (Object.keys(a.run('NAR_PM')).length) throw new Error('NAR_PM nije resetovan');
+    const telo = a.run(`narudzbaMailBody(${JSON.stringify(n)})`);
+    if (!telo.includes('4.0.1 · Kabl N2XH 3x2,5 <test> — 150 kompl (iz ugovorenog predmera)')) throw new Error('mejl: ' + telo);
+    a.run("current='nabavka'; render();");
+    const v = doc.getElementById('view').innerHTML;
+    if (!v.includes('4.0.1') || !v.includes('>predmer</span>') || !v.includes('150 kompl') || v.includes('<test>') || !v.includes('&lt;test&gt;')) throw new Error('kartica trebovanja: ' + v.slice(0, 400));
+    // rukovodilac sa projektantskim gradilistem: nema dropdown-a; promena gradilista osvezava listu
+    a.run("setRole('all'); formNarudzba();");
+    doc.getElementById('f_ngr').value = 'g8'; a.run('osveziNarPredmer()');
+    if (doc.getElementById('nar_pm_box').innerHTML !== '') throw new Error('projektantsko gradiliste nudi predmer za trebovanje');
+    doc.getElementById('f_ngr').value = 'g5'; a.run('osveziNarPredmer()');
+    if (!doc.getElementById('nar_pm_box').innerHTML.includes('value="pm1"') || doc.getElementById('nar_pm_box').innerHTML.includes('pm49')) throw new Error('promena gradilista ne menja listu');
+    // tudje gradiliste: dodajIzPredmeraTrebovanje odbija
+    a.run("setRole('z1');");
+    doc.getElementById('f_ngr').value = 'g5'; doc.getElementById('nar_pm').value = 'pm1';
+    a.run('dodajIzPredmeraTrebovanje()');
+    if (a.run("Object.values(NAR_PM).includes('pm1')") !== false) throw new Error('rukovodilac dodao predmer tudjeg gradilista');
+    a.run("setRole('all'); closeModal();");
+  });
+
   section('T48 xlsx pisac');
   await acheck('napraviXlsx → citajXlsx roundtrip: brojevi, tekst sa &<>", prazne celije, dva lista; izvozPredmer = sablon situacije; rukovodilac bez cena', async () => {
     const a = await boot();
