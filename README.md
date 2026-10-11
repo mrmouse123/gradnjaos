@@ -63,6 +63,10 @@ Tu adresu upiši i u Supabase → Authentication → URL Configuration → **Sit
 
 Sad se trebovanje šalje kroz mailto (otvori mail klijent). Za pravo slanje: `supabase functions deploy posalji-trebovanje` + `supabase secrets set RESEND_API_KEY=...` (v. `supabase/functions/posalji-trebovanje/index.ts`). Dok to nije urađeno, app tiho ostaje na mailto.
 
+## Valuta
+
+Svi iznosi su **bez PDV, u RSD**: jedinična cena artikla iz šifarnika, ugovoreni predmer, situacije, budžet i naplata. PDV se ne obračunava u aplikaciji.
+
 ## Poznata ograničenja
 
 - Prevlačenje zadataka (drag & drop) radi mišem; na telefonu koristi klik na karticu.

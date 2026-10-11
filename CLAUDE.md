@@ -158,6 +158,12 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - Render: svaki pogled je `viewX()` funkcija koja vraća HTML string; `render()`
   ubacuje u #main. Globalno stanje: ROLE, MODUL/PODTIP, current (tab), PROFIL.
 
+## Valuta (odluka klijenta 2026-10-11)
+Sve cene su **jedinične cene BEZ PDV u RSD** (cena artikla iz šifarnika → predmer → situacija; i budžet,
+troškovi, naplata). `VALUTA='RSD'` + `fmtEur`/`fmtEurK` (imena ostaju, 200+ poziva) su jedino mesto
+formata; labele polja nose „bez PDV (RSD)". U fajlu ne sme biti znaka „€" (test to čuva). PDV se
+nigde ne računa — ako zatreba, to je nova odluka (stopa, prikaz sa/bez).
+
 ## Nalozi (stanje 2026-10-11 — 6 test-profila, odluka klijenta)
 - direktor: `miske1431@gmail.com` (profili.uloga=direktor, zaposleni_id null)
 - admin: `admin@gradnjaos.test`

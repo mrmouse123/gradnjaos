@@ -2736,8 +2736,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   await acheck('fmtEurK ispravno prikazuje negativne iznose', async () => {
     const a = app.run('fmtEurK(-2000000)'), b = app.run('fmtEurK(2000000)');
-    if (!/^€-2[.,]00M$/.test(a)) throw new Error(`fmtEurK(-2000000) = ${a}, ocekivano oblik €-2,00M (dobija se "${a}")`);
-    if (!/M$/.test(b)) throw new Error('fmtEurK(2000000) = ' + b);
+    if (!/^-2[.,]00M RSD$/.test(a)) throw new Error(`fmtEurK(-2000000) = ${a}, ocekivano oblik -2,00M RSD (dobija se "${a}")`);
+    if (!/^1\.234\.567 RSD$/.test(app.run('fmtEur(1234567)')) || HTML.includes('€')) throw new Error('valuta nije RSD svuda: ' + app.run('fmtEur(1234567)'));
+    if (!/^2[.,]00M RSD$/.test(b)) throw new Error('fmtEurK(2000000) = ' + b);
   });
 
   await acheck('kontrolna tabla se ne rusi na unos nepoznatog autora', async () => {

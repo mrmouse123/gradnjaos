@@ -1310,8 +1310,11 @@ const broj=s=>{ s=String(s??'').trim().replace(/\s/g,''); if(!s) return 0;
           : +(/^-?\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g,'') : s);
   return Number.isFinite(n)?n:0; };
 const unesc=v=>String(v??'').replace(/&#96;/g,'`').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&gt;/g,'>').replace(/&lt;/g,'<').replace(/&amp;/g,'&');
-const fmtEur = n => '€' + Math.round(n).toLocaleString('sr-RS');
-const fmtEurK = n => { const a=Math.abs(n), s=n<0?'-':''; return a>=1000000 ? '€'+s+(a/1000000).toFixed(2).replace('.',',')+'M' : '€'+s+Math.round(a/1000)+'k'; };
+/* Valuta (odluka klijenta 2026-10-11): sve cene su jedinicne cene BEZ PDV u RSD (cena iz sifarnika → predmer → situacija).
+   Jedno mesto za promenu; imena fmtEur/fmtEurK ostaju (200+ poziva). */
+const VALUTA='RSD';
+const fmtEur = n => Math.round(n).toLocaleString('sr-RS') + ' ' + VALUTA;
+const fmtEurK = n => { const a=Math.abs(n), s=n<0?'-':''; return (a>=1000000 ? s+(a/1000000).toFixed(2).replace('.',',')+'M' : s+Math.round(a/1000)+'k') + ' ' + VALUTA; };
 const initials = ime => ime.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 const dParse = s => new Date(s+'T00:00:00');
 const daysBetween = (a,b) => Math.round((b-a)/86400000);
@@ -3003,7 +3006,7 @@ function viewPredmer(){
     ${!pro?`<button class="btn ghost" onclick="formIzSifarnika('${g.id}')">＋ Iz šifarnika</button>`:''}`:''}
   </div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${fin?'<th class="r">Jed. cena</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
+    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${fin?'<th class="r">Jed. cena (RSD, bez PDV)</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':`<div class="empty">Još nema pozicija — ${isDirector()?'uvezi predmer iz Excela ili dodaj poziciju ručno.':'direktor još nije uvezao predmer.'}</div>`}
   </div>`;
@@ -3170,7 +3173,7 @@ function formPredmerRed(grId,pid){
         <div class="f-row"><label>JM</label><select id="f_pm_jm">${jmOpc}</select></div>
         <div class="f-row"><label>Količina</label><input id="f_pm_kol" type="number" value="${x?x.kol:1}"></div>
       </div>
-      ${canFinance()?`<div class="f-row"><label>Jedinična cena (€)</label><input id="f_pm_cena" type="number"${x?` value="${x.cena}"`:''}></div>`:''}
+      ${canFinance()?`<div class="f-row"><label>Jedinična cena bez PDV (RSD)</label><input id="f_pm_cena" type="number"${x?` value="${x.cena}"`:''}></div>`:''}
       <div class="f-row"><label>Zadužen</label><select id="f_pm_zad"><option value="">—</option>${opcije}</select></div>
       <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}'${x?`,'${x.id}'`:''})">${x?'Sačuvaj izmene':'Sačuvaj'}</button></div>
     </div>`);
@@ -3221,7 +3224,7 @@ function savePredmerImport(grId){
 function izvozPredmer(grId){
   if(!isDirector()) return;
   const g=grById[grId]; const list=predmerZa(grId);
-  const head=['Pozicija','JM','Ugovorena kol.','Jed. cena EUR','Izvedeno','Izvedena vrednost EUR','Preostalo kol.'];
+  const head=['Pozicija','JM','Ugovorena kol.','Jed. cena RSD bez PDV','Izvedeno','Izvedena vrednost RSD','Preostalo kol.'];
   const rows=list.map(x=>[unesc(x.poz).replace(/;/g,','),unesc(x.jm),x.kol,x.cena,(x.izv||0),Math.round(Math.min(x.izv||0,x.kol)*x.cena*100)/100,Math.max(0,x.kol-(x.izv||0))]);
   const csv=[head.join(';'),...rows.map(r=>r.join(';'))].join('\n');
   try{
@@ -3276,7 +3279,7 @@ function formTrosak(grId){
       <div style="font-size:13px;color:var(--muted);margin:-6px 0 14px">${g.naziv}</div>
       <div class="f-row"><label>Opis</label><input id="f_tr_opis" placeholder="npr. Beton MB30 — 3. isporuka"></div>
       <div class="f-2">
-        <div class="f-row"><label>Iznos (€)</label><input id="f_tr_iznos" type="number" placeholder="npr. 12500"></div>
+        <div class="f-row"><label>Iznos bez PDV (RSD)</label><input id="f_tr_iznos" type="number" placeholder="npr. 12500"></div>
         <div class="f-row"><label>Kategorija</label><select id="f_tr_kat"><option>Materijal</option><option>Radna snaga</option><option>Mehanizacija</option><option>Podizvođači</option><option>Ostalo</option></select></div>
       </div>
       <div class="f-2">
@@ -3538,7 +3541,7 @@ function formSub(){
         <div class="f-row"><label>Kontakt osoba</label><input id="f_posoba"></div>
         <div class="f-row"><label>Telefon</label><input id="f_ptel"></div>
       </div>
-      <div class="f-row"><label>Ugovorena vrednost (€)</label><input id="f_pcena" type="number" placeholder="npr. 85000"></div>
+      <div class="f-row"><label>Ugovorena vrednost bez PDV (RSD)</label><input id="f_pcena" type="number" placeholder="npr. 85000"></div>
       <div class="f-row"><label>Gradilišta (može više)</label>
         <div class="chk-list">${DATA.gradilista.map(g=>`<label class="chk"><input type="checkbox" id="p_gr_${g.id}"> ${g.naziv}</label>`).join('')}</div>
       </div>
@@ -4008,7 +4011,7 @@ function detaljSituacije(id){
       <div class="sub" style="margin-bottom:10px">${g?g.naziv:'—'} · ${s.opis} · izdato ${fmtDate(s.izdato)}, valuta ${fmtDate(s.valuta)} · ${s.status==='placeno'?'plaćeno':sitKasni(s)?'kasni':'na čekanju'} · autor: ${s.autor==='direkcija'?'Direkcija':osobaIme(s.autor)}</div>
       ${rz?`<div class="banner" style="margin-bottom:10px">⚠ ${rz} stavk${rz===1?'a je':'i su'} preko ugovorene količine (kumulativno) — razlika za dogovor sa investitorom.</div>`:''}
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th><th class="r">Kumulativ</th><th class="r">Ova situacija</th><th class="r">Razlika</th>${fin?'<th class="r">Jed. cena</th><th class="r">Iznos</th>':''}</tr></thead>
+        <thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th><th class="r">Kumulativ</th><th class="r">Ova situacija</th><th class="r">Razlika</th>${fin?'<th class="r">Jed. cena (bez PDV)</th><th class="r">Iznos (bez PDV)</th>':''}</tr></thead>
         <tbody>${rows||`<tr><td colspan="${fin?9:7}" class="empty">Situacija nema stavke (uneta ručno kao iznos).</td></tr>`}</tbody></table></div>
       ${fin?`<div style="text-align:right;margin-top:10px;font-weight:700">Ukupno: <span class="num">${s.iznos!=null?fmtEur(s.iznos):'—'}</span></div>`:''}
       <div class="m-foot">
@@ -4049,7 +4052,7 @@ function formUpdate(id){
         <div class="f-row"><label>Status</label><select id="u_st">${Object.keys(STATUS).map(s=>`<option value="${s}" ${g.status===s?'selected':''}>${STATUS[s].t}</option>`).join('')}</select></div>
       </div>
       <div class="f-row"><label>Faza radova</label><select id="u_faza">${fazeOpts}</select></div>
-      ${canFinance()?(troskoviZa(id).length?`<div class="f-row"><label>Utrošeno do sada</label><div style="font-size:13px;color:var(--muted);padding:6px 0">${fmtEur(potroseno(g))} — računa se iz stavki troškova (detalji gradilišta)</div></div>`:`<div class="f-row"><label>Utrošeno do sada (€)</label><input id="u_pot" type="number" value="${g.potroseno}"></div>`):''}
+      ${canFinance()?(troskoviZa(id).length?`<div class="f-row"><label>Utrošeno do sada</label><div style="font-size:13px;color:var(--muted);padding:6px 0">${fmtEur(potroseno(g))} — računa se iz stavki troškova (detalji gradilišta)</div></div>`:`<div class="f-row"><label>Utrošeno do sada bez PDV (RSD)</label><input id="u_pot" type="number" value="${g.potroseno}"></div>`):''}
       <div class="m-foot">
         <button class="btn ghost" onclick="closeModal()">Otkaži</button>
         <button class="btn" onclick="saveUpdate('${id}')">Sačuvaj izmene</button>
@@ -4135,8 +4138,8 @@ function formSite(id){
         </div>
       </div>`}
       ${(!ed||canFinance())?`<div class="f-2">
-        <div class="f-row"><label>Ugovorena cena (€)</label><input id="f_cena" type="number" placeholder="npr. 1500000"${va(g&&g.budzet)}></div>
-        <div class="f-row"><label>Planirani troškovi (€)</label><input id="f_tro" type="number" placeholder="npr. 1275000"${va(g&&g.troskovi)}></div>
+        <div class="f-row"><label>Ugovorena cena bez PDV (RSD)</label><input id="f_cena" type="number" placeholder="npr. 150000000"${va(g&&g.budzet)}></div>
+        <div class="f-row"><label>Planirani troškovi bez PDV (RSD)</label><input id="f_tro" type="number" placeholder="npr. 127500000"${va(g&&g.troskovi)}></div>
       </div>`:''}
       <div class="f-2">
         <div class="f-row"><label>Početak radova</label><input id="f_poc" type="date" value="${ed?g.pocetak:todayStr()}"></div>
@@ -4168,7 +4171,7 @@ function dodajRaznoRed(){
     d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Usluga montaže, Dodatni materijal…" style="flex:1 1 160px;min-width:0;${st}">
       <select id="f_nrj_${k}" style="width:70px;${st}">${SF_JM.map(j=>`<option value="${j}"${j==='kom'?' selected':''}>${j}</option>`).join('')}</select>
       <input type="number" id="f_nrk_${k}" placeholder="količina" style="width:84px;${st}">
-      ${canFinance()?`<input type="number" id="f_nrc_${k}" placeholder="cena €" style="width:84px;${st}">`:''}
+      ${canFinance()?`<input type="number" id="f_nrc_${k}" placeholder="cena RSD" title="jedinična cena bez PDV" style="width:84px;${st}">`:''}
       <select id="f_nrz_${k}" style="width:34%;min-width:0;${st}"><option value="">— zadužen —</option>${zaduzenOpcije()}</select>`;
   } else {
     d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Geodetski snimak, Elaborat…" style="flex:1;min-width:0;${st}">
@@ -4197,7 +4200,7 @@ function sifrarnikChecklist(modul, razno){   // razno=true SAMO tamo gde saveSit
   const lista=sifrarnikZa(modul), grupe=[];
   lista.forEach((s,k)=>{ let gr=grupe.find(x=>x.naziv===s.grupa); if(!gr){ gr={naziv:s.grupa,red:[]}; grupe.push(gr); } gr.red.push([s,k]); });
   const cid=pro?'f_nd_':'f_sf_', zid=pro?'f_ndz_':'f_sfz_';
-  const label=pro?'Specifikacija — sveske po nivoima dokumentacije (odčekiraj što ne treba, dodeli zaduženog)':'Predmer — artikli iz šifarnika (čekiraj što ulazi, upiši količinu'+(canFinance()?' i cenu':'')+')';
+  const label=pro?'Specifikacija — sveske po nivoima dokumentacije (odčekiraj što ne treba, dodeli zaduženog)':'Predmer — artikli iz šifarnika (čekiraj što ulazi, upiši količinu'+(canFinance()?' i jediničnu cenu bez PDV u RSD':'')+')';
   return `<div class="f-row"><label>${label}</label>
     ${pro?'':`<input placeholder="🔍 filtriraj po šifri, nazivu ili grupi" oninput="filtrirajSifrarnik(this)" style="margin-bottom:6px">`}
     <div class="chk-list" style="max-height:260px;overflow-y:auto">${grupe.map(gr=>`
@@ -4205,7 +4208,7 @@ function sifrarnikChecklist(modul, razno){   // razno=true SAMO tamo gde saveSit
       ${gr.red.map(([s,k])=>`<div class="sf-red" data-txt="${((s.sifra||'')+' '+s.naziv+' '+(s.grupa||'')).toLowerCase()}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
         <label class="chk" style="flex:1 1 240px;min-width:0;margin:0"><input type="checkbox" id="${cid}${k}" data-naziv="${s.naziv}" data-jm="${s.jm||''}" data-grupa="${s.grupa||''}" data-sifra="${s.sifra||''}"${pro?' checked':''}> ${s.sifra?`<span class="num sub">${s.sifra}</span> `:''}${s.naziv}${pro?'':` <span class="sub">(${s.jm||'kom'})</span>`}</label>
         ${pro?'':`<input type="number" id="f_sfk_${k}" placeholder="količina" style="width:84px;font-size:12px;padding:5px 6px">`}
-        ${pro||!canFinance()?'':`<input type="number" id="f_sfc_${k}" placeholder="cena €" style="width:84px;font-size:12px;padding:5px 6px">`}
+        ${pro||!canFinance()?'':`<input type="number" id="f_sfc_${k}" placeholder="cena RSD" title="jedinična cena bez PDV" style="width:84px;font-size:12px;padding:5px 6px">`}
         <select id="${zid}${k}" style="width:${pro?'46%':'34%'};min-width:0;font-size:12px;padding:5px 6px"><option value="">— zadužen —</option>${opcije}</select>
       </div>`).join('')}`).join('')}
       ${razno?`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">Razno${pro?'':' (usluge i stavke van šifarnika)'}</div>
