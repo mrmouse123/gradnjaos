@@ -3114,6 +3114,45 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T52 (2026-10-12): druga mera zdravlja u Izvodjenju — ugovoreno vs privremene vs okoncana situacija ---- */
+  section('T52 ugovoreno vs situacije');
+  await acheck('realizacijaSituacija: g5 = Σ kol×cena vs Σ iznos privremenih (okoncana —); pro i ne-fin = null; tabla kolona + th==td, fioka stat, presek blok; Projektovanje modul bez kolone', async () => {
+    const a = await boot();
+    const doc = a.g.document;
+    a.run("setRole('all'); MODUL='sve';");
+    const r = a.run("realizacijaSituacija(grById.g5)");
+    const ug = a.run("predmerZa('g5').reduce((x,p)=>x+p.kol*p.cena,0)"), pr = a.run("sitZa('g5').filter(x=>x.vrsta!=='okoncana').reduce((x,b)=>x+b.iznos,0)");
+    if (!r || r.ugovoreno !== ug || r.privremene !== pr || r.pPriv !== Math.round(pr / ug * 100) || r.okoncana !== null || r.pOkon !== null) throw new Error('g5: ' + JSON.stringify(r) + ' ug=' + ug + ' pr=' + pr);
+    if (ug !== 64270 || pr !== 27500 || r.pPriv !== 43) throw new Error('demo g5 brojevi: ' + JSON.stringify(r));
+    a.run("DATA.situacije.push({id:'s52', gr:'g5', br:'OK-52', opis:'x', iznos:60000, izdato:todayStr(), valuta:todayStr(), status:'ceka', vrsta:'okoncana', autor:'z7'});");
+    const r2 = a.run("realizacijaSituacija(grById.g5)");
+    if (r2.okoncana !== pr + 60000 || r2.pOkon !== 136 || r2.privremene !== pr) throw new Error('okoncana = Σ svih situacija (prirasti): ' + JSON.stringify(r2));
+    if (a.run("realizacijaSituacija(grById.g8)") !== null) throw new Error('Projektovanje ima realizaciju situacija');
+    a.run("current='dash'; render();");
+    let h = doc.getElementById('view').innerHTML;
+    if (!h.includes('Ugov. vs situacije') || !h.includes("setDashSort('sit')")) throw new Error('tabla nema kolonu');
+    const hd = (h.match(/<thead>[\s\S]*?<\/thead>/g) || []).find(x => x.includes('Ugov. vs situacije')) || '';   // tabla ima vise tabela (rokovi…) — uzmi onu sa kolonom
+    const th = (hd.match(/<th[\s>]/g) || []).length, tr = h.slice(h.indexOf(hd)).match(/<tr class="clk"[\s\S]*?<\/tr>/)[0].split('<td').length - 1;
+    if (th !== tr) throw new Error('th ' + th + ' != td ' + tr);
+    a.run("MODUL='projektovanje'; render();");
+    if (doc.getElementById('view').innerHTML.includes('Ugov. vs situacije')) throw new Error('Projektovanje modul ima kolonu situacija');
+    a.run("MODUL='sve'; openSite('g5');");
+    const d = doc.getElementById('drawer').innerHTML;
+    if (!d.includes('Ugovoreno vs situacije') || !d.includes('43%') || !d.includes('136%') || !d.includes('okončana (ukupno)')) throw new Error('fioka nema stat: ' + d.slice(0, 200));
+    a.run("openSite('g8');");
+    if (doc.getElementById('drawer').innerHTML.includes('Ugovoreno vs situacije')) throw new Error('fioka pro ima stat');
+    a.run("openPresek('g5');");
+    const p = doc.getElementById('rpt').innerHTML;
+    if (!p.includes('Ugovoreno (predmer)') || !p.includes('Privremene situacije (2)') || !p.includes('43% ugovorenog') || !p.includes('136% ugovorenog') || !p.includes('preko ugovorenog')) throw new Error('presek bez bloka');
+    a.run("closeDrawer(); closeIzvestaj(); setRole(grById.g5.rukovodilac);");
+    if (a.run("realizacijaSituacija(grById.g5)") !== null) throw new Error('rukovodilac bez finansija dobio realizaciju');
+    a.run("openSite('g5');");
+    if (doc.getElementById('drawer').innerHTML.includes('Ugovoreno vs situacije')) throw new Error('fioka bez finansija ima stat');
+    a.run("current='dash'; render();");
+    if (doc.getElementById('view').innerHTML.includes('Ugov. vs situacije')) throw new Error('tabla bez finansija ima kolonu');
+    a.run("setRole('all'); closeDrawer();");
+  });
+
   /* ---- T51 (2026-10-12): tabla bez plan. marze; jedinicne cene za rukovodioca Izvodjenja; adresa gradilista; play samo na jednom zadatku ---- */
   section('T51 cene/adresa/jedan play');
   await acheck('vidimCene: rukovodilac Izvodjenja bez finansija vidi jed. cene (predmer stranica, detalj situacije), ne i KPI/ukupno/Placeno; rukovodilac Projektovanja ne; radnik ne; mock predmer_v daje cenu samo za svoje Izvodjenje; rowsZa ne salje cenu', async () => {

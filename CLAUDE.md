@@ -103,6 +103,12 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
   Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
+- **Zdravlje u Izvođenju na DVA načina** (2026-10-12, odluka klijenta): (1) status/skor `zdravlje(g)`; (2) „Ugovoreno vs
+  situacije" = `realizacijaSituacija(g)`: ugovoreno Σ kol×cena predmera vs Σ `iznos` privremenih situacija (server ih
+  računa iz stavki — NE uvoditi četvrtu formulu) vs okončana = Σ SVIH situacija (količine situacija su prirasti, pa je
+  okončana konačni obračun; null dok okončane nema), % od ugovorenog (`realizacijaHtml`,
+  >100% crveno). Samo `canFinance()` (iznos je inače null) i samo Izvođenje. Mesta: kolona „Ugov. vs situacije" na tabli
+  (`sitKol`, sort `sit`, `NCOLS` +1, kad `MODUL!=='projektovanje'`), stat u fioci, blok u preseku. T52.
 - **Bez marže nigde** (2026-10-12, odluka klijenta; v. „Jovanove odluke"): `computeAlerts` ima samo „Troškovi premašili
   plan — X od planiranih Y"; tabla: KPI i kolona marže uklonjeni (`NCOLS` 7, uprava 3 KPI kartice `kpis3`), nepoznat
   `dashSort.key` se resetuje; fioka: statovi Zdravlje · Napredak · Rok · Naplaćeno (kartice marže obrisane, bez zamene —

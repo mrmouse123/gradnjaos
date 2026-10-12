@@ -1209,7 +1209,7 @@ function setRole(r){
   else if(r.startsWith('spoljni:')) primeniUlogu('spoljni', r.slice(8), false);
   else if(r.endsWith(':fin')) primeniUlogu('rukovodilac', r.slice(0,-4), true, mods);
   else primeniUlogu('rukovodilac', r, false, mods);
-  if((ROLE!=='all' && ['cena','naplata'].includes(dashSort.key)) || !['smart','zdr','cena','naplata','ljudi','napredak','rok'].includes(dashSort.key)) dashSort={key:'smart',dir:-1};   // nepoznat/uklonjen kljuc → podrazumevano
+  if((ROLE!=='all' && ['cena','naplata','sit'].includes(dashSort.key)) || !['smart','zdr','sit','cena','naplata','ljudi','napredak','rok'].includes(dashSort.key)) dashSort={key:'smart',dir:-1};   // nepoznat/uklonjen kljuc → podrazumevano
   if(!tabDozvoljen(current)) current='dash';
   renderNav(); render(); closeDrawer();
 }
@@ -1505,6 +1505,23 @@ function ringSvg(sc,size){
       stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c}" data-off="${off}"/>
   </svg>`;
 }
+/* Druga mera zdravlja u IZVODJENJU (odluka klijenta 2026-10-12): ugovoreno (predmer Σ kol×cena) vs privremene situacije
+   (Σ iznos, server ih racuna iz stavki) vs okoncana situacija — uporedo sa statusom/skorom. Samo canFinance() (iznos je
+   inace null); Projektovanje nema. */
+function realizacijaSituacija(g){
+  if(!g||jePro(g)||!canFinance()) return null;
+  const ug=predmerZa(g.id).reduce((a,p)=>a+(+p.kol||0)*(+p.cena||0),0);
+  const sits=sitZa(g.id), priv=sits.filter(x=>x.vrsta!=='okoncana'), ok=sits.filter(x=>x.vrsta==='okoncana');
+  const suma=l=>l.reduce((a,b)=>a+(+b.iznos||0),0), pct=x=>ug?Math.round(x/ug*100):null;
+  const privremene=suma(priv), okoncana=ok.length?suma(sits):null;   // kolicine situacija su PRIRASTI (kumulativ − do sada), pa je okoncana = konacni obracun = Σ SVIH situacija
+  return { ugovoreno:ug, privremene, okoncana, pPriv:pct(privremene), pOkon:okoncana==null?null:pct(okoncana), nPriv:priv.length, nOkon:ok.length };
+}
+function realBoja(p){ return p==null?'var(--faint)':p>100?'var(--red)':p>=90?'var(--green)':'var(--blue)'; }
+function realizacijaHtml(r, kompakt){   // dve trake: privremene (kumulativ) i okoncana — % od ugovorenog
+  if(!r) return '<span class="sub">—</span>';
+  const traka=(lab,p,iznos)=>`<div class="napl" style="margin-top:${kompakt?2:6}px"><div class="bar"><span style="width:${Math.min(100,p||0)}%;background:${realBoja(p)}"></span></div><b class="num" style="color:${realBoja(p)}">${p==null?'—':p+'%'}</b></div><div class="sub num" style="text-align:right">${lab}${iznos==null?'':' '+fmtEurK(iznos)}</div>`;
+  return `${kompakt?'':`<div class="sub num">Ugovoreno ${fmtEurK(r.ugovoreno)}</div>`}${traka('privremene'+(r.nPriv?' ('+r.nPriv+')':''), r.pPriv, r.privremene)}${traka('okončana (ukupno)', r.pOkon, r.okoncana)}`;
+}
 function zdrCell(g){
   const sc=zdravlje(g);
   return `<td><div style="display:flex;align-items:center;gap:8px"${sc==null?` title="${ZDR_NEMA}"`:''}>${ringSvg(sc,34)}<b class="num" style="color:${zdrBoja(sc)};font-size:13.5px">${zdrTekst(sc)}</b></div></td>`;
@@ -1583,7 +1600,7 @@ function dashSorted(sites){
     arr.sort((a,b)=> (st[a.status]??9)-(st[b.status]??9) || dParse(a.rok)-dParse(b.rok));
     return arr;
   }
-  const v=g=>({cena:g.budzet, naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
+  const v=g=>({cena:g.budzet, sit:(realizacijaSituacija(g)||{}).pPriv||0, naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
   arr.sort((a,b)=>(v(b)-v(a))*(-dashSort.dir));
   return arr;
 }
@@ -1622,7 +1639,7 @@ function viewDash(){
       <td>
         <div class="strong">${g.naziv}</div>
         <div class="sub">${cliById[g.klijent]?cliById[g.klijent].naziv+' · ':''}${g.faza} · <span style="color:${modCol(g)}">${modLab(g)}</span></div>
-      </td>${zdrCell(g)}${finCells}
+      </td>${zdrCell(g)}${sitKol?`<td class="r" style="min-width:150px">${realizacijaHtml(realizacijaSituacija(g), true)}</td>`:''}${finCells}
       <td class="r"><span class="ppl">${icon('emp')} <span class="num">${tim}</span></span></td>
       <td class="r">
         <div class="napl"><div class="bar"><span style="width:${g.napredak}%; background:${g.status==='kasni'?'var(--red)':g.status==='zavrseno'?'var(--green)':'var(--blue)'}"></span></div>
@@ -1693,9 +1710,10 @@ function viewDash(){
       </div>`).join('')}</div>
   </div>` : '';
 
+  const sitKol = fin && MODUL!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
   const thS=(k,lab,r)=>`<th class="sortable ${r?'r':''}" onclick="setDashSort('${k}')">${lab}${dashSort.key===k&&k!=='smart'?`<span class="arr">${dashSort.dir===-1?'\u25bc':'\u25b2'}</span>`:''}</th>`;
   const finHead = fin
-    ? thS('smart','Projekat')+thS('zdr','Zdravlje')+thS('cena','Cena',1)+thS('naplata','Naplata',1)+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>'
+    ? thS('smart','Projekat')+thS('zdr','Zdravlje')+(sitKol?thS('sit','Ugov. vs situacije',1):'')+thS('cena','Cena',1)+thS('naplata','Naplata',1)+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>'
     : thS('smart','Projekat')+thS('zdr','Zdravlje')+thS('rok','Rok')+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>';
 
   // jutarnji brif
@@ -1726,7 +1744,7 @@ function viewDash(){
 
   // grupisanje tabele po modulima + red UKUPNO
   let finBody='';
-  const NCOLS = fin ? 7 : 6;
+  const NCOLS = (fin ? 7 : 6) + (sitKol?1:0);
   const grpRed=(lab,boja,gs,klik)=>{
     if(!gs.length) return '';
     const c=gs.reduce((a,b)=>a+b.budzet,0), n=gs.reduce((a,b)=>a+naplSum(b),0);
@@ -1747,7 +1765,7 @@ function viewDash(){
     const ppl=new Set(); sites.forEach(g=>timNa(g.id).forEach(z=>ppl.add(z.id)));
     const wNap=c?Math.round(sites.reduce((a,b)=>a+b.napredak*b.budzet,0)/c):0;
     finBody += `<tr class="total">
-      <td>UKUPNO · ${sites.length} projekata</td><td></td>
+      <td>UKUPNO · ${sites.length} projekata</td><td></td>${sitKol?'<td></td>':''}
       <td class="r num-cell">${fmtEurK(c)}</td>
       <td class="r"><b class="num">${c?Math.round(n/c*100):0}%</b><div class="sub num">${fmtEurK(n)}</div></td>
       <td class="r num-cell">${ppl.size}</td>
@@ -3734,6 +3752,10 @@ function openPresek(id){
       ${red('Planirani troškovi', fmtEur(g.troskovi))}
       ${red('Utrošeno do sada', fmtEur(pot)+' — plan za trenutnu fazu '+fmtEur(ocek)+(pot>g.troskovi?' <b style="color:var(--amber)">⚠ troškovi iznad plana</b>':pot>ocek*1.1?' <b style="color:var(--amber)">⚠ ispred plana</b>':''))}
       ${red('Naplaćeno', fmtEur(naplSum(g))+' ('+n+'%)')}
+      ${(r=>r?`<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:22px 0 8px">Ugovoreno vs situacije</h3>
+      ${red('Ugovoreno (predmer)', fmtEur(r.ugovoreno), 1)}
+      ${red('Privremene situacije'+(r.nPriv?' ('+r.nPriv+')':''), fmtEur(r.privremene)+(r.pPriv==null?'':' ('+r.pPriv+'% ugovorenog)')+(r.pPriv>100?' <b style="color:var(--red)">⚠ preko ugovorenog</b>':''))}
+      ${red('Okončana situacija (ukupno sa privremenim)', r.okoncana==null?'—':fmtEur(r.okoncana)+(r.pOkon==null?'':' ('+r.pOkon+'% ugovorenog)')+(r.pOkon>100?' <b style="color:var(--red)">⚠ preko ugovorenog</b>':''))}`:'')(realizacijaSituacija(g))}
       ${nenap?red('Izvedeno, a nenaplaćeno', '<b style="color:var(--amber)">'+fmtEur(nenap)+'</b>'):''}
       ${dosp?red('Dospelo, neplaćeno (situacije)', '<b style="color:var(--red)">'+fmtEur(dosp)+'</b>'):''}
       ${Object.keys(kats).length?`<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:22px 0 8px">Troškovi po kategorijama</h3>
@@ -4676,6 +4698,7 @@ function openSite(id){
         <div class="dr-stat"><div class="l">Zdravlje projekta</div>
           <div style="display:flex;align-items:center;gap:10px;margin-top:6px"${zdravlje(g)==null?` title="${ZDR_NEMA}"`:''}>${ringSvg(zdravlje(g),40)}<span class="v num" style="color:${zdrBoja(zdravlje(g))}">${zdrTekst(zdravlje(g))}<span style="font-size:12px;color:var(--faint)">/100</span></span></div>
         </div>
+        ${realizacijaSituacija(g)?`<div class="dr-stat"><div class="l">Ugovoreno vs situacije</div>${realizacijaHtml(realizacijaSituacija(g))}</div>`:''}
         <div class="dr-stat"><div class="l">Napredak</div><div class="v">${g.napredak}%</div>
           <div class="bar" style="margin-top:8px"><span style="width:${g.napredak}%;background:${g.status==='kasni'?'var(--red)':g.status==='zavrseno'?'var(--green)':'var(--blue)'}"></span></div>
         </div>
