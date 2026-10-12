@@ -1165,6 +1165,7 @@ function tabDozvoljen(id){
   if(vrstaUloge()==='uprava') return true;
   if(id==='pay') return canFinance();
   if(id==='tasks' && !MODULI.includes('projektovanje')) return false;   // bez projektovanja nema zadataka (Izvodjenje: podizvodjaci), odluka 2026-10-11
+  if(id==='magacin' && !MODULI.includes('izvodjenje')) return false;   // magacin = sifarnik Izvodjenja (odluka 2026-10-12)
   return TABOVI_OSTALI.includes(id);
 }
 /* Ime osobe po id-u: zaposleni ili spoljni saradnik (dnevnik.autor / zadaci.zad / dokumenti.autor). */
@@ -2690,31 +2691,54 @@ async function ukloniPristup(email){
   await ucitajNaloge();
 }
 
+/* Magacin = sifarnik Izvodjenja (81 artikal ELOM) + Razno (odluka klijenta 2026-10-12). Red u DATA.magacin za artikal
+   iz sifarnika nastaje tek na PRVOM ulazu, sa deterministickim id-jem 'mg-'+sifarnik.id (dva taba → PK sudar, ne
+   duplikat; lekcija 33); do tada je red virtuelan (stanje 0) i NIKAD se ne gura u DATA (diff bi poslao 81 insert).
+   Razno = redovi magacina koji nisu artikli sifarnika (rucno dodati, demo m1–m3). Tab vidi uprava i profil sa modulom
+   izvodjenje (tabDozvoljen). */
+const MG_PREFIX='mg-';
+function magacinArtikal(mid){   // postojeci red ILI virtuelan iz sifarnika — virtuelan se ne upisuje dok saveMagPromena (ulaz) ne odluci
+  const m=(DATA.magacin||[]).find(x=>x.id===mid); if(m) return m;
+  if(!String(mid).startsWith(MG_PREFIX)) return null;
+  const sf=(DATA.sifrarnik||[]).find(x=>x.id===String(mid).slice(MG_PREFIX.length)); if(!sf) return null;
+  return { id:mid, naziv:sf.naziv, jm:sf.jm||'kom', stanje:0 };
+}
+function filtrirajMagacin(inp){
+  const q=String(inp&&inp.value||'').trim().toLowerCase();
+  document.querySelectorAll('#view tr[data-txt]').forEach(tr=>{ tr.style.display=(!q||String(tr.dataset.txt||'').includes(q))?'':'none'; });
+}
 function viewMagacin(){
-  const rows=(DATA.magacin||[]).map(m=>{
+  const artikli=sifrarnikZa('izvodjenje'), sfIds=new Set(artikli.map(x=>MG_PREFIX+x.id));
+  const red=(m,sifra)=>{
     const posl=(DATA.mag_promene||[]).filter(x=>x.mid===m.id).sort((a,b)=>dParse(b.datum)-dParse(a.datum))[0];
-    return `<tr>
-      <td class="strong">${m.naziv}</td><td>${m.jm}</td>
+    return `<tr data-txt="${String(sifra+' '+m.naziv).toLowerCase()}">
+      <td class="num sub">${sifra||'—'}</td><td class="strong">${m.naziv}</td><td>${m.jm}</td>
       <td class="r"><b class="num" style="font-size:14px">${m.stanje}</b></td>
       <td class="sub">${posl?`${posl.tip==='ulaz'?'⬆ ulaz':'⬇ izlaz'} ${posl.kol} ${m.jm} · ${fmtDate(posl.datum)}${posl.gr&&grById[posl.gr]?' → '+grById[posl.gr].naziv:''}`:'—'}</td>
       <td class="r">
         ${isDirector()?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','ulaz')">⬆ Ulaz</button>`:''}
-        ${mogaDaUpravljam()?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','izlaz')">⬇ Izlaz</button>`:''}
+        ${mogaDaUpravljam()&&(+m.stanje||0)>0?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formMagPromena('${m.id}','izlaz')">⬇ Izlaz</button>`:''}
       </td>
     </tr>`;
-  }).join('');
-  return head('Magacin','Stanje materijala — ulaz u magacin i izdavanje na gradilišta.') +
-  `<div class="tools">${isDirector()?`<button class="btn" onclick="formArtikal()">${icon('plus')} Nov artikal</button>`:''}</div>
-  <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>Artikal</th><th>JM</th><th class="r">Stanje</th><th>Poslednja promena</th><th class="r"></th></tr></thead>
-    <tbody>${rows}</tbody></table>
-    ${(DATA.magacin||[]).length?'':'<div class="empty">Magacin je prazan.</div>'}
+  };
+  const rowsSf=artikli.map(x=>red(magacinArtikal(MG_PREFIX+x.id), x.sifra||'')).join('');
+  const razno=(DATA.magacin||[]).filter(m=>!sfIds.has(m.id));
+  const glava=`<thead><tr><th>Šifra</th><th>Artikal</th><th>JM</th><th class="r">Stanje</th><th>Poslednja promena</th><th class="r"></th></tr></thead>`;
+  return head('Magacin','Stanje materijala po šifarniku — ulaz u magacin i izdavanje na gradilišta.') +
+  `<div class="tools"><input placeholder="Pretraži artikle (šifra, naziv)…" oninput="filtrirajMagacin(this)" style="flex:1;min-width:0">${isDirector()?`<button class="btn" onclick="formArtikal()">${icon('plus')} Razno (van šifarnika)</button>`:''}</div>
+  <div class="card"><div class="card-h"><h3>Šifarnik artikala (${artikli.length})</h3><span class="hint">stanje 0 = nema na stanju</span></div>
+    <div style="overflow-x:auto"><table id="magTabela">${glava}<tbody>${rowsSf}</tbody></table></div>
+    ${artikli.length?'':'<div class="empty">Šifarnik Izvođenja je prazan.</div>'}
+  </div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><h3>Razno (${razno.length})</h3><span class="hint">artikli van šifarnika</span></div>
+    <div style="overflow-x:auto"><table>${glava}<tbody>${razno.map(m=>red(m,'')).join('')}</tbody></table></div>
+    ${razno.length?'':'<div class="empty">Nema artikala van šifarnika.</div>'}
   </div>`;
 }
 function formArtikal(){
   if(!isDirector()) return;
   openModal(`
-    <div class="m-h"><h3>Nov artikal</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-h"><h3>Razno — artikal van šifarnika</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
     <div class="m-b">
       <div class="f-2">
         <div class="f-row"><label>Naziv</label><input id="f_mnaziv" placeholder="npr. Cement CEM II 42.5R"></div>
@@ -2732,7 +2756,7 @@ function saveArtikal(){
   saveState(); closeModal(); render();
 }
 function formMagPromena(mid,tip){
-  const m=(DATA.magacin||[]).find(x=>x.id===mid); if(!m) return;
+  const m=magacinArtikal(mid); if(!m) return;
   if(tip==='ulaz'&&!isDirector()) return;
   const sites=DATA.gradilista.filter(g=>isDirector()||g.rukovodilac===ROLE);
   openModal(`
@@ -2746,7 +2770,7 @@ function formMagPromena(mid,tip){
 }
 function saveMagPromena(mid,tip){
   if(tip!=='ulaz' && tip!=='izlaz') return;   // trecа vrednost je ranije prolazila kroz sve provere
-  const m=(DATA.magacin||[]).find(x=>x.id===mid); if(!m) return;
+  const m=magacinArtikal(mid); if(!m) return;
   if(tip==='ulaz'&&!isDirector()) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const kol=+String(v('f_mpkol')).replace(',','.')||0;
@@ -2758,6 +2782,7 @@ function saveMagPromena(mid,tip){
     const g=gr?grById[gr]:null;
     if(!g || !(isDirector()||g.rukovodilac===ROLE)){ alert('Izdavanje je moguće samo na tvoje gradilište.'); return; }
   }
+  if(!(DATA.magacin||[]).some(x=>x.id===m.id)) DATA.magacin.push(m);   // prvi ulaz artikla iz sifarnika: virtuelan red postaje pravi (insert = uprava, kao i ulaz)
   m.stanje=Math.round(((+m.stanje||0)+(tip==='ulaz'?kol:-kol))*100)/100;
   DATA.mag_promene.push({ id:'mp'+Date.now(), mid, datum:todayStr(), tip, kol, gr });
   saveState(); closeModal(); render();

@@ -120,6 +120,13 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Play samo na jednom zadatku** (2026-10-12): `mojaOtvorenaSesija()`; `tajmerLinija` na drugim zadacima NE nudi
   ▶ dok jedan radi (poruka „Radiš na: X — pauziraj ga", ■ Završi ostaje za zadatak u toku); `pocniZadatak` i dalje
   ima guard. T51.
+- **Magacin = šifarnik Izvođenja + Razno** (2026-10-12, odluka klijenta): `viewMagacin` lista SVE artikle
+  `sifrarnikZa('izvodjenje')` (81 ELOM; broj se računa) sa stanjem iz `DATA.magacin` ili 0, plus sekciju „Razno" =
+  redovi magacina koji nisu artikli šifarnika (demo m1–m3, `formArtikal` „Razno (van šifarnika)"). Red artikla nastaje
+  tek na PRVOM ulazu (`saveMagPromena`, uprava) sa id-jem `'mg-'+sifarnik.id` (`MG_PREFIX`, `magacinArtikal(mid)` vraća
+  postojeći ili virtuelan red) — render NIKAD ne gura virtuelne redove u DATA (diff bi poslao 81 insert; T53 to čuva).
+  Izlaz se ne nudi na stanju 0. Filter `filtrirajMagacin` nad `#magTabela tr[data-txt]`. Tab „Magacin": uprava i
+  profil sa modulom izvođenje (`tabDozvoljen`); radnik/spoljni na Izvođenju vide stanja (čitanje), ne menjaju. T53.
 - **Trebovanje iz ugovorenog predmera** (2026-10-12): `formNarudzba` (široka, `kljuc:'trebovanje'`) ima dropdown
   `#nar_pm` sa pozicijama predmera izabranog gradilišta Izvođenja (`narPredmerOpcije`; Projektovanje = ništa),
   `osveziNarPredmer(grId)` na promenu gradilišta (grId = podrazumevano, jer select u stubu nema vrednost),
@@ -263,7 +270,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
    „Ukupno" situacije, „Plaćeno", kumulativ, izvoz — i dalje `canFinance()`. `preracunajSituacijeLokalno`
    piše `iznos` samo uz `canFinance()` (rukovodilac sa cenama ga ne računa — iznos je serverov). Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
-   gradilišta, rokovi, zadaci, dnevnik, magacin, trebovanje; `pay` samo `canFinance`).
+   gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` samo `canFinance`).
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
    `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
    Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati

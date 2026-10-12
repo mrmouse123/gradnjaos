@@ -1051,6 +1051,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
     const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
     for (const r of ['radnik:' + zid, 'spoljni:' + pid]) { const t = tabs(r); if (JSON.stringify([...t].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error(r + ': ' + t); }
+    const tPro = tabs('radnik:' + zid + '|pro');   // samo projektovanje: bez magacina (sifarnik Izvodjenja), odluka 2026-10-12
+    if (tPro.includes('magacin') || !tPro.includes('tasks')) throw new Error('radnik |pro: ' + tPro);
+    const tIzv = tabs('z1|izv'); if (!tIzv.includes('magacin') || tIzv.includes('tasks')) throw new Error('rukovodilac |izv: ' + tIzv);
     a.run("setRole('z1'); current='pay'; renderNav();");
     if (a.run('current') !== 'dash') throw new Error('rukovodilac 2 na nedozvoljenom tabu nije vracen na dash');
   });
@@ -3114,6 +3117,54 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T53 (2026-10-12): magacin = sifarnik Izvodjenja (81) + Razno; red nastaje na prvom ulazu ---- */
+  section('T53 magacin po sifarniku');
+  await acheck('viewMagacin: svi artikli sifarnika (virtuelno, stanje 0) + Razno (m1–m3); prvi ulaz pravi red mg-<sf> sa nazivom/JM iz sifarnika; drugi ulaz ne duplira; izlaz sa 0 i rukovodilacev ulaz = no-op bez reda; nepromenjen DATA ne salje nista; tab po modulu', async () => {
+    const a = await boot();
+    a.run("setRole('all'); current='magacin'; render();");
+    let h = a.g.document.getElementById('view').innerHTML;
+    const n = a.run("sifrarnikZa('izvodjenje').length");
+    if (n < 81) throw new Error('sifarnik izvodjenja < 81: ' + n);
+    if (!h.includes('Šifarnik artikala (' + n + ')') || !h.includes('Razno (3)')) throw new Error('zaglavlja sekcija: ' + h.slice(0, 300));
+    if ((h.match(/formMagPromena\('mg-sf-a-/g) || []).length !== n) throw new Error('nema ulaza za svaki artikal');
+    if (h.includes("formMagPromena('mg-sf-a-001','izlaz')")) throw new Error('izlaz ponudjen na stanju 0');
+    if (!h.includes("formMagPromena('m1','izlaz')") || !h.includes('oninput="filtrirajMagacin(this)"')) throw new Error('razno/izlaz/filter');
+    if (a.run('DATA.magacin.length') !== 3) throw new Error('render je materijalizovao redove');
+    // prvi ulaz (uprava)
+    a.run("formMagPromena('mg-sf-a-001','ulaz')");
+    if (!a.g.document.getElementById('modal').innerHTML.includes('trenutno stanje: <b class="num">0')) throw new Error('forma ulaza za virtuelan artikal');
+    a.g.document.getElementById('f_mpkol').value = '12';
+    a.run("saveMagPromena('mg-sf-a-001','ulaz')");
+    const m = a.run("DATA.magacin.find(x=>x.id==='mg-sf-a-001')"), sf = a.run("DATA.sifrarnik.find(x=>x.id==='sf-a-001')");
+    if (!m || m.naziv !== sf.naziv || m.jm !== sf.jm || m.stanje !== 12 || Object.keys(m).sort().join() !== 'id,jm,naziv,stanje') throw new Error('red posle prvog ulaza: ' + JSON.stringify(m));
+    if (a.run("DATA.mag_promene.filter(x=>x.mid==='mg-sf-a-001').length") !== 1) throw new Error('promena nije zabelezena');
+    a.run("formMagPromena('mg-sf-a-001','ulaz')"); a.g.document.getElementById('f_mpkol').value = '3'; a.run("saveMagPromena('mg-sf-a-001','ulaz')");
+    if (a.run("DATA.magacin.filter(x=>x.id==='mg-sf-a-001').length") !== 1 || a.run("DATA.magacin.find(x=>x.id==='mg-sf-a-001').stanje") !== 15) throw new Error('drugi ulaz');
+    a.run("current='magacin'; render();"); h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes("formMagPromena('mg-sf-a-001','izlaz')") || h.includes('Razno (4)')) throw new Error('posle ulaza: izlaz/razno');
+    // izlaz sa 0 (virtuelan) i rukovodilacev ulaz = no-op
+    a.run("formMagPromena('mg-sf-a-002','izlaz')"); a.g.document.getElementById('f_mpkol').value = '1'; a.g.document.getElementById('f_mpgr').value = 'g1'; a.run("saveMagPromena('mg-sf-a-002','izlaz')");
+    if (a.run("DATA.magacin.some(x=>x.id==='mg-sf-a-002')")) throw new Error('izlaz sa 0 napravio red');
+    a.run("setRole('z1'); formMagPromena('mg-sf-a-003','ulaz');"); a.g.document.getElementById('f_mpkol').value = '5'; a.run("saveMagPromena('mg-sf-a-003','ulaz')");
+    if (a.run("DATA.magacin.some(x=>x.id==='mg-sf-a-003')")) throw new Error('rukovodilac napravio ulaz');
+    a.run("current='magacin'; render();"); h = a.g.document.getElementById('view').innerHTML;
+    if (h.includes("'ulaz')") || !h.includes('Šifarnik artikala (')) throw new Error('rukovodilac: ulaz ponudjen / lista fali');
+    // supabase: nepromenjen DATA ne salje magacin
+    const s0 = await boot({ supabase: true, seed: {} });   // direktor zaseje demo (upsert m1–m3 je SEED)
+    await s0.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    const b = await boot({ supabase: true, seed });
+    const od = b.g.__mock._log.length;
+    b.run("current='magacin'; render();");
+    await b.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const ups = b.g.__mock._log.slice(od).filter(l => (l.op === 'upsert' || l.op === 'insert') && l.table === 'magacin');
+    if (ups.length) throw new Error('render magacina gura redove u bazu: ' + JSON.stringify(ups));
+    // tab po modulu + povratak na dash
+    a.run("setRole('all'); current='magacin'; setRole('radnik:z10|pro'); renderNav();");
+    if (a.run('current') !== 'dash') throw new Error('radnik |pro ostao na magacinu');
+    a.run("setRole('all')");
+  });
+
   /* ---- T52 (2026-10-12): druga mera zdravlja u Izvodjenju — ugovoreno vs privremene vs okoncana situacija ---- */
   section('T52 ugovoreno vs situacije');
   await acheck('realizacijaSituacija: g5 = Σ kol×cena vs Σ iznos privremenih (okoncana —); pro i ne-fin = null; tabla kolona + th==td, fioka stat, presek blok; Projektovanje modul bez kolone', async () => {

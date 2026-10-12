@@ -25,7 +25,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | | Direktor (IT super admin) | Admin | Rukovodilac 1 | Rukovodilac 2 | Radnik / Spoljni saradnik |
 |---|---|---|---|---|---|
 | vidi gradilišta | sva | sva | samo svoja, u svom modulu (projektovanje, izvođenje ili oba) | isto | samo ona gde je u timu / na kojima je saradnik; radnik u TAČNO jednom modulu |
-| tabovi | svi | svi | tabla, gradilišta, **naplata**, rokovi, zadaci, dnevnik, magacin, trebovanje | isto bez naplate | isto bez naplate |
+| tabovi | svi | svi | tabla, gradilišta, **naplata**, rokovi, zadaci, dnevnik, magacin (samo sa modulom izvođenje), trebovanje | isto bez naplate | isto bez naplate |
 | finansije (cene, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
 | kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
 | dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
