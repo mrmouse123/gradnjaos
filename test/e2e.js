@@ -10,7 +10,7 @@
      T3  pogledi × uloge × moduli — bez exceptiona
      T4  th==td simetrija tabela (lekcija iz lessons.md)
      T5  role-guardovi: mutacija kao rukovodilac ne menja DATA
-     T6  finansijska izolacija: rukovodilac ne vidi cene/marže/naplatu
+     T6  finansijska izolacija: rukovodilac ne vidi cene/naplatu
      T7  esc() — XSS payload u podacima ne izlazi kao živ HTML
      T8  integritet: TABLES == DEMO ključevi, normalize kompletan
    ============================================================ */
@@ -2344,7 +2344,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
 
   /* ---- T17 tri Jovanove odluke (2026-09-15) ---- */
-  section('T17 zdravlje / ostvarena marza / tim');
+  section('T17 zdravlje / bez marze / tim');
 
   await acheck('zdravlje(g) je isto za direktora i rukovodioca (svako gradiliste)', async () => {
     const r = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
@@ -2354,13 +2354,20 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (razlike.length) throw new Error('skor zavisi od uloge: ' + razlike.join(', '));
   });
 
-  await acheck('ostvMarzaPct: budzet 0 -> 0; potroseno > troskovi -> ostvarena < planska', async () => {
-    if (app.run('ostvMarzaPct({budzet:0})') !== 0) throw new Error('budzet 0 nije 0');
-    const g = app.run(`DATA.gradilista.find(g=>potroseno(g)>g.troskovi)`);
-    if (!g) return;   // demo nema takav slucaj
-    const om = app.run(`ostvMarzaPct(grById[${JSON.stringify(g.id)}])`);
-    const pm = app.run(`marzaPct(grById[${JSON.stringify(g.id)}])`);
-    if (!(om < pm)) throw new Error(`ostvarena ${om} nije manja od planske ${pm} iako je potroseno > plan`);
+  await acheck('marza je uklonjena (2026-10-12): nema je u izvoru, ni u jednom pogledu/fioci/preseku/izvestaju za direktora; zavrsen projekat = 100', async () => {
+    const src = require('fs').readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    if (/marz|marž/i.test(src)) throw new Error('index.html i dalje pominje marzu');
+    if (app.run('typeof marzaPct') !== 'undefined' || app.run('typeof ostvMarzaPct') !== 'undefined') throw new Error('funkcije marze postoje');
+    const nadji = () => { const d = app.g.document; return ['view', 'drawer', 'rpt', 'modal'].map(id => d.getElementById(id).innerHTML).join('\n'); };
+    app.run("ROLE='all'; MODUL='sve';");
+    for (const t of app.run('tabs().map(t=>t.id)')) { app.run(`current=${JSON.stringify(t)}; render();`); if (/marž|marz/i.test(nadji())) throw new Error('marza u pogledu ' + t); }
+    for (const gid of app.run('DATA.gradilista.map(g=>g.id)')) {
+      app.run(`openSite(${JSON.stringify(gid)}); openPresek(${JSON.stringify(gid)});`); if (/marž|marz/i.test(nadji())) throw new Error('marza u fioci/preseku ' + gid);
+      app.run(`openIzvestaj(${JSON.stringify(gid)});`); if (/marž|marz/i.test(nadji())) throw new Error('marza u izvestaju ' + gid);
+    }
+    app.run("closeDrawer(); current='dash'; render();");
+    const z = app.run("zdravlje({id:'zz', status:'zavrseno', rok:todayStr(), napredak:100, budzet:100, troskovi:100, potroseno:100, naplaceno:0})");
+    if (z !== 100) throw new Error('zavrsen projekat != 100: ' + z);
   });
 
   await acheck('alarm kad stvarni troskovi premase plan (direktor), a ne za rukovodioca', async () => {
@@ -2379,17 +2386,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (/marža/i.test(ruk)) throw new Error('rukovodilac vidi marzu u alarmu: ' + ruk);
   });
 
-  await acheck('oznake: tabla BEZ "Plan. marža" (odluka 2026-10-12), "Ostv. marža" + "Plan. marža" u fioci, "Ostvarena marža" u preseku', async () => {
-    app.run("ROLE='all'; MODUL='sve'; current='dash'; render();");
-    const dash = app.g.document.getElementById('view').innerHTML;
-    if (dash.includes('Plan. mar') || dash.includes('plan. mar') || dash.includes("setDashSort('marza')")) throw new Error('tabla i dalje ima planiranu marzu');
+  await acheck('oznake bez marze: fioka ima "Utrošeno do sada" i "Naplaćeno", presek "Planirani troškovi" i "Utrošeno do sada", kartica "Ugovorena cena"', async () => {
+    app.run("ROLE='all'; MODUL='sve'; current='sites'; render();");
+    if (!app.g.document.getElementById('view').innerHTML.includes('Ugovorena cena')) throw new Error('kartica nema Ugovorena cena');
     const gid = app.run('DATA.gradilista[0].id');
     app.run(`openSite(${JSON.stringify(gid)});`);
     const dr = app.g.document.getElementById('drawer').innerHTML;
-    if (!dr.includes('Ostv. marža') || !dr.includes('Plan. marža')) throw new Error('fioka nema Plan./Ostv. marža');
+    if (!dr.includes('Utrošeno do sada') || !dr.includes('Naplaćeno')) throw new Error('fioka nema Utrošeno do sada/Naplaćeno');
     app.run(`openPresek(${JSON.stringify(gid)});`);
     const pr = app.g.document.getElementById('rpt').innerHTML;   // presek/izvestaj idu u #rpt, ne u #drawer
-    if (!pr.includes('Ostvarena marža')) throw new Error('presek nema "Ostvarena marža"');
+    if (!pr.includes('Planirani troškovi') || !pr.includes('Utrošeno do sada')) throw new Error('presek nema troskove');
     app.run("closeDrawer(); current='dash'; render();");
   });
 
@@ -2727,11 +2733,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   /* ---- T12 racunska ispravnost i otpornost prikaza ---- */
   section('T12 brojevi i otpornost');
 
-  await acheck('marzaPct ne vraca NaN/Infinity kad je budzet 0', async () => {
-    const r = app.run("marzaPct({budzet:0, troskovi:0})");
-    const r2 = app.run("marzaPct({budzet:0, troskovi:100})");
-    if (!Number.isFinite(r) || !Number.isFinite(r2))
-      throw new Error(`budzet 0 -> ${r} / ${r2} (renderuje se kao "NaN%" i "Marža pala na -Infinity%")`);
+  await acheck('naplataPct ne vraca NaN/Infinity kad je budzet 0', async () => {
+    const r = app.run("naplataPct({id:'x0', budzet:0, naplaceno:0})");
+    const r2 = app.run("naplataPct({id:'x0', budzet:0, naplaceno:100})");
+    if (!Number.isFinite(r) || !Number.isFinite(r2)) throw new Error(`budzet 0 -> ${r} / ${r2}`);
   });
 
   await acheck('fmtEurK ispravno prikazuje negativne iznose', async () => {

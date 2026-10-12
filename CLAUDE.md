@@ -103,10 +103,11 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
   Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
-- **Kontrolna tabla bez marže** (2026-10-12, odluka klijenta): `computeAlerts` NEMA upozorenja o marži („Ostvarena marža
-  pala na…" i tekst sa planskom maržom su uklonjeni; ostaje samo „Troškovi premašili plan — X od planiranih Y"). KPI „Ukupna plan. marža", kolona
-  „Plan. marža" (th+td, `NCOLS` 7), tekst u grupnom redu i UKUPNO redu su uklonjeni; `dashSort.key==='marza'` se
-  resetuje. Uprava ima 3 KPI kartice (`kpis3`). Plan. marža OSTAJE u fioci, preseku i kartici gradilišta.
+- **Bez marže nigde** (2026-10-12, odluka klijenta; v. „Jovanove odluke"): `computeAlerts` ima samo „Troškovi premašili
+  plan — X od planiranih Y"; tabla: KPI i kolona marže uklonjeni (`NCOLS` 7, uprava 3 KPI kartice `kpis3`), nepoznat
+  `dashSort.key` se resetuje; fioka: statovi Zdravlje · Napredak · Rok · Naplaćeno (kartice marže obrisane, bez zamene —
+  % utrošenog bi bio ista mera naopačke); presek: bez redova marže;
+  kartica gradilišta: „Ugovorena cena".
 - **Adresa gradilišta** (2026-10-12, migracija 23): `gradilista.adresa` (ulica i broj; `lok` ostaje grad/deo grada),
   u `gradilista_v` i u `zastiti_kolone_gradilista`; forma `f_adresa` (oba puta `saveSite`, prazno = `null`),
   fioka (ispod lokacije), kartica, zaglavlje izveštaja/preseka, mejl trebovanja („Adresa:"), pretraga gradilišta.
@@ -138,7 +139,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..23.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..24.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -245,7 +246,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    sve + BRISANJE + dodela direktora), `admin` (sve bez brisanja; ne dira direktore),
    `rukovodilac` (svoja gradilišta; finansije SAMO uz `vidi_finansije` = „Rukovodilac 1"),
    `radnik` (gradilišta gde je u timu: čita, svoj dnevnik/zadaci/dokumenta), `spoljni`
-   (kao radnik, vezan za `podizvodjaci.id`). Finansije (marže, cene, naplata, kumulativ,
+   (kao radnik, vezan za `podizvodjaci.id`). Finansije (cene, naplata, kumulativ,
    troškovi) vidi SAMO `canFinance()` = uprava ili rukovodilac sa zastavicom — nikad
    radnik/spoljni. **IZUZETAK (odluka 2026-10-12, migracija 23): jedinične cene predmera** (`predmer.cena`)
    vidi i SVAKI rukovodilac na svom gradilištu IZVOĐENJA — `vidimCene(grId)` (klijent: kolone jed. cena/ukupno
@@ -400,9 +401,11 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 ## Jovanove odluke (2026-09-15) — ne otvarati ponovo bez razloga
 - **Zdravlje projekta = jedan skor za sve uloge.** `zdravlje(g)` uvek uračunava
   finansijske penale. Rukovodilac vidi broj, ne i obrazloženje.
-- **Marža: planska + ostvarena.** `marzaPct(g)` = planska ("Plan. marža"),
-  `ostvMarzaPct(g)` = ostvarena (fioka "Ostv. marža", presek "Ostvarena marža").
-  Alarm: crveno < 8% ostvarene, žuto kad `potroseno(g) > g.troskovi`.
+- **Marža je UKLONJENA (2026-10-12, migracija 24): „ne merimo to".** Nema `marzaPct`/`ostvMarzaPct`,
+  nema je ni u jednom pogledu, fioci, preseku, kartici ni upozorenju; `zdravlje(g)` i server
+  `zdravlje_gradilista` nemaju penal za maržu, završen projekat = 100. Test T17 čuva da u `index.html`
+  nema reči „marža". Ostaje `gradilista.troskovi` = planirani troškovi (upozorenje „Troškovi premašili
+  plan", penal „troškovi ispred napretka"); podrazumevana vrednost pri kreiranju je i dalje 85% cene.
 - **Tim: puna lista uz upozorenje.** `formTim` nudi sve; osoba na drugom
   gradilištu označena (`drugde()`), `saveTim` traži `confirm()`. Rukovodiocu
   se NE otkriva ime tuđeg gradilišta.

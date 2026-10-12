@@ -225,8 +225,6 @@
   .av{width:30px;height:30px;border-radius:8px;background:var(--blue-soft);color:var(--blue);display:inline-grid;place-items:center;font-weight:700;font-size:12px;font-family:'Space Grotesk',sans-serif;flex:none}
   .who{display:flex; align-items:center; gap:10px}
   .num-cell{font-variant-numeric:tabular-nums}
-  .marza{font-weight:700; font-variant-numeric:tabular-nums}
-  .m-good{color:var(--green)} .m-mid{color:var(--amber)} .m-bad{color:var(--red)}
   tr.grp td{background:var(--paper); font-size:12px; font-weight:600; color:var(--slate); padding:8px 16px; cursor:pointer; border-top:1px solid var(--line-strong)}
   tr.grp:hover td{background:var(--blue-soft)}
   tr.grp .g-dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:8px;vertical-align:middle}
@@ -1211,7 +1209,7 @@ function setRole(r){
   else if(r.startsWith('spoljni:')) primeniUlogu('spoljni', r.slice(8), false);
   else if(r.endsWith(':fin')) primeniUlogu('rukovodilac', r.slice(0,-4), true, mods);
   else primeniUlogu('rukovodilac', r, false, mods);
-  if((ROLE!=='all' && ['cena','naplata'].includes(dashSort.key)) || dashSort.key==='marza') dashSort={key:'smart',dir:-1};   // marza nije vise kolona table
+  if((ROLE!=='all' && ['cena','naplata'].includes(dashSort.key)) || !['smart','zdr','cena','naplata','ljudi','napredak','rok'].includes(dashSort.key)) dashSort={key:'smart',dir:-1};   // nepoznat/uklonjen kljuc → podrazumevano
   if(!tabDozvoljen(current)) current='dash';
   renderNav(); render(); closeDrawer();
 }
@@ -1347,10 +1345,7 @@ const initials = ime => ime.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperC
 const dParse = s => new Date(s+'T00:00:00');
 const daysBetween = (a,b) => Math.round((b-a)/86400000);
 function fmtDate(s){ const d=dParse(s); return d.getDate()+'. '+MESECI[d.getMonth()]+' '+d.getFullYear(); }
-function marzaPct(g){ return g.budzet ? Math.round((g.budzet - g.troskovi)/g.budzet*1000)/10 : 0; }   // PLANSKA: budzet - planirani troskovi
-/* OSTVARENA marza: budzet - stvarno potroseno (iz troskovi_st). Rano u projektu je
-   visoka (malo potroseno) — smisao dobija kad se troskovi nagomilaju. */
-function ostvMarzaPct(g){ return g.budzet ? Math.round((g.budzet - potroseno(g))/g.budzet*1000)/10 : 0; }
+/* Planska/ostvarena profitna stopa je UKLONJENA 2026-10-12 (odluka klijenta: ne meri se) — iz UI, formule zdravlja i servera (migracija 24). */
 function sitZa(id){ return (DATA.situacije||[]).filter(s=>s.gr===id); }
 function naplSum(g){ const s=sitZa(g.id); return s.length? s.filter(x=>x.status==='placeno').reduce((a,b)=>a+(b.iznos||0),0) : (g.naplaceno||0); }   // iznos null bez finansija (situacije_v)
 function naplataPct(g){ return g.budzet?Math.round(naplSum(g)/g.budzet*100):0; }
@@ -1365,7 +1360,6 @@ function subsZa(grId){ return (DATA.podizvodjaci||[]).filter(x=>(x.grs||[]).incl
 function timNa(grId){ return DATA.zaposleni.filter(z=>(z.grs||[]).includes(grId)); }
 /* 'Petar Kovacevic' -> 'Petar K.'; jednoclano ime ostaje kakvo jeste. */
 function kratkoIme(ime){ const d=String(ime||'').trim().split(/\s+/); return d[0]+(d[1]?' '+d[1][0]+'.':''); }
-function marzaClass(m){ return m>=15?'m-good':m>=8?'m-mid':'m-bad'; }
 
 const STATUS = {
   'u toku':   {t:'U toku',     c:'b-blue'},
@@ -1485,7 +1479,7 @@ function zdravlje(g){
      pogresan (do 25 nizi) skor. Bez servera: null → "—", nikad izmisljen broj.
      Direktor u "Pogled kao" ima pune podatke i racuna lokalno (jedan skor za sve). */
   if(jeRukovodilacNalog()) return null;
-  if(g.status==='zavrseno') return Math.min(100, 90 + (marzaPct(g)>=10?10:5));
+  if(g.status==='zavrseno') return 100;   // zavrsen projekat = 100 (ISTO u zdravlje_gradilista na serveru, migracija 24)
   let sc=100;
   const diff=daysBetween(TODAY,dParse(g.rok));
   if(g.status==='kasni'||diff<0) sc-=35;
@@ -1497,7 +1491,6 @@ function zdravlje(g){
      su filtrirani u computeAlerts, iznosi su iza canFinance()). */
   const ocek=g.troskovi*g.napredak/100;
   if(g.napredak>0 && potroseno(g)>ocek*1.1) sc-=20;
-  if(ostvMarzaPct(g)<8) sc-=10;
   if(g.napredak-naplataPct(g)>25) sc-=15;
   return Math.max(5,sc);
 }
@@ -1543,7 +1536,7 @@ function computeAlerts(){
       if(g.napredak>0 && potroseno(g)>ocek*1.1) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi ('+fmtEurK(potroseno(g))+') idu ispred napretka — plan za ovu fazu '+fmtEurK(ocek), nas:g.naziv});
       if(g.napredak - naplataPct(g) > 25) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Naplata ('+naplataPct(g)+'%) zaostaje za izvedenim radovima ('+g.napredak+'%)', nas:g.naziv});
     }
-    /* Marža se NE prijavljuje na tabli (odluka klijenta 2026-10-12: „ne merimo to") — ostaje samo upozorenje o troškovima iznad plana. */
+    /* Upozorenje o troskovima iznad plana (bez procenata — 2026-10-12). */
     if(potroseno(g)>g.troskovi && g.troskovi>0 && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — '+fmtEurK(potroseno(g))+' od planiranih '+fmtEurK(g.troskovi), nas:g.naziv});
   });
   zadaciVidljivi().forEach(t=>{
@@ -1590,7 +1583,7 @@ function dashSorted(sites){
     arr.sort((a,b)=> (st[a.status]??9)-(st[b.status]??9) || dParse(a.rok)-dParse(b.rok));
     return arr;
   }
-  const v=g=>({cena:g.budzet, marza:marzaPct(g), naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
+  const v=g=>({cena:g.budzet, naplata:naplataPct(g), ljudi:timNa(g.id).length, napredak:g.napredak, rok:dParse(g.rok).getTime(), zdr:zdravlje(g)}[dashSort.key]||0);
   arr.sort((a,b)=>(v(b)-v(a))*(-dashSort.dir));
   return arr;
 }
@@ -1617,7 +1610,7 @@ function viewDash(){
 
   // finansijska tabela po projektu
   const rowHtml = (g)=>{
-    const n = naplataPct(g), tim = timNa(g.id).length;   // plan. marza nije KPI table (odluka 2026-10-12)
+    const n = naplataPct(g), tim = timNa(g.id).length;
     const finCells = fin ? `
       <td class="r num-cell strong">${fmtEurK(g.budzet)}</td>
       <td class="r"><div class="napl">
@@ -1819,7 +1812,6 @@ function sitesCards(){
   return list.map(g=>{
     const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
     const barCol = g.status==='kasni'?'var(--red)':g.status==='zavrseno'?'var(--green)':'var(--blue)';
-    const m=marzaPct(g);
     return `<div class="card site-card" onclick="openSite('${g.id}')">
       <div class="hd">
         <div class="top"><h3>${g.naziv}</h3>${badge(g.status)}</div>
@@ -1828,7 +1820,7 @@ function sitesCards(){
       </div>
       <div class="bd">
         <div class="kv"><span>Klijent</span><b>${cl?cl.naziv:'—'}</b></div>
-        ${canFinance()?`<div class="kv"><span>Cena / plan. marža</span><b>${fmtEurK(g.budzet)} · <span class="${marzaClass(m)}">${String(m).replace('.',',')}%</span></b></div>
+        ${canFinance()?`<div class="kv"><span>Ugovorena cena</span><b>${fmtEurK(g.budzet)}</b></div>
         <div class="kv"><span>Naplaćeno</span><b>${naplataPct(g)}%</b></div>`:''}
         <div class="kv"><span>Rukovodilac</span><b>${ruk?kratkoIme(ruk.ime):'—'}</b></div>
         <div class="kv"><span>Početak</span><b>${fmtDate(g.pocetak)}</b></div>
@@ -3709,7 +3701,7 @@ function openPresek(id){
   const g=grById[id]; if(!g) return;
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const pot=potroseno(g), trSt=troskoviZa(id), subs=subsZa(id), sits=sitZa(id);
-  const m=marzaPct(g), n=naplataPct(g), sc=zdravlje(g);
+  const n=naplataPct(g), sc=zdravlje(g);
   const ocek=Math.round(g.troskovi*g.napredak/100);
   const nenap=Math.max(0, Math.round(g.napredak/100*g.budzet - naplSum(g)));
   const dosp=sits.filter(x=>x.status!=='placeno'&&sitKasni(x)).reduce((a,b)=>a+b.iznos,0);
@@ -3740,9 +3732,7 @@ function openPresek(id){
       <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:0 0 8px">Finansije</h3>
       ${red('Ugovorena cena', fmtEur(g.budzet), 1)}
       ${red('Planirani troškovi', fmtEur(g.troskovi))}
-      ${red('Planirana marža', fmtEur(g.budzet-g.troskovi)+' ('+String(m).replace('.',',')+'%)')}
-      ${red('Utrošeno do sada', fmtEur(pot)+' — plan za trenutnu fazu '+fmtEur(ocek)+(pot>ocek*1.1?' <b style="color:var(--amber)">⚠ ispred plana</b>':''))}
-      ${red('Ostvarena marža', fmtEur(g.budzet-pot)+' ('+String(ostvMarzaPct(g)).replace('.',',')+'%)'+(pot>g.troskovi?' <b style="color:var(--amber)">⚠ troškovi iznad plana</b>':''))}
+      ${red('Utrošeno do sada', fmtEur(pot)+' — plan za trenutnu fazu '+fmtEur(ocek)+(pot>g.troskovi?' <b style="color:var(--amber)">⚠ troškovi iznad plana</b>':pot>ocek*1.1?' <b style="color:var(--amber)">⚠ ispred plana</b>':''))}
       ${red('Naplaćeno', fmtEur(naplSum(g))+' ('+n+'%)')}
       ${nenap?red('Izvedeno, a nenaplaćeno', '<b style="color:var(--amber)">'+fmtEur(nenap)+'</b>'):''}
       ${dosp?red('Dospelo, neplaćeno (situacije)', '<b style="color:var(--red)">'+fmtEur(dosp)+'</b>'):''}
@@ -4656,7 +4646,7 @@ function openSite(id){
   const dd=dParse(g.rok), diff=daysBetween(TODAY,dd);
   const pot=potroseno(g), trSt=troskoviZa(id), subs=subsZa(id);
   const budPct=g.budzet?Math.round(pot/g.budzet*100):0;
-  const m=marzaPct(g), n=naplataPct(g);
+  const n=naplataPct(g);
   const rokTekst = g.status==='zavrseno'?'Projekat predat'
     : diff<0?`<span style="color:var(--red)">Prekoračen za ${Math.abs(diff)} dana</span>`
     : `Preostalo ${diff} dana`;
@@ -4692,13 +4682,7 @@ function openSite(id){
         <div class="dr-stat"><div class="l">Rok</div><div class="v" style="font-size:15px">${fmtDate(g.rok)}</div>
           <div style="font-size:12px;margin-top:6px">${rokTekst}</div>
         </div>
-        ${canFinance()?`<div class="dr-stat"><div class="l">Plan. marža</div><div class="v ${marzaClass(m)}" style="font-size:17px">${String(m).replace('.',',')}%</div>
-          <div style="font-size:12px;margin-top:4px;color:var(--muted)" class="num">${fmtEurK(g.budzet-g.troskovi)}</div>
-        </div>
-        <div class="dr-stat"><div class="l">Ostv. marža</div><div class="v ${marzaClass(ostvMarzaPct(g))}" style="font-size:17px">${String(ostvMarzaPct(g)).replace('.',',')}%</div>
-          <div style="font-size:12px;margin-top:4px;color:var(--muted)" class="num">${fmtEurK(g.budzet-pot)}${pot>g.troskovi?' · <span style="color:var(--amber)">iznad plana</span>':''}</div>
-        </div>
-        <div class="dr-stat"><div class="l">Naplaćeno</div><div class="v" style="font-size:17px">${n}%</div>
+        ${canFinance()?`<div class="dr-stat"><div class="l">Naplaćeno</div><div class="v" style="font-size:17px">${n}%</div>
           <div class="bar" style="margin-top:8px"><span style="width:${n}%;background:${n>=90?'var(--green)':'var(--blue)'}"></span></div>
         </div>`:''}
       </div>

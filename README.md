@@ -26,7 +26,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 |---|---|---|---|---|---|
 | vidi gradilišta | sva | sva | samo svoja, u svom modulu (projektovanje, izvođenje ili oba) | isto | samo ona gde je u timu / na kojima je saradnik; radnik u TAČNO jednom modulu |
 | tabovi | svi | svi | tabla, gradilišta, **naplata**, rokovi, zadaci, dnevnik, magacin, trebovanje | isto bez naplate | isto bez naplate |
-| finansije (cene, marže, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
+| finansije (cene, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
 | kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
 | dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
 | dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
