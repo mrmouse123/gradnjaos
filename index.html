@@ -1160,7 +1160,6 @@ function primeniUlogu(uloga, ja, fin, moduli){
 }
 /* Tabovi po ulozi (odluka klijenta 2026-10-07): uprava sve; rukovodilac: naplata (samo sa
    finansijama), gradilišta, rokovi, zadaci, dnevnik, magacin, trebovanje; radnik/spoljni isto bez naplate. */
-const TABOVI_UPRAVA=null;   // null = svi
 const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','pay'];
 function tabDozvoljen(id){
   if(vrstaUloge()==='uprava') return true;
@@ -1215,12 +1214,6 @@ function setRole(r){
 }
 function modulSufiks(){ return MODULI.length===1 ? (MODULI[0]==='projektovanje'?'|pro':'|izv') : ''; }
 function roleValue(){ const v=vrstaUloge(); return v==='uprava'?(ULOGA==='admin'?'admin':'all'):v==='radnik'?'radnik:'+ROLE+modulSufiks():v==='spoljni'?'spoljni:'+ROLE:(VIDI_FIN?ROLE+':fin':ROLE)+modulSufiks(); }
-/* Demo: modul osobe se izvodi iz njenih gradilista (sva projektovanje → |pro, sva izvodjenje → |izv, mesano → oba) */
-function moduliOsobe(z, ruk){
-  const gs = ruk ? DATA.gradilista.filter(g=>g.rukovodilac===z.id) : (z.grs||[]).map(x=>grById[x]).filter(Boolean);
-  const m=[...new Set(gs.map(g=>g.modul||'izvodjenje'))];
-  return m.length===1 ? (m[0]==='projektovanje'?'|pro':'|izv') : '';
-}
 /* "Pogled kao" = 6 test-profila (zahtev 2026-10-11), isti ljudi kao pravi nalozi u bazi; osoba koje nema u DATA se preskace.
    Trenutna vrednost (npr. iz testova) ostaje u listi da select ne "iskoci". */
 const POGLED_KAO=[
@@ -1273,7 +1266,7 @@ function sinhronizujSveske(grId){
       if(p.zaduzen && t.zad!==p.zaduzen) t.zad=p.zaduzen;
     }
   });
-  pm.forEach(p=>{ if(p.zaduzen && p.zaduzen!==g.rukovodilac) osigurajUTimu(grId, p.zaduzen); });   // tim projektantskog gradilista = ko je zaduzen za svesku (fioka nema „Uredi tim")
+  pm.forEach(p=>{ if(p.zaduzen && p.zaduzen!==g.rukovodilac && osigurajUTimu(grId, p.zaduzen)) n++; });   // tim projektantskog gradilista = ko je zaduzen za svesku (fioka nema „Uredi tim")
   const ids=new Set(pm.map(p=>p.id));
   (DATA.zadaci||[]).filter(t=>t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)).forEach(t=>{ if(PUSHED.zadaci) delete PUSHED.zadaci[t.id]; });
   DATA.zadaci=(DATA.zadaci||[]).filter(t=>!(t.gr===grId&&t.predmer_id&&!ids.has(t.predmer_id)));
@@ -1292,6 +1285,7 @@ function osigurajUTimu(grId, osoba){
 function dodeliSvesku(grId, pid, osoba){
   if(!smemPredmer(grId)) return;
   const p=(DATA.predmer||[]).find(x=>x.id===pid&&x.gr===grId); if(!p) return;
+  if(osoba && !zapById[osoba] && !(DATA.podizvodjaci||[]).some(x=>x.id===osoba)) return;
   p.zaduzen=osoba||null;
   sinhronizujSveske(grId);
   const t=(DATA.zadaci||[]).find(x=>x.predmer_id===pid), g=grById[grId];   // i skidanje dodele: zadatak ide rukovodiocu (sync prenosi samo postavljenog)
@@ -1623,6 +1617,7 @@ function viewDash(){
   const ukNapl = sites.reduce((s,g)=>s+naplSum(g),0);
   const nenap = sites.filter(g=>g.status!=='zavrseno').reduce((s,g)=>s+Math.max(0, g.napredak/100*g.budzet - naplSum(g)),0);
   const fin = canFinance();
+  const sitKol = fin && MODUL!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
   const alerts = computeAlerts();
 
   // finansijska tabela po projektu
@@ -1710,7 +1705,6 @@ function viewDash(){
       </div>`).join('')}</div>
   </div>` : '';
 
-  const sitKol = fin && MODUL!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
   const thS=(k,lab,r)=>`<th class="sortable ${r?'r':''}" onclick="setDashSort('${k}')">${lab}${dashSort.key===k&&k!=='smart'?`<span class="arr">${dashSort.dir===-1?'\u25bc':'\u25b2'}</span>`:''}</th>`;
   const finHead = fin
     ? thS('smart','Projekat')+thS('zdr','Zdravlje')+(sitKol?thS('sit','Ugov. vs situacije',1):'')+thS('cena','Cena',1)+thS('naplata','Naplata',1)+thS('ljudi','Ljudi',1)+thS('napredak','Napredak',1)+'<th class="r">Status</th>'
@@ -2236,7 +2230,7 @@ function mogaTajmer(t){ return tajmerZa(t) && vidimGr(t.gr) && (t.zad===ROLE || 
 function pocniZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
   const osoba=osobaTajmera();
-  let otv=(DATA.rad_na_zadatku||[]).find(s=>s.osoba===osoba && !s.kraj);
+  let otv=mojaOtvorenaSesija();
   if(otv){ const ot=DATA.zadaci.find(x=>x.id===otv.zadatak);
     if(!ot || !zadatakPro(ot)){ zatvoriSesiju(otv); beleziLog('zadatak_pauza',{zadatak:otv.zadatak, naziv:ot?unesc(ot.naziv):otv.zadatak, gr:otv.gr, minuta:otv.minuta, auto:true}); otv=null; }   // zaglavljena sesija na zadatku koji vise nije vidljiv (Izvodjenje) — zatvori je umesto da blokira
     else { alert('Već imaš započet zadatak: '+unesc(ot.naziv)+'. Prvo ga pauziraj ili završi.'); return; } }
@@ -3015,7 +3009,7 @@ function viewPredmer(){
       <td class="strong">${x.sifra?`<span class="num sub" style="margin-right:6px">${x.sifra}</span>`:''}${x.poz}</td>
       <td>${x.jm}</td>
       <td class="r num-cell">${x.kol}</td>
-      ${cene?`<td class="r num-cell">${fmtEur(x.cena)}</td><td class="r num-cell">${fmtEur(x.kol*x.cena)}</td>`:''}
+      ${cene?`<td class="r num-cell">${fmtEur(x.cena)}</td>`:''}${fin?`<td class="r num-cell">${fmtEur(x.kol*x.cena)}</td>`:''}
       <td class="r"><input class="izv-in num" value="${x.izv||0}" onchange="setIzv('${x.id}',this.value)"></td>
       <td class="r" style="min-width:90px"><div class="bar" style="height:6px"><span style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--blue)'}"></span></div><div class="sub num" style="text-align:right">${pct}%</div></td>
       <td>${zaduzenIme(x.zaduzen)}</td>
@@ -3043,7 +3037,7 @@ function viewPredmer(){
     ${!pro?`<button class="btn ghost" onclick="formIzSifarnika('${g.id}')">＋ Iz šifarnika</button>`:''}`:''}
   </div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${cene?'<th class="r">Jed. cena (RSD, bez PDV)</th><th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
+    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${cene?'<th class="r">Jed. cena (RSD, bez PDV)</th>':''}${fin?'<th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':`<div class="empty">Još nema pozicija — ${isDirector()?'uvezi predmer iz Excela ili dodaj poziciju ručno.':'direktor još nije uvezao predmer.'}</div>`}
   </div>`;
@@ -3867,6 +3861,8 @@ function narPredmerOpcije(grId){
 }
 function osveziNarPredmer(grId){   // grId = podrazumevano gradiliste pri otvaranju (select jos nema vrednost u stubu)
   const sel=document.getElementById('f_ngr'), box=document.getElementById('nar_pm_box'); if(!box) return;
+  Object.keys(NAR_PM).forEach(i=>{ const e=document.getElementById('st_n_'+i); const red=e&&e.parentElement; if(red&&red.remove) red.remove(); });   // redovi iz predmera pripadaju prethodnom gradilistu
+  NAR_PM={};
   const opt=narPredmerOpcije((sel&&sel.value)||grId||'');
   box.innerHTML=opt?`<div class="tools" style="margin:6px 0 0"><select id="nar_pm" style="min-width:0;flex:1">${opt}</select><button type="button" class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="dodajIzPredmeraTrebovanje()">\uFF0B Dodaj iz predmera</button></div><div class="sub" style="margin-top:4px">Ugovorena koli\u010dina je samo polazna \u2014 unesi koliko stvarno treba.</div>`:'';
 }
@@ -3907,6 +3903,7 @@ function saveNarudzba(){
   const pmById={}; predmerZa(gr).forEach(p=>pmById[p.id]=p);
   const stavke=[];
   for(let i=1;i<=stavkaSeq;i++){
+    if(NAR_PM[i] && !pmById[NAR_PM[i]]) continue;   // red iz predmera drugog gradilista (ne sme da se degradira u slobodan tekst)
     const p=NAR_PM[i]?pmById[NAR_PM[i]]:null;
     const kol=esc(String(v('st_k_'+i)).trim())||'1';
     if(p){ stavke.push({naziv:p.poz, kolicina:kol, jm:p.jm||'kom', predmer_id:p.id, sifra:p.sifra||null}); continue; }   // naziv/JM iz DATA (vec esc), kolicina slobodna
@@ -4244,9 +4241,9 @@ function saveSituacija(grId){
 }
 function detaljSituacije(id){
   const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!vidimGr(s.gr)) return;
-  const g=grById[s.gr], fin=vidimCene(s.gr), nap=canFinance(), st=stavkeZa(id), pmById={}; predmerZa(s.gr).forEach(p=>pmById[p.id]=p);   // fin: kolone cena/iznos po stavci; nap: ukupno + Placeno
+  const g=grById[s.gr], fin=vidimCene(s.gr), nap=canFinance(), st=stavkeZa(id), pmById={}; predmerZa(s.gr).forEach(p=>pmById[p.id]=p);   // fin: jed. cena po stavci; nap: iznos po stavci, ukupno, Placeno
   const rows=st.map(x=>{ const p=x.predmer_id?pmById[x.predmer_id]:null, cena=p&&p.cena!=null?+p.cena:null;
-    return `<tr${(+x.razlika||0)>0?' style="background:var(--amber-soft)"':''}><td class="num sub">${x.sifra||''}</td><td>${x.poz}${x.predmer_id?'':' <span class="badge b-amber">van predmera</span>'}</td><td>${x.jm||''}</td><td class="r num">${x.kol_ugovoreno}</td><td class="r num">${x.kumulativ}</td><td class="r num strong">${x.kol}</td><td class="r num" style="color:${(+x.razlika||0)>0?'var(--red)':'var(--muted)'}">${(+x.razlika||0)>0?'+'+x.razlika:'—'}</td>${fin?`<td class="r num">${cena!=null?fmtEur(cena):'—'}</td><td class="r num">${cena!=null?fmtEur(cena*(+x.kol||0)):'—'}</td>`:''}</tr>`; }).join('');
+    return `<tr${(+x.razlika||0)>0?' style="background:var(--amber-soft)"':''}><td class="num sub">${x.sifra||''}</td><td>${x.poz}${x.predmer_id?'':' <span class="badge b-amber">van predmera</span>'}</td><td>${x.jm||''}</td><td class="r num">${x.kol_ugovoreno}</td><td class="r num">${x.kumulativ}</td><td class="r num strong">${x.kol}</td><td class="r num" style="color:${(+x.razlika||0)>0?'var(--red)':'var(--muted)'}">${(+x.razlika||0)>0?'+'+x.razlika:'—'}</td>${fin?`<td class="r num">${cena!=null?fmtEur(cena):'—'}</td>`:''}${nap?`<td class="r num">${cena!=null?fmtEur(cena*(+x.kol||0)):'—'}</td>`:''}</tr>`; }).join('');
   const rz=razlikaSit(s);
   openModal(`
     <div class="m-h"><h3>${sitVrsta(s)} situacija ${s.br}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
@@ -4254,8 +4251,8 @@ function detaljSituacije(id){
       <div class="sub" style="margin-bottom:10px">${g?g.naziv:'—'} · ${s.opis} · izdato ${fmtDate(s.izdato)}, valuta ${fmtDate(s.valuta)} · ${s.status==='placeno'?'plaćeno':sitKasni(s)?'kasni':'na čekanju'} · autor: ${s.autor==='direkcija'?'Direkcija':osobaIme(s.autor)}</div>
       ${rz?`<div class="banner" style="margin-bottom:10px">⚠ ${rz} stavk${rz===1?'a je':'i su'} preko ugovorene količine (kumulativno) — razlika za dogovor sa investitorom.</div>`:''}
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th><th class="r">Kumulativ</th><th class="r">Ova situacija</th><th class="r">Razlika</th>${fin?'<th class="r">Jed. cena (bez PDV)</th><th class="r">Iznos (bez PDV)</th>':''}</tr></thead>
-        <tbody>${rows||`<tr><td colspan="${fin?9:7}" class="empty">Situacija nema stavke (uneta ručno kao iznos).</td></tr>`}</tbody></table></div>
+        <thead><tr><th>Šifra</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th><th class="r">Kumulativ</th><th class="r">Ova situacija</th><th class="r">Razlika</th>${fin?'<th class="r">Jed. cena (bez PDV)</th>':''}${nap?'<th class="r">Iznos (bez PDV)</th>':''}</tr></thead>
+        <tbody>${rows||`<tr><td colspan="${7+(fin?1:0)+(nap?1:0)}" class="empty">Situacija nema stavke (uneta ručno kao iznos).</td></tr>`}</tbody></table></div>
       ${nap?`<div style="text-align:right;margin-top:10px;font-weight:700">Ukupno: <span class="num">${s.iznos!=null?fmtEur(s.iznos):'—'}</span></div>`:''}
       <div class="m-foot">
         ${nap&&s.status!=='placeno'?`<button class="btn ghost" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}
@@ -4646,7 +4643,6 @@ function sveskeHtml(id){
       const t=tById[p.id], st=ST[(t&&t.kol)||'todo']||ST.todo, docs=(DATA.dokumenti||[]).filter(d=>d.predmer_id===p.id);
       return `<div class="sv-red${t&&t.kol==='done'?' done':''}">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span class="nz" style="font-weight:600">${p.poz}</span><span class="badge ${st[1]}" style="flex:none">${st[0]}</span></div>
-        ${t&&minutaZadatka(t.id)>0?`<div class="sub" style="font-size:11.5px">⏱ ukupno ${fmtTrajanje(minutaZadatka(t.id))}</div>`:''}
         ${moze?`<div style="margin-top:6px"><select onchange="dodeliSvesku('${id}','${p.id}',this.value)" title="Dodeli osobu"><option value="">— dodeli osobu —</option>${zaduzenOpcije(p.zaduzen)}</select></div>`:''}
         ${t?tajmerLinija(t):''}
         ${docs.map(d=>`<div class="sub" style="font-size:12px;margin-top:6px">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span> · ${fmtDate(d.datum)} · ${osobaIme(d.autor)}${smemObrisatiDokument(d)?` <span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</div>`).join('')}
@@ -4663,7 +4659,6 @@ function openSite(id){
   FIOKA_GR=id;
   const cl=cliById[g.klijent], ruk=zapById[g.rukovodilac];
   const tim=timNa(id), pro=jePro(g);
-  const zad=zadaciVidljivi().filter(t=>t.gr===id);   // radnik u fioci vidi samo svoje zadatke
   const dokOpsti=pro?dokumentiZa(id).filter(d=>!d.predmer_id):dokumentiZa(id);   // Projektovanje: dokument uz svesku stoji uz svesku
   const dd=dParse(g.rok), diff=daysBetween(TODAY,dd);
   const pot=potroseno(g), trSt=troskoviZa(id), subs=subsZa(id);

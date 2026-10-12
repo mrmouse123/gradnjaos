@@ -1,3 +1,18 @@
+# 2026-10-12: trebovanje iz predmera · fioka Projektovanja · cene/adresa/play · bez marže · zdravlje ×2 · pregled
+- [x] Trebovanje iz ugovorenog predmera (dropdown pozicija, zaključan naziv, ugovorena kol. kao polazna, predmer_id+sifra u stavci, mejl/kartica) — 53c3353, T49
+- [x] Fioka Projektovanja: bez tima i liste zadataka → „Dokumentacija po osobi" (sveske po zaduženom, status, tajmer, dodela, dokument uz svesku) — migracija 22 (dokumenti.predmer_id), tim izveden iz dodela (osigurajUTimu) — deb201d, T50
+- [x] Tabla bez plan. marže; jedinične cene za rukovodioce Izvođenja (migracija 23 predmer_v, vidimCene, mock rukIzv; cene fiksira uprava); adresa gradilišta (kolona, view, trigger, forma/fioka/kartica/izveštaji/mejl/pretraga); play samo na jednom zadatku — 75213b8, T51
+- [x] Tabla bez upozorenja o marži — 9a36e44
+- [x] Marža uklonjena SVUDA (funkcije, CSS, tabla, kartica, fioka, presek, formula zdravlja klijent + server migracija 24: završen = 100) — 5329155; T17 čuva da reči nema u izvoru
+- [x] Izvođenje: zdravlje na dva načina — status/skor + „Ugovoreno vs situacije" (predmer Σ kol×cena vs privremene vs okončana = Σ svih situacija; kolona, fioka, presek; canFinance) — 6eeadce, T52
+- [x] Pregled: Karpathy (siroče `zad`, duplirana pretraga sesije → `mojaOtvorenaSesija`, mrtve `TABOVI_UPRAVA`/`moduliOsobe`; skener: 395 deklaracija, 0 bez upotrebe) + Boris Cherny (nezavisni subagent-pregled diffa, lekcije 34–36)
+
+## Review (2026-10-12)
+- Živa baza: migracije 22–24 primenjene; RLS probe: Sara dokument uz svesku (insert+view), Petar 87/87 cena na OŠ bez budžeta/iznosa, Sara 0 cena; zdravlje pre→posle = +10 samo gde je bio penal marže (g3, tri „planirano" test-gradilišta), završeno ostaje 100.
+- Iznenađenja: (1) sopstveni komentar „Marza je UKLONJENA" oborio test koji skenira izvor; (2) okončana situacija nosi PRIRAST, pa je „okončana (ukupno)" = Σ svih situacija — savetnik uhvatio pre commit-a; (3) screenshot panel je deo dana bio isečen, fioka proverena DOM-om.
+- Ostaje na odluci: `gradilista.troskovi` (planirani troškovi) + podrazumevanih 85% cene pri kreiranju — jedini preostali „profitni" ostatak; Kanban/„＋ Zadatak" i ručni zadaci u Projektovanju; radnik u fioci vidi sve sveske projekta (tajmer samo na svojoj); rukovodilac bez finansija ne vidi „Ugovoreno vs situacije" (iznos=null) — moguća varijanta po količinama; stari zadaci Izvođenja u bazi (skriveni) — brisanje čeka „da".
+- Nalozi nezavisnog pregleda (subagent, diff e7dba13..HEAD) — ispravljeno: (1) kol×cena po redu i iznos stavke su bili iza `vidimCene` → sad `canFinance()` (zbir kolone bi otkrio skriveni `iznos`); (2) promena gradilišta u trebovanju ostavljala redove iz predmera STAROG gradilišta (tiho degradirani u slobodan tekst) → `osveziNarPredmer` ih uklanja + guard u `saveNarudzba`; (3) ulazak u tim pri boot sync-u nije ulazio u `n`, pa se nije čuvao → `n++`; (5) `sitKol` deklarisan posle `rowHtml` (TDZ) → pomeren; (7) mock `rukIzv` sad gleda i module naloga; (8) `dodeliSvesku` proverava da osoba postoji; (9) duplo „⏱ ukupno" u fioci. Ostavljeno: (6) reset sorta `sit` i za `:fin` rukovodioca (isti obrazac kao cena/naplata), (10) sort kolone po % privremenih. Čisto: formule klijent/server, guardovi, XSS, th/td, pravila 7/8.
+
 # Sifarnik samo Izvodjenje (81 + Razno), Projektovanje bez sifarnika (2026-10-11)
 - [x] Migracija 21: delete sf-i-* (24 pozicije radova) — zivo + schema.sql
 - [x] Klijent: demo bez SIFRARNIK_IZV, kartica samo Izvodjenje (bez izbora modula), dugme skriveno u Projektovanju, Razno u Izvodjenju (naziv/JM/kol/cena/zaduzen), situacija pro bez sifarnika

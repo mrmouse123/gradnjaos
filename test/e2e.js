@@ -3165,12 +3165,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     let h = doc.getElementById('view').innerHTML;
     const c1 = a.run("fmtEur(predmerZa('g5')[0].cena)");
     if (!h.includes('Jed. cena (RSD, bez PDV)') || !h.includes(c1)) throw new Error('predmer g5 bez cena za rukovodioca');
+    if (h.includes('<th class="r">Ukupno</th>') || h.includes(a.run("fmtEur(predmerZa('g5')[0].kol*predmerZa('g5')[0].cena)"))) throw new Error('rukovodilac bez finansija vidi kol×cena po redu');
     if (h.includes('Izvedena vrednost') || h.includes('izvozPredmer(')) throw new Error('rukovodilac bez finansija dobio KPI vrednosti / izvoz');
     const nTh = (h.match(/<th/g) || []).length, nTd = (h.match(/<\/tr>/g) || []).length; if (!nTh || !nTd) throw new Error('tabela predmera prazna');
     const sit = a.run("sitZa('g5')[0]");
     a.run(`detaljSituacije(${JSON.stringify(sit.id)})`);
     h = doc.getElementById('modal').innerHTML;
-    if (!h.includes('Jed. cena (bez PDV)') || h.includes('Ukupno:') || h.includes("markPaid(")) throw new Error('detalj situacije za rukovodioca: kolone/ukupno/placeno pogresno');
+    if (!h.includes('Jed. cena (bez PDV)') || h.includes('Iznos (bez PDV)') || h.includes('Ukupno:') || h.includes("markPaid(")) throw new Error('detalj situacije za rukovodioca: kolone/iznos/ukupno/placeno pogresno');
     a.run('closeModal()');
     a.run(`setRole(${JSON.stringify(g8r)})`);
     if (a.run("vidimCene('g8')")) throw new Error('rukovodilac Projektovanja vidi cene');
@@ -3355,8 +3356,11 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('all'); formNarudzba();");
     doc.getElementById('f_ngr').value = 'g8'; a.run('osveziNarPredmer()');
     if (doc.getElementById('nar_pm_box').innerHTML !== '') throw new Error('projektantsko gradiliste nudi predmer za trebovanje');
+    doc.getElementById('f_ngr').value = 'g1'; a.run('osveziNarPredmer()'); doc.getElementById('nar_pm').value = 'pm49'; a.run('dodajIzPredmeraTrebovanje()');
+    if (a.run('NAR_PM[2]') !== 'pm49') throw new Error('priprema za promenu gradilista');
     doc.getElementById('f_ngr').value = 'g5'; a.run('osveziNarPredmer()');
     if (!doc.getElementById('nar_pm_box').innerHTML.includes('value="pm1"') || doc.getElementById('nar_pm_box').innerHTML.includes('pm49')) throw new Error('promena gradilista ne menja listu');
+    if (Object.keys(a.run('NAR_PM')).length) throw new Error('promena gradilista nije ispraznila redove iz predmera starog gradilista');
     // tudje gradiliste: dodajIzPredmeraTrebovanje odbija
     a.run("setRole('z1');");
     doc.getElementById('f_ngr').value = 'g5'; doc.getElementById('nar_pm').value = 'pm1';

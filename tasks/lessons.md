@@ -233,3 +233,22 @@ mapu mock-a ISTOG trenutka kad i u migraciju. Drugo: id-jevi redova koje vise kl
 nezavisno da naprave (sinhronizacija, backfill) moraju biti deterministicki (`tsv-<predmer_id>`),
 inace dva taba = dva reda; sa istim id-om sudar je PK konflikt koji nestane na reload-u.
 
+
+## Lekcija 34 (2026-10-12, „ukloni X" znači SVUDA, ne samo tamo gde je pokazano)
+Jovan: „iz kontrolne table izbaci planiranu maržu" → uklonio sam je sa table, ostavio u fioci, preseku i
+kartici i to prijavio kao „ostaje tamo". Sledeća poruka: „obriši maržu svugde — ne merimo to". Isti obrazac
+ranije istog dana: „sklonio" sam zadatke sa Izvođenja, ali su ostali u fioci Projektovanja („već sam ti rekao da
+to skloniš"). Pravilo: kad klijent kaže da se nešto NE MERI / NE TREBA, to je odluka o konceptu, ne o jednom
+ekranu — ukloni koncept iz svih pogleda, formula (klijent + server), upozorenja, testova i dokumentacije u
+istom koraku, pa test koji čuva da reč ne postoji u izvoru (T17 za „marž"). Ako ipak misliš da deo treba da
+ostane, pitaj u JEDNOJ rečenici pre nego što ga ostaviš — ne isporučuj polovično pa čekaj drugu poruku.
+
+## Lekcija 35 (2026-10-12, sopstveni komentar obara sopstveni test)
+Test „u izvoru nema reči marža" je pao na MOJIM komentarima („Marza je UKLONJENA…"). Kad pišeš test koji
+pretražuje izvor za reč, prvo pretraži i komentare koje sam upravo dodaješ; objašnjenje uklanjanja ide u
+CLAUDE.md / lessons, ne u kod koji test skenira.
+
+## Lekcija 36 (2026-10-12, vrsta promene: zamena nije uklanjanje)
+Umesto dve kartice marže u fioci stavio sam karticu „Utrošeno %" — isti broj naopačke (100 − ostvarena marža).
+Savetnik je uhvatio. Pravilo: kad uklanjaš meru, ne izmišljaj zamenu „da popuni prostor"; prazan slot u gridu
+je bolji od mere koju klijent nije tražio. Isto za KPI kartice na tabli (`kpis3`).

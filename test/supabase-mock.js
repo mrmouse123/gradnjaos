@@ -261,7 +261,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
     isSuper: () => { const p = profil(); return !!p && p.uloga === 'direktor'; },
     vidiFin: () => { const p = profil(); return !!p && (p.uloga === 'direktor' || p.uloga === 'admin' || !!p.vidi_finansije); },
     mojZ: () => { const p = profil(); return p ? p.zaposleni_id : null; },
-    rukIzv: gid => { const p = profil(); if (!p || p.uloga !== 'rukovodilac' || !p.zaposleni_id) return false; const g = (db.gradilista || []).find(x => x.id === gid); return !!g && g.rukovodilac === p.zaposleni_id && (g.modul || 'izvodjenje') !== 'projektovanje'; },
+    rukIzv: gid => { const p = profil(); if (!p || p.uloga !== 'rukovodilac' || !p.zaposleni_id) return false; const g = (db.gradilista || []).find(x => x.id === gid); const mods = p.moduli || ['projektovanje', 'izvodjenje']; return !!g && g.rukovodilac === p.zaposleni_id && (g.modul || 'izvodjenje') !== 'projektovanje' && mods.includes(g.modul || 'izvodjenje'); },   // kao vodim_gradiliste: i modul_dozvoljen
   };
   const client = {
     from(table){ return new Query(db, table, null, faults, log, ctx); },

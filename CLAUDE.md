@@ -255,8 +255,9 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    (kao radnik, vezan za `podizvodjaci.id`). Finansije (cene, naplata, kumulativ,
    troškovi) vidi SAMO `canFinance()` = uprava ili rukovodilac sa zastavicom — nikad
    radnik/spoljni. **IZUZETAK (odluka 2026-10-12, migracija 23): jedinične cene predmera** (`predmer.cena`)
-   vidi i SVAKI rukovodilac na svom gradilištu IZVOĐENJA — `vidimCene(grId)` (klijent: kolone jed. cena/ukupno
-   po redu na strani Predmer i cena/iznos po stavci u detalju situacije; server: `predmer_v`
+   vidi i SVAKI rukovodilac na svom gradilištu IZVOĐENJA — `vidimCene(grId)` (klijent: SAMO kolona jed. cena na strani
+   Predmer i jed. cena po stavci u detalju situacije; kol×cena po redu / iznos stavke / ukupno ostaju `canFinance()`,
+   inače bi zbir kolone dao vrednost koju `situacije_v.iznos` krije — nalaz pregleda 2026-10-12; server: `predmer_v`
    `vidi_finansije() or (vodim_gradiliste(gr) and not gradiliste_je_pro(gr))`; mock `ctx.rukIzv`). Cene
    „fiksira" uprava — `zastiti_kolone_predmer` ne-upravi ne da da ih menja, `formPredmerRed` nudi cenu samo uz
    `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
@@ -357,7 +358,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-29 lekcija; najvažnije za svaku izmenu:
+36 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.
