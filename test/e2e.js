@@ -1245,9 +1245,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     await s0.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
     const a = await boot({ supabase: true, seed, session: RUK });
-    if (a.run("DATA.predmer.find(x=>x.id==='pmR2').cena") != null) throw new Error('priprema: rukovodilac vidi cenu');
+    if (a.run("DATA.predmer.find(x=>x.id==='pmR2').cena") !== 300) throw new Error('priprema: rukovodilac Izvodjenja vidi cenu (migracija 23)');
     a.run("setIzv('pmR2','5')");
-    if (a.run('grById.g1.napredak') === 38) throw new Error('rukovodilac ne sme lokalno da racuna (nema cene) — a napredak je vec 38');
+    if (a.run('grById.g1.napredak') === 38) throw new Error('rukovodilac ne sme lokalno da racuna napredak (osveziNapredak je iza canFinance) — a napredak je vec 38');
     await a.run('doSave()'); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
     const srv = a.g.__mock._db.gradilista.find(g => g.id === 'g1').napredak;
     if (srv !== 38) throw new Error('server (trigger) napredak = ' + srv + ', ocekivano 38');
@@ -1923,7 +1923,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const g = a.run("DATA.gradilista.find(g=>g.id==='g1')");
     if (!g) throw new Error('g1 nije ucitan');
     for (const k of ['budzet', 'troskovi', 'potroseno', 'naplaceno']) if (g[k] != null) throw new Error('gradiliste nosi ' + k + '=' + g[k]);
-    if (a.run("DATA.predmer.some(x=>x.cena!=null)")) throw new Error('predmer nosi cenu');
+    // migracija 23: cena samo na redovima gradilista Izvodjenja koja VODI (mock ne filtrira redove po gradilistu, pa tudji redovi ostaju null)
+    if (a.run("DATA.predmer.some(x=>x.cena!=null && !(grById[x.gr]&&smemNa(x.gr)&&!jePro(grById[x.gr])))")) throw new Error('predmer nosi cenu tudjeg/projektantskog gradilista');
+    if (a.run("DATA.predmer.some(x=>x.cena==null && grById[x.gr]&&smemNa(x.gr)&&!jePro(grById[x.gr]))")) throw new Error('rukovodilac Izvodjenja ne vidi cenu svog predmera');
     if (a.run("DATA.podizvodjaci.some(x=>x.cena!=null)")) throw new Error('podizvodjac nosi cenu');
     if (a.run('DATA.troskovi_st.length')) throw new Error('troskovi_st nisu prazni');
     if (a.run("DATA.situacije.some(x=>x.iznos!=null)")) throw new Error('situacije nose iznos bez finansija (migracija 19: situacije_v)');   // situacije se citaju (svoje), iznos = null
@@ -2377,10 +2379,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (/marža/i.test(ruk)) throw new Error('rukovodilac vidi marzu u alarmu: ' + ruk);
   });
 
-  await acheck('oznake: "Plan. marža" na tabli, "Ostv. marža" u fioci, "Ostvarena marža" u preseku', async () => {
+  await acheck('oznake: tabla BEZ "Plan. marža" (odluka 2026-10-12), "Ostv. marža" + "Plan. marža" u fioci, "Ostvarena marža" u preseku', async () => {
     app.run("ROLE='all'; MODUL='sve'; current='dash'; render();");
     const dash = app.g.document.getElementById('view').innerHTML;
-    if (!dash.includes('Plan. mar')) throw new Error('tabla nema "Plan. marža"');
+    if (dash.includes('Plan. mar') || dash.includes('plan. mar') || dash.includes("setDashSort('marza')")) throw new Error('tabla i dalje ima planiranu marzu');
     const gid = app.run('DATA.gradilista[0].id');
     app.run(`openSite(${JSON.stringify(gid)});`);
     const dr = app.g.document.getElementById('drawer').innerHTML;
@@ -3107,6 +3109,99 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T51 (2026-10-12): tabla bez plan. marze; jedinicne cene za rukovodioca Izvodjenja; adresa gradilista; play samo na jednom zadatku ---- */
+  section('T51 cene/adresa/jedan play');
+  await acheck('vidimCene: rukovodilac Izvodjenja bez finansija vidi jed. cene (predmer stranica, detalj situacije), ne i KPI/ukupno/Placeno; rukovodilac Projektovanja ne; radnik ne; mock predmer_v daje cenu samo za svoje Izvodjenje; rowsZa ne salje cenu', async () => {
+    const a = await boot();
+    const doc = a.g.document;
+    const g5r = a.run("grById.g5.rukovodilac"), g8r = a.run("grById.g8.rukovodilac");
+    a.run(`setRole(${JSON.stringify(g5r)})`);
+    if (a.run('canFinance()') || !a.run("vidimCene('g5')")) throw new Error('rukovodilac g5: canFinance=' + a.run('canFinance()') + ' vidimCene=' + a.run("vidimCene('g5')"));
+    a.run("openPredmer('g5'); render();");
+    let h = doc.getElementById('view').innerHTML;
+    const c1 = a.run("fmtEur(predmerZa('g5')[0].cena)");
+    if (!h.includes('Jed. cena (RSD, bez PDV)') || !h.includes(c1)) throw new Error('predmer g5 bez cena za rukovodioca');
+    if (h.includes('Izvedena vrednost') || h.includes('izvozPredmer(')) throw new Error('rukovodilac bez finansija dobio KPI vrednosti / izvoz');
+    const nTh = (h.match(/<th/g) || []).length, nTd = (h.match(/<\/tr>/g) || []).length; if (!nTh || !nTd) throw new Error('tabela predmera prazna');
+    const sit = a.run("sitZa('g5')[0]");
+    a.run(`detaljSituacije(${JSON.stringify(sit.id)})`);
+    h = doc.getElementById('modal').innerHTML;
+    if (!h.includes('Jed. cena (bez PDV)') || h.includes('Ukupno:') || h.includes("markPaid(")) throw new Error('detalj situacije za rukovodioca: kolone/ukupno/placeno pogresno');
+    a.run('closeModal()');
+    a.run(`setRole(${JSON.stringify(g8r)})`);
+    if (a.run("vidimCene('g8')")) throw new Error('rukovodilac Projektovanja vidi cene');
+    a.run("openPredmer('g8'); render();");
+    if (doc.getElementById('view').innerHTML.includes('Jed. cena')) throw new Error('specifikacija g8 ima cene za rukovodioca bez finansija');
+    const rad = a.run("(DATA.zaposleni.find(z=>(z.grs||[]).includes('g5')&&z.id!==grById.g5.rukovodilac)||{}).id");
+    a.run(`setRole('radnik:${rad}')`);
+    if (a.run("vidimCene('g5')")) throw new Error('radnik vidi cene');
+    a.run(`setRole(${JSON.stringify(g5r)})`);
+    if (a.run("rowsZa('predmer', DATA).some(x=>'cena' in x)") && a.run('jeRukovodilacNalog()')) throw new Error('rowsZa salje cenu');
+    // mock view: Petar (rukovodilac bez finansija) dobija cenu na g1 (Izvodjenje), ne na projektantskom gradilistu koje bi vodio
+    const DIR = { user: { id: 'u-dir', email: 'direktor@test' } }, RUK = { user: { id: 'u-ruk', email: 'petar@test' } };
+    const s0 = await boot({ supabase: true, seed: {}, session: DIR });
+    s0.run("DATA.gradilista.push({...grById.g8, id:'gPro51', naziv:'Pro 51', rukovodilac:'z1'}); DATA.predmer.push({id:'pm51a',gr:'g1',poz:'A51',jm:'m',kol:1,cena:70,izv:0,zaduzen:null},{id:'pm51b',gr:'gPro51',poz:'Sveska 51',jm:'kom',kol:1,cena:500,izv:0,zaduzen:null});");
+    await s0.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const seed = JSON.parse(JSON.stringify(s0.g.__mock._db)); delete seed.log_koriscenja;
+    const b = await boot({ supabase: true, seed, session: RUK });
+    if (b.run("DATA.predmer.find(x=>x.id==='pm51a').cena") !== 70) throw new Error('mock predmer_v: rukovodilac Izvodjenja ne dobija cenu');
+    if (b.run("DATA.predmer.find(x=>x.id==='pm51b').cena") != null) throw new Error('mock predmer_v: cena curi na projektantskom gradilistu');
+    if (b.run("grById.g1.budzet") != null || b.run("DATA.situacije.some(x=>x.iznos!=null)")) throw new Error('budzet/iznos cure');
+    if (!b.run("rowsZa('predmer', DATA).every(x=>!('cena' in x))")) throw new Error('rukovodilac bi poslao cenu nazad');
+  });
+  await acheck('adresa gradilista: polje u formi, cuva se (izmena + novo, null kad prazno), fioka/kartica/mejl trebovanja/pretraga', async () => {
+    const a = await boot();
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    a.run("ROLE='all'; formSite('g1');");
+    if (!doc.getElementById('modal').innerHTML.includes('id="f_adresa"')) throw new Error('forma nema polje Adresa');
+    set('f_naziv', a.run('grById.g1.naziv')); set('f_lok', 'Novi Sad'); set('f_adresa', 'Bulevar oslobođenja 12 <x>'); set('f_povrsina', '');
+    set('f_kli', ''); set('f_ruk', ''); set('f_poc', ''); set('f_rok', ''); set('f_cena', ''); set('f_tro', '');
+    a.run("saveSite('g1')");
+    if (a.run('grById.g1.adresa') !== 'Bulevar oslobođenja 12 &lt;x&gt;') throw new Error('adresa nije sacuvana/esc: ' + a.run('grById.g1.adresa'));
+    a.run("openSite('g1')");
+    if (!doc.getElementById('drawer').innerHTML.includes('Bulevar oslobođenja 12 &lt;x&gt;')) throw new Error('fioka ne prikazuje adresu');
+    a.run("current='sites'; siteQuery='oslobođenja'; render();");
+    const v = doc.getElementById('view').innerHTML;
+    if (!v.includes('Bulevar oslobođenja 12') || !v.includes(a.run('grById.g1.naziv'))) throw new Error('kartica/pretraga po adresi');
+    a.run('siteQuery=""');
+    const telo = a.run("narudzbaMailBody({gr:'g1', autor:'z1', datum:todayStr(), rok:todayStr(), stavke:[{naziv:'x',kolicina:'1',jm:'kom'}]})");
+    if (!telo.includes('Adresa: Bulevar oslobođenja 12 <x>')) throw new Error('mejl trebovanja bez adrese: ' + telo);
+    a.run("formSite('g1');"); set('f_naziv', a.run('grById.g1.naziv')); set('f_adresa', ''); set('f_lok', 'Novi Sad'); a.run("saveSite('g1')");
+    if (a.run('grById.g1.adresa') !== null || !a.run("'adresa' in grById.g1")) throw new Error('prazna adresa mora biti null (ne delete)');
+    if (!a.run("rowsZa('gradilista', DATA).every(g=>g.id!=='g1' || ('adresa' in g))")) throw new Error('rowsZa ne nosi adresu');
+    a.run("ROLE='all'; formSite();");
+    set('f_naziv', 'T51 novo'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja'); set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', 'z1');
+    set('f_lok', 'Beograd'); set('f_adresa', 'Kneza Miloša 1'); set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(30)')); set('f_cena', '1'); set('f_tro', '1');
+    a.run('saveSite()');
+    if (a.run('DATA.gradilista[DATA.gradilista.length-1].adresa') !== 'Kneza Miloša 1') throw new Error('novo gradiliste bez adrese');
+  });
+  await acheck('tajmer: dok radim na jednom zadatku, ostali moji zadaci nemaju ▶ (samo poruka + ■ ako je u toku); posle pauze ▶ se vraca', async () => {
+    const a = await boot();
+    const doc = a.g.document;
+    const z = a.run("(DATA.zadaci.filter(t=>zadatakPro(t)&&t.kol!=='done').map(t=>t.zad).find(zid=>DATA.zadaci.filter(t=>zadatakPro(t)&&t.zad===zid&&t.kol!=='done').length>=2))");
+    if (!z) throw new Error('nema osobe sa 2 otvorena zadatka Projektovanja u demo');
+    a.run(`setRole('radnik:${z}')`);
+    const moji = a.run("zadaciVidljivi().filter(t=>t.kol!=='done').map(t=>t.id)");
+    if (moji.length < 2) throw new Error('radnik vidi < 2 zadatka: ' + moji);
+    const [t1, t2] = moji;
+    a.run(`pocniZadatak('${t1}')`);
+    if (!a.run("mojaOtvorenaSesija()")) throw new Error('sesija nije otvorena');
+    const l1 = a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id==='${t1}'))`), l2 = a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id==='${t2}'))`);
+    if (!l1.includes("pauzirajZadatak('" + t1 + "')")) throw new Error('aktivan zadatak nema Pauziraj');
+    if (l2.includes("pocniZadatak('") || !l2.includes('Radiš na:')) throw new Error('drugi zadatak nudi ▶ dok prvi radi: ' + l2);
+    a.run("current='tasks'; render();");
+    const h = doc.getElementById('view').innerHTML;
+    if ((h.match(/pocniZadatak\('/g) || []).length) throw new Error('kanban nudi ▶ na drugim zadacima dok jedan radi');
+    a.run(`pauzirajZadatak('${t1}')`);
+    if (!a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id==='${t2}'))`).includes("pocniZadatak('" + t2 + "')")) throw new Error('posle pauze ▶ se ne vraca');
+    // zaglavljena sesija na zadatku Izvodjenja (nevidljiv) ne sme da sakrije ▶ — jedini izlaz je pocniZadatak koji je sam zatvori
+    a.run(`DATA.zadaci.push({id:'t51izv',naziv:'stari izv',gr:DATA.gradilista.find(g=>!jePro(g)).id,zad:'${z}',prio:'mid',kol:'inprogress',rok:todayStr()}); DATA.rad_na_zadatku.push({id:'rz51',zadatak:'t51izv',gr:DATA.gradilista.find(g=>!jePro(g)).id,osoba:'${z}',start:new Date(Date.now()-60000).toISOString(),kraj:null,minuta:null,napomena:''});`);
+    if (!a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id==='${t2}'))`).includes("pocniZadatak('" + t2 + "')")) throw new Error('zaglavljena sesija Izvodjenja sakrila ▶ na zadatku Projektovanja');
+    a.run(`pocniZadatak('${t2}')`);
+    if (a.run("DATA.rad_na_zadatku.find(s=>s.id==='rz51').kraj") == null || a.run(`!otvorenaSesija('${t2}', '${z}')`)) throw new Error('pocniZadatak nije zatvorio zaglavljenu sesiju / otvorio novu');
+    a.run(`pauzirajZadatak('${t2}')`);
+  });
+
   /* ---- T50 fioka Projektovanja: bez tima i zadataka — sveske (tipovi dokumentacije) po osobi, dodela, dokument uz svesku ---- */
   section('T50 sveske po osobi');
   await acheck('fioka pro: nema „Tim na gradilištu" ni „Zadaci"; sveske grupisane po zaduzenom; select za dodelu samo ko vodi; dodeliSvesku menja predmer.zaduzen + zadatak + ubacuje u tim; dokument uz svesku stoji uz svesku, ne u opstim; brisanje sveske gasi vezu; Izvodjenje nepromenjeno', async () => {
@@ -3513,7 +3608,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!dr.includes('PS-T43') || !dr.includes("formSituacija('g1')") || !dr.includes('1 preko ugovora')) throw new Error('fioka bez situacije/razlike');
     a.run(`detaljSituacije(${JSON.stringify(s.id)})`);
     const dm = a.g.document.getElementById('modal').innerHTML;
-    if (!dm.includes('van predmera') || dm.includes('Jed. cena') || dm.includes('Ukupno:')) throw new Error('detalj za rukovodioca bez finansija pokazuje cene');
+    if (!dm.includes('van predmera') || dm.includes('Ukupno:') || dm.includes('markPaid(')) throw new Error('detalj za rukovodioca bez finansija pokazuje ukupno/placeno');   // jed. cene po stavci sme da vidi (migracija 23)
   });
   await acheck('uprava: kumulativ kroz situacije, razlika preko ugovorenog, iznos iz cena; upozorenje u computeAlerts; viewPay + detalj; brisanje nosi stavke', async () => {
     const a = await boot();

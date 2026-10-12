@@ -131,7 +131,8 @@ class Query {
       let rows = clone(this.db[t]).filter(r => this._match(r));
       if (this.view && !this.ctx.vidiFin()) {   // finansijske kolone NULL bez vidi_finansije (migracija 14)
         const cols = FIN_COLS[t] || [];
-        rows = rows.map(r => { const o = { ...r }; cols.forEach(c => { if (c in o) o[c] = null; }); return o; });
+        const cenaZaRuk = r => t === 'predmer' && this.ctx.rukIzv(r.gr);   // migracija 23: predmer.cena i rukovodiocu svog gradilista Izvodjenja
+        rows = rows.map(r => { const o = { ...r }; cols.forEach(c => { if (c in o && !(c === 'cena' && cenaZaRuk(r))) o[c] = null; }); return o; });
       }
       if (this.view && SKRIVENE_KOLONE[t]) rows = rows.map(r => { const o = { ...r }; SKRIVENE_KOLONE[t].forEach(c => { delete o[c]; }); return o; });
       if (this._order) rows.sort((a, b) => String(a[this._order]).localeCompare(String(b[this._order])));
@@ -260,6 +261,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
     isSuper: () => { const p = profil(); return !!p && p.uloga === 'direktor'; },
     vidiFin: () => { const p = profil(); return !!p && (p.uloga === 'direktor' || p.uloga === 'admin' || !!p.vidi_finansije); },
     mojZ: () => { const p = profil(); return p ? p.zaposleni_id : null; },
+    rukIzv: gid => { const p = profil(); if (!p || p.uloga !== 'rukovodilac' || !p.zaposleni_id) return false; const g = (db.gradilista || []).find(x => x.id === gid); return !!g && g.rukovodilac === p.zaposleni_id && (g.modul || 'izvodjenje') !== 'projektovanje'; },
   };
   const client = {
     from(table){ return new Query(db, table, null, faults, log, ctx); },

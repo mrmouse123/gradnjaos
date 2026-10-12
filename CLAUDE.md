@@ -103,6 +103,15 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
   Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
+- **Kontrolna tabla bez planirane marže** (2026-10-12, odluka klijenta): KPI „Ukupna plan. marža", kolona
+  „Plan. marža" (th+td, `NCOLS` 7), tekst u grupnom redu i UKUPNO redu su uklonjeni; `dashSort.key==='marza'` se
+  resetuje. Uprava ima 3 KPI kartice (`kpis3`). Plan. marža OSTAJE u fioci, preseku i kartici gradilišta.
+- **Adresa gradilišta** (2026-10-12, migracija 23): `gradilista.adresa` (ulica i broj; `lok` ostaje grad/deo grada),
+  u `gradilista_v` i u `zastiti_kolone_gradilista`; forma `f_adresa` (oba puta `saveSite`, prazno = `null`),
+  fioka (ispod lokacije), kartica, zaglavlje izveštaja/preseka, mejl trebovanja („Adresa:"), pretraga gradilišta.
+- **Play samo na jednom zadatku** (2026-10-12): `mojaOtvorenaSesija()`; `tajmerLinija` na drugim zadacima NE nudi
+  ▶ dok jedan radi (poruka „Radiš na: X — pauziraj ga", ■ Završi ostaje za zadatak u toku); `pocniZadatak` i dalje
+  ima guard. T51.
 - **Trebovanje iz ugovorenog predmera** (2026-10-12): `formNarudzba` (široka, `kljuc:'trebovanje'`) ima dropdown
   `#nar_pm` sa pozicijama predmera izabranog gradilišta Izvođenja (`narPredmerOpcije`; Projektovanje = ništa),
   `osveziNarPredmer(grId)` na promenu gradilišta (grId = podrazumevano, jer select u stubu nema vrednost),
@@ -128,7 +137,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..22.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..23.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -237,7 +246,14 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `radnik` (gradilišta gde je u timu: čita, svoj dnevnik/zadaci/dokumenta), `spoljni`
    (kao radnik, vezan za `podizvodjaci.id`). Finansije (marže, cene, naplata, kumulativ,
    troškovi) vidi SAMO `canFinance()` = uprava ili rukovodilac sa zastavicom — nikad
-   radnik/spoljni. Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
+   radnik/spoljni. **IZUZETAK (odluka 2026-10-12, migracija 23): jedinične cene predmera** (`predmer.cena`)
+   vidi i SVAKI rukovodilac na svom gradilištu IZVOĐENJA — `vidimCene(grId)` (klijent: kolone jed. cena/ukupno
+   po redu na strani Predmer i cena/iznos po stavci u detalju situacije; server: `predmer_v`
+   `vidi_finansije() or (vodim_gradiliste(gr) and not gradiliste_je_pro(gr))`; mock `ctx.rukIzv`). Cene
+   „fiksira" uprava — `zastiti_kolone_predmer` ne-upravi ne da da ih menja, `formPredmerRed` nudi cenu samo uz
+   `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
+   „Ukupno" situacije, „Plaćeno", kumulativ, izvoz — i dalje `canFinance()`. `preracunajSituacijeLokalno`
+   piše `iznos` samo uz `canFinance()` (rukovodilac sa cenama ga ne računa — iznos je serverov). Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
    gradilišta, rokovi, zadaci, dnevnik, magacin, trebovanje; `pay` samo `canFinance`).
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
    `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
@@ -322,7 +338,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
     Europe/Belgrade; klijent po satu uređaja. T21.
 9. `DATA` bez `canFinance()` (rukovodilac 2, radnik, spoljni) nema finansije NI KAO
    KOLONE (null; view-ovi `CASE vidi_finansije()`) — `g.budzet`, `x.cena`,
-   `potroseno(g)`, `naplSum(g)` su 0/null. Sve što ih koristi mora biti iza
+   `potroseno(g)`, `naplSum(g)` su 0/null (izuzetak: `x.cena` predmera na gradilištu Izvođenja koje
+   rukovodilac vodi — migracija 23, `vidimCene`). Sve što ih koristi mora biti iza
    `canFinance()` ili tolerantno na null; `zdravlje(g)` za svakog ko nije uprava
    dolazi iz `ZDR_SRV` (server, `zdravlja_mojih()` + napredak), a bez servera `null` → „—"
    (`zdrTekst`/`zdrBoja(null)`), NIKAD lokalnu formulu (nad null finansijama
