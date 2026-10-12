@@ -2371,7 +2371,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
       DATA.troskovi_st.push({id:'tr_t17', gr:${JSON.stringify(gid)}, datum:todayStr(), opis:'x', kat:'Ostalo', iznos:850000});
       rebuildMaps(); })()`);
     const dir = app.run(`(ROLE='all', JSON.stringify(computeAlerts().filter(a=>a.gr===${JSON.stringify(gid)})))`);
-    if (!/premašili plan|Ostvarena marža/.test(dir)) throw new Error('nema alarma za prekoracenje plana: ' + dir);
+    if (!/premašili plan/.test(dir) || /marž/i.test(dir)) throw new Error('alarm za prekoracenje plana fali ili pominje marzu: ' + dir);
     const r = app.run("DATA.zaposleni.filter(z=>/[Rr]ukovodilac/.test(z.poz)).map(z=>z.id)[0]");
     app.run(`DATA.gradilista.find(g=>g.id===${JSON.stringify(gid)}).rukovodilac=${JSON.stringify(r)}; rebuildMaps();`);
     const ruk = app.run(`(ROLE=${JSON.stringify(r)}, (()=>{ const s=JSON.stringify(computeAlerts().filter(a=>a.gr===${JSON.stringify(gid)})); ROLE='all'; return s; })())`);

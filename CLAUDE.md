@@ -103,7 +103,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
   Kumulativni pregled: `.rpt-page.siroka` (1040px). Stub: `TextEncoder/btoa/atob` prosleđeni (dom-stub).
-- **Kontrolna tabla bez planirane marže** (2026-10-12, odluka klijenta): KPI „Ukupna plan. marža", kolona
+- **Kontrolna tabla bez marže** (2026-10-12, odluka klijenta): `computeAlerts` NEMA upozorenja o marži („Ostvarena marža
+  pala na…" i tekst sa planskom maržom su uklonjeni; ostaje samo „Troškovi premašili plan — X od planiranih Y"). KPI „Ukupna plan. marža", kolona
   „Plan. marža" (th+td, `NCOLS` 7), tekst u grupnom redu i UKUPNO redu su uklonjeni; `dashSort.key==='marza'` se
   resetuje. Uprava ima 3 KPI kartice (`kpis3`). Plan. marža OSTAJE u fioci, preseku i kartici gradilišta.
 - **Adresa gradilišta** (2026-10-12, migracija 23): `gradilista.adresa` (ulica i broj; `lok` ostaje grad/deo grada),

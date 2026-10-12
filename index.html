@@ -1543,9 +1543,8 @@ function computeAlerts(){
       if(g.napredak>0 && potroseno(g)>ocek*1.1) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi ('+fmtEurK(potroseno(g))+') idu ispred napretka — plan za ovu fazu '+fmtEurK(ocek), nas:g.naziv});
       if(g.napredak - naplataPct(g) > 25) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Naplata ('+naplataPct(g)+'%) zaostaje za izvedenim radovima ('+g.napredak+'%)', nas:g.naziv});
     }
-    const om=ostvMarzaPct(g), pm=marzaPct(g);
-    if(om<8 && g.status!=='zavrseno') out.push({sev:'red', gr:g.id, fin:true, tekst:'Ostvarena marža pala na '+String(om).replace('.',',')+'%', nas:g.naziv});
-    else if(potroseno(g)>g.troskovi && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — ostvarena marža '+String(om).replace('.',',')+'% (plan '+String(pm).replace('.',',')+'%)', nas:g.naziv});
+    /* Marža se NE prijavljuje na tabli (odluka klijenta 2026-10-12: „ne merimo to") — ostaje samo upozorenje o troškovima iznad plana. */
+    if(potroseno(g)>g.troskovi && g.troskovi>0 && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — '+fmtEurK(potroseno(g))+' od planiranih '+fmtEurK(g.troskovi), nas:g.naziv});
   });
   zadaciVidljivi().forEach(t=>{
     if(t.kol==='done'||!ids.has(t.gr)) return;
