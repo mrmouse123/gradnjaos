@@ -3117,6 +3117,90 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T54 (2026-10-13): pregled situacija — na pregledu / odobrena / vracena, komentar, istorija ---- */
+  section('T54 pregled situacija');
+  await acheck('rukovodilac → na_pregledu (ne ulazi u naplatu/realizaciju, bez Placeno, bez kasni); uprava → odobrena; Vrati traži komentar i daje alert rukovodiocu (bez fin) + upravi (fin, sit); ispravka vracene (stavka obrisana server-prvo) → ponovo na pregledu; Odobri → naplata; istorija', async () => {
+    const a = await boot({ promptReturns: 'Količina iskopa je prevelika <x>' });
+    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
+    const ruk = a.run("grById.g5.rukovodilac");
+    const pre = a.run("realizacijaSituacija(grById.g5).privremene");
+    a.run(`setRole(${JSON.stringify(ruk)}); formSituacija('g5');`);
+    set('f_sbr', 'PS-54'); set('f_svrsta', 'privremena'); set('f_sopis', 'proba'); set('f_sizdato', a.run('todayStr()')); set('f_svaluta', '2020-01-01');
+    set('st_k_pm3', '10'); set('st_k_pm4', '5');
+    await a.run("saveSituacija('g5')");
+    const sid = a.run("DATA.situacije.find(x=>x.br==='PS-54').id");
+    let sx = a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sid)})`);
+    if (sx.pregled !== 'na_pregledu' || sx.pregledao !== null || sx.komentar !== null) throw new Error('rukovodilac: ' + JSON.stringify(sx));
+    if (a.run(`sitKasni(DATA.situacije.find(x=>x.id===${JSON.stringify(sid)}))`)) throw new Error('na pregledu ne sme da "kasni"');
+    a.run(`markPaid(${JSON.stringify(sid)})`);
+    if (a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sid)}).status`) === 'placeno') throw new Error('markPaid na na_pregledu');
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`);
+    let m = doc.getElementById('modal').innerHTML;
+    if (!m.includes('Na pregledu') || m.includes('odobriSituaciju(') || m.includes('vratiSituaciju(') || m.includes('markPaid(')) throw new Error('rukovodilac detalj: ' + m.slice(0, 300));
+    a.run('closeModal()');
+    // uprava
+    a.run("setRole('all'); MODUL='sve';");
+    if (a.run("realizacijaSituacija(grById.g5).privremene") !== pre) throw new Error('na_pregledu usla u realizaciju');
+    a.run("current='pay'; render();"); let v = doc.getElementById('view').innerHTML;
+    if (!v.includes('Na pregledu') || v.includes("markPaid('" + sid + "')")) throw new Error('Naplata: bedz/placeno');
+    const th = (v.match(/<th[\s>]/g) || []).length, td = v.match(/<tbody>[\s\S]*?<tr>[\s\S]*?<\/tr>/)[0].split('<td').length - 1; if (th !== td) throw new Error('Naplata th ' + th + ' != td ' + td);
+    let al = a.run('computeAlerts()').filter(x => x.sit === sid);
+    if (al.length !== 1 || !al[0].fin || !/čeka pregled/.test(al[0].tekst)) throw new Error('uprava alert: ' + JSON.stringify(al));
+    a.run("current='dash'; render();");
+    v = doc.getElementById('view').innerHTML;
+    if (!v.includes('čeka pregled')) throw new Error('tabla: brif nema "čeka pregled"');
+    const idx = a.run('computeAlerts()').findIndex(x => x.sit === sid);   // kartica prikazuje prvih 7 upozorenja (crvena prvo)
+    if (idx >= 0 && idx < 7 && !v.includes("detaljSituacije('" + sid + "')")) throw new Error('tabla: upozorenje bez klika na detalj');
+    if (!v.includes("detaljSituacije('")) throw new Error('tabla: nijedno upozorenje ne otvara detalj (idx ' + idx + ')');
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`); m = doc.getElementById('modal').innerHTML;
+    if (!m.includes("vratiSituaciju('" + sid + "')") || !m.includes("odobriSituaciju('" + sid + "')") || m.includes("markPaid(")) throw new Error('uprava detalj dugmad');
+    const pr0 = a.g._calls.prompt.length;
+    a.run(`vratiSituaciju(${JSON.stringify(sid)})`);
+    sx = a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sid)})`);
+    if (a.g._calls.prompt.length !== pr0 + 1 || sx.pregled !== 'vracena' || sx.komentar !== 'Količina iskopa je prevelika &lt;x&gt;' || sx.pregledao !== 'direkcija' || !sx.istorija || sx.istorija.length !== 1 || sx.istorija[0].odluka !== 'vracena') throw new Error('vrati: ' + JSON.stringify(sx));
+    // rukovodilac: alert bez fin, ispravka (pm4 izbacena, pm1 dodata), ponovo na pregled
+    a.run(`setRole(${JSON.stringify(ruk)})`);
+    al = a.run('computeAlerts()').filter(x => x.sit === sid);
+    if (al.length !== 1 || al[0].fin || !/vraćena/.test(al[0].tekst) || !al[0].tekst.includes('prevelika')) throw new Error('rukovodilac alert: ' + JSON.stringify(al));
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`); m = doc.getElementById('modal').innerHTML;
+    if (!m.includes("formSituacija('g5','" + sid + "')") || !m.includes('Vraćena') || !m.includes('prevelika')) throw new Error('rukovodilac: nema ispravke/komentara');
+    a.run(`formSituacija('g5', ${JSON.stringify(sid)})`); m = doc.getElementById('modal').innerHTML;
+    if (!m.includes('Izmena vraćene situacije') || !m.includes("saveSituacija('g5','" + sid + "')")) throw new Error('forma izmene');
+    set('f_sbr', 'PS-54'); set('f_svrsta', 'privremena'); set('f_sopis', 'proba 2'); set('f_sizdato', a.run('todayStr()')); set('f_svaluta', a.run('plusDays(10)'));
+    set('st_k_pm3', '8'); set('st_k_pm4', ''); set('st_k_pm1', '2');
+    const delPre = a.run("DATA.situacija_stavke.filter(x=>x.sit===" + JSON.stringify(sid) + ").map(x=>x.predmer_id).sort().join()");
+    await a.run(`saveSituacija('g5', ${JSON.stringify(sid)})`);
+    sx = a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sid)})`);
+    const st = a.run("DATA.situacija_stavke.filter(x=>x.sit===" + JSON.stringify(sid) + ")");
+    if (delPre !== 'pm3,pm4' || st.map(x => x.predmer_id).sort().join() !== 'pm1,pm3' || st.find(x => x.predmer_id === 'pm3').kol !== 8) throw new Error('ispravka stavki: ' + delPre + ' → ' + JSON.stringify(st));
+    if (sx.pregled !== 'na_pregledu' || sx.opis !== 'proba 2' || sx.komentar !== 'Količina iskopa je prevelika &lt;x&gt;' || sx.istorija.length !== 2) throw new Error('ponovo na pregled: ' + JSON.stringify(sx));
+    if (a.run("DATA.situacije.filter(x=>x.br==='PS-54').length") !== 1) throw new Error('izmena napravila duplikat');
+    // uprava odobri → naplata, realizacija, Placeno
+    a.run("setRole('all')"); a.run(`odobriSituaciju(${JSON.stringify(sid)})`);
+    sx = a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sid)})`);
+    if (sx.pregled !== 'odobrena' || sx.istorija.length !== 3 || sx.istorija[2].odluka !== 'odobrena') throw new Error('odobri: ' + JSON.stringify(sx));
+    if (a.run("realizacijaSituacija(grById.g5).privremene") !== pre + sx.iznos) throw new Error('odobrena nije usla u realizaciju');
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`); m = doc.getElementById('modal').innerHTML;
+    if (!m.includes("markPaid('" + sid + "')") || m.includes("odobriSituaciju(") || !m.includes('Istorija pregleda') || !m.includes('odobrio')) throw new Error('odobrena detalj: ' + m.slice(-600));
+    if (a.run('computeAlerts()').some(x => x.sit === sid)) throw new Error('odobrena i dalje u upozorenjima pregleda');
+    a.run('closeModal()');
+    // uprava pravi situaciju → odmah odobrena
+    a.run("formSituacija('g5')"); set('f_sbr', 'PS-55'); set('f_svrsta', 'privremena'); set('f_sopis', ''); set('f_sizdato', a.run('todayStr()')); set('f_svaluta', a.run('plusDays(10)')); set('st_k_pm3', '1');
+    await a.run("saveSituacija('g5')");
+    if (a.run("DATA.situacije.find(x=>x.br==='PS-55').pregled") !== 'odobrena') throw new Error('uprava: nije odobrena odmah');
+    // supabase: brisanje stavke ide na server (delete), vracena situacija se azurira update-om
+    const b = await boot({ supabase: true, seed: {}, promptReturns: 'k' });
+    b.run("DATA.situacije.push({id:'s54', gr:'g5', br:'X', opis:'x', iznos:0, izdato:todayStr(), valuta:todayStr(), status:'ceka', vrsta:'privremena', autor:'z7', napomena:null, pregled:'vracena', komentar:'k', pregledao:'direkcija', pregledano:null, istorija:[]}); DATA.situacija_stavke.push({id:'st54a', sit:'s54', gr:'g5', predmer_id:'pm3', sifra:null, poz:'a', jm:'m²', kol:1, kol_ugovoreno:0, kumulativ:0, razlika:0},{id:'st54b', sit:'s54', gr:'g5', predmer_id:'pm4', sifra:null, poz:'b', jm:'m²', kol:1, kol_ugovoreno:0, kumulativ:0, razlika:0});");
+    await b.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    b.run("setRole(grById.g5.rukovodilac); formSituacija('g5','s54');");
+    const bd = b.g.document, bset = (id, v) => { bd.getElementById(id).value = v; };
+    bset('f_sbr', 'X'); bset('f_svrsta', 'privremena'); bset('f_sopis', 'x'); bset('f_sizdato', b.run('todayStr()')); bset('f_svaluta', b.run('todayStr()')); bset('st_k_pm3', '2'); bset('st_k_pm4', '');
+    await b.run("saveSituacija('g5','s54')"); await b.run('doSave()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const dl = b.g.__mock._log.filter(l => l.op === 'delete' && l.table === 'situacija_stavke');
+    if (!dl.length || (b.g.__mock._db.situacija_stavke || []).some(x => x.id === 'st54b')) throw new Error('obrisana stavka nije otisla na server: ' + JSON.stringify(dl));
+    if ((b.g.__mock._db.situacije || []).find(x => x.id === 's54').pregled !== 'na_pregledu') throw new Error('ponovo na pregled nije stiglo u bazu');
+  });
+
   /* ---- T53 (2026-10-12): magacin = sifarnik Izvodjenja (81) + Razno; red nastaje na prvom ulazu ---- */
   section('T53 magacin po sifarniku');
   await acheck('viewMagacin: svi artikli sifarnika (virtuelno, stanje 0) + Razno (m1–m3); prvi ulaz pravi red mg-<sf> sa nazivom/JM iz sifarnika; drugi ulaz ne duplira; izlaz sa 0 i rukovodilacev ulaz = no-op bez reda; nepromenjen DATA ne salje nista; tab po modulu', async () => {

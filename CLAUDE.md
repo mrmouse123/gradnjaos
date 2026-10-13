@@ -120,6 +120,18 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Play samo na jednom zadatku** (2026-10-12): `mojaOtvorenaSesija()`; `tajmerLinija` na drugim zadacima NE nudi
   ▶ dok jedan radi (poruka „Radiš na: X — pauziraj ga", ■ Završi ostaje za zadatak u toku); `pocniZadatak` i dalje
   ima guard. T51.
+- **Pregled situacija** (2026-10-13, migracija 25, odluka klijenta): `situacije.pregled` ∈ {na_pregledu, odobrena,
+  vracena} (+ `komentar`, `pregledao`, `pregledano`, `istorija jsonb[]`; sve u `situacije_v` i column grantu; stari
+  redovi = odobrena). Tok: rukovodilac sačuva → `na_pregledu`; uprava (`isDirector()`, direktor I admin) `odobriSituaciju`
+  ili `vratiSituaciju` (prompt, komentar obavezan) → `vracena`; rukovodilac `formSituacija(gr, sitId)` ispravi (postojeće
+  stavke update, nove insert, prazne `obrisiRed` server-prvo — `saveSituacija` je async) i pošalje ponovo → `na_pregledu`.
+  SERVER: `zastiti_kolone_situacije` ne-upravi forsira na_pregledu pri insertu, dozvoljava samo vracena→na_pregledu,
+  diže grešku na izmenu odobrene; `zastiti_stavke_situacije` (definer) ne-upravi brani stavke odobrene situacije;
+  istoriju (pregledao/pregledano/istorija) piše server pri SVAKOJ promeni `pregled` — klijent `zabeleziPregled` samo za
+  trenutni prikaz. Tek ODOBRENA: `sitKasni`, `markPaid`, Naplata KPI „izdato", `realizacijaSituacija`; kumulativ/razlika
+  (`preracunaj_situacije`) i dalje računaju sve situacije. Upozorenja: uprava „čeka pregled" (fin:true, `sit` → klik
+  otvara `detaljSituacije`), rukovodilac „vraćena na doradu: komentar" (fin:false); brif broji oba. Log:
+  `situacija_pregled` (odluka, komentar), `situacija_ponovo`. `pregledSit(s)` svuda (demo bez polja = odobrena). T54.
 - **Magacin = šifarnik Izvođenja + Razno** (2026-10-12, odluka klijenta): `viewMagacin` lista SVE artikle
   `sifrarnikZa('izvodjenje')` (81 ELOM; broj se računa) sa stanjem iz `DATA.magacin` ili 0, plus sekciju „Razno" =
   redovi magacina koji nisu artikli šifarnika (demo m1–m3, `formArtikal` „Razno (van šifarnika)"). Red artikla nastaje
@@ -152,7 +164,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..24.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..25.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -313,7 +325,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `PUSHED` da ga diff ne šalje nazad). Ručni napredak samo bez predmera (`formUpdate`
    ga tada nudi, inače je samo prikaz). Formula na DVA mesta — menjati oba. T30.
    Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije).
-   Situacija (migracija 19) je dokument za naplatu: njene količine NE pišu `predmer.izv`.
+   Situacija (migracija 19) je dokument za naplatu: njene količine NE pišu `predmer.izv`. „Izdato"/naplata/realizacija
+   = samo ODOBRENE situacije (migracija 25, `pregledSit`).
    **Zadaci postoje SAMO u Projektovanju (odluka 2026-10-11):** `zadatakPro(t)` = `jePro(grById[t.gr])`
    je prvi filter u `zadaciVidljivi()` (Kanban, brojač, fioka, rokovi na tabli, upozorenja), `formTask`
    nudi samo projektantska gradilišta (`saveTask` guard), fioka Izvođenja nema sekciju Zadaci ni dugme
