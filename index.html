@@ -1163,7 +1163,7 @@ function primeniUlogu(uloga, ja, fin, moduli){
 const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','pay'];
 function tabDozvoljen(id){
   if(vrstaUloge()==='uprava') return true;
-  if(id==='pay') return canFinance();
+  if(id==='pay') return canFinance() && MODULI.includes('izvodjenje');   // naplata = samo Izvodjenje (migracija 26)
   if(id==='tasks' && !MODULI.includes('projektovanje')) return false;   // bez projektovanja nema zadataka (Izvodjenje: podizvodjaci), odluka 2026-10-11
   if(id==='magacin' && !MODULI.includes('izvodjenje')) return false;   // magacin = sifarnik Izvodjenja (odluka 2026-10-12)
   return TABOVI_OSTALI.includes(id);
@@ -1344,6 +1344,9 @@ function fmtDate(s){ const d=dParse(s); return d.getDate()+'. '+MESECI[d.getMont
 function sitZa(id){ return (DATA.situacije||[]).filter(s=>s.gr===id); }
 function naplSum(g){ const s=sitZa(g.id); return s.length? s.filter(x=>x.status==='placeno').reduce((a,b)=>a+(b.iznos||0),0) : (g.naplaceno||0); }   // iznos null bez finansija (situacije_v)
 function naplataPct(g){ return g.budzet?Math.round(naplSum(g)/g.budzet*100):0; }
+/* Projektovanje NEMA situacija ni naplatu po situacijama (odluka klijenta 2026-10-14, migracija 26): situacije se ne
+   nude ni ne listaju na projektantskom gradilistu, Naplata/KPI/upozorenja/penal zdravlja gledaju samo Izvodjenje. */
+function imaNaplatu(g){ return !!g && !jePro(g); }
 function canFinance(){ return isDirector() || (ULOGA==='rukovodilac' && VIDI_FIN && ROLE!=='all'); }   // uprava uvek; "Rukovodilac 1" po zastavici (ULOGA eksplicitno rukovodilac); radnik/spoljni nikad
 /* Jedinicne cene (predmer.cena) vidi i rukovodilac SVOG gradilista Izvodjenja bez zastavice (odluka klijenta 2026-10-12,
    migracija 23: predmer_v). Cene fiksira uprava (trigger zastiti_kolone_predmer). Budzet/troskovi/naplata/iznos: i dalje canFinance(). */
@@ -1407,7 +1410,7 @@ function tabs(){
     {id:'emps', naziv:'Zaposleni', ic:'emp', cnt:DATA.zaposleni.filter(z=>(isDirector()&&MODUL==='sve')||(z.grs||[]).some(x=>ids.has(x))).length},
     {id:'time', naziv:'Rokovi', ic:'time'},
     {id:'tasks', naziv:'Zadaci', ic:'task', cnt:zadaciVidljivi().length},
-    {id:'pay', naziv:'Naplata', ic:'money', cnt:(DATA.situacije||[]).filter(s=>s.status!=='placeno'&&ids.has(s.gr)).length, finOnly:true},
+    {id:'pay', naziv:'Naplata', ic:'money', cnt:(DATA.situacije||[]).filter(s=>s.status!=='placeno'&&ids.has(s.gr)&&imaNaplatu(grById[s.gr])).length, finOnly:true},
     {id:'diary', naziv:'Dnevnik radova', ic:'book', cnt:DATA.dnevnik.filter(d=>(isDirector()&&MODUL==='sve')||ids.has(d.gr)).length},
     {id:'resursi', naziv:'Resursi', ic:'truck', cnt:(DATA.resursi||[]).filter(r=>r.istice&&daysBetween(TODAY,dParse(r.istice))<=30).length},
     {id:'magacin', naziv:'Magacin', ic:'box', cnt:0},
@@ -1486,7 +1489,7 @@ function zdravlje(g){
      su filtrirani u computeAlerts, iznosi su iza canFinance()). */
   const ocek=g.troskovi*g.napredak/100;
   if(g.napredak>0 && potroseno(g)>ocek*1.1) sc-=20;
-  if(g.napredak-naplataPct(g)>25) sc-=15;
+  if(imaNaplatu(g) && g.napredak-naplataPct(g)>25) sc-=15;   // Projektovanje bez situacija: nema penala (migracija 26, ISTO na serveru)
   return Math.max(5,sc);
 }
 function zdrBoja(sc){ return sc==null?'var(--faint)':sc>=80?'var(--green)':sc>=60?'var(--amber)':'var(--red)'; }
@@ -1546,7 +1549,7 @@ function computeAlerts(){
       else if(diff<=30 && g.napredak<90) out.push({sev:'amber', gr:g.id, tekst:'Rok za '+diff+' d, a napredak je '+g.napredak+'%', nas:g.naziv});
       const ocek=g.troskovi*g.napredak/100;
       if(g.napredak>0 && potroseno(g)>ocek*1.1) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi ('+fmtEurK(potroseno(g))+') idu ispred napretka — plan za ovu fazu '+fmtEurK(ocek), nas:g.naziv});
-      if(g.napredak - naplataPct(g) > 25) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Naplata ('+naplataPct(g)+'%) zaostaje za izvedenim radovima ('+g.napredak+'%)', nas:g.naziv});
+      if(imaNaplatu(g) && g.napredak - naplataPct(g) > 25) out.push({sev:'amber', gr:g.id, fin:true, tekst:'Naplata ('+naplataPct(g)+'%) zaostaje za izvedenim radovima ('+g.napredak+'%)', nas:g.naziv});
     }
     /* Upozorenje o troskovima iznad plana (bez procenata — 2026-10-12). */
     if(potroseno(g)>g.troskovi && g.troskovi>0 && g.status!=='zavrseno') out.push({sev:'amber', gr:g.id, fin:true, tekst:'Troškovi premašili plan — '+fmtEurK(potroseno(g))+' od planiranih '+fmtEurK(g.troskovi), nas:g.naziv});
@@ -1557,7 +1560,7 @@ function computeAlerts(){
     if(diff<0) out.push({sev:'red', gr:t.gr, tekst:'Zadatak „'+t.naziv+'" kasni '+Math.abs(diff)+' d', nas:grById[t.gr]?grById[t.gr].naziv:''});
   });
   (DATA.situacije||[]).forEach(s=>{
-    if(!ids.has(s.gr)) return;
+    if(!ids.has(s.gr)||!imaNaplatu(grById[s.gr])) return;
     const pr=pregledSit(s);
     if(pr==='na_pregledu' && isDirector()) out.push({sev:'amber', gr:s.gr, sit:s.id, fin:true, tekst:'Situacija '+s.br+' ('+sitVrsta(s).toLowerCase()+') čeka pregled — '+(s.autor==='direkcija'?'Direkcija':osobaIme(s.autor)), nas:grById[s.gr]?grById[s.gr].naziv:''});
     if(pr==='vracena' && !isDirector() && smemNa(s.gr)) out.push({sev:'amber', gr:s.gr, sit:s.id, tekst:'Situacija '+s.br+' vraćena na doradu'+(s.komentar?': '+s.komentar:''), nas:grById[s.gr]?grById[s.gr].naziv:''});
@@ -1620,8 +1623,8 @@ function viewDash(){
   const kasne = sites.filter(g=>g.status==='kasni');
   const emps = DATA.zaposleni.filter(z=>(z.grs||[]).some(x=>ids.has(x)));
   const ukCena = sites.reduce((s,g)=>s+g.budzet,0);
-  const ukNapl = sites.reduce((s,g)=>s+naplSum(g),0);
-  const nenap = sites.filter(g=>g.status!=='zavrseno').reduce((s,g)=>s+Math.max(0, g.napredak/100*g.budzet - naplSum(g)),0);
+  const ukNapl = sites.filter(imaNaplatu).reduce((s,g)=>s+naplSum(g),0);
+  const nenap = sites.filter(g=>g.status!=='zavrseno'&&imaNaplatu(g)).reduce((s,g)=>s+Math.max(0, g.napredak/100*g.budzet - naplSum(g)),0);
   const fin = canFinance();
   const sitKol = fin && MODUL!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
   const alerts = computeAlerts();
@@ -1631,10 +1634,10 @@ function viewDash(){
     const n = naplataPct(g), tim = timNa(g.id).length;
     const finCells = fin ? `
       <td class="r num-cell strong">${fmtEurK(g.budzet)}</td>
-      <td class="r"><div class="napl">
+      ${imaNaplatu(g)?`<td class="r"><div class="napl">
         <div class="bar"><span style="width:${n}%; background:${n>=90?'var(--green)':n>=50?'var(--blue)':'var(--amber)'}"></span></div>
         <b class="num">${n}%</b></div>
-        <div class="sub num" style="text-align:right">${fmtEurK(naplSum(g))}</div></td>` : `
+        <div class="sub num" style="text-align:right">${fmtEurK(naplSum(g))}</div></td>`:'<td class="r sub">—</td>'}` : `
       <td>${fmtDate(g.rok)}</td>`;
     return `<tr class="clk" onclick="openSite('${g.id}')">
       <td>
@@ -1724,9 +1727,9 @@ function viewDash(){
               + zadaciVidljivi().filter(t=>t.kol!=='done'&&daysBetween(TODAY,dParse(t.rok))>=0&&daysBetween(TODAY,dParse(t.rok))<=7).length;
   const bl=[];
   if(fin){
-    const naPreg=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&pregledSit(x)==='na_pregledu');
+    const naPreg=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&imaNaplatu(grById[x.gr])&&pregledSit(x)==='na_pregledu');
     if(naPreg.length) bl.push(['var(--amber)',`<b style="cursor:pointer;text-decoration:underline" onclick="${naPreg.length===1?`detaljSituacije('${naPreg[0].id}')`:`go('pay')`}">${naPreg.length} situacij${naPreg.length===1?'a čeka':'e čekaju'} pregled</b> — ${naPreg.length===1?'klik otvara detalj':'klik vodi na Naplatu'}`]);
-    const dosp=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&x.status!=='placeno'&&sitKasni(x));
+    const dosp=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&imaNaplatu(grById[x.gr])&&x.status!=='placeno'&&sitKasni(x));
     if(dosp.length) bl.push(['var(--red)',`<b>${fmtEur(dosp.reduce((a,b)=>a+(b.iznos||0),0))}</b> dospelo za naplatu (${dosp.length} situacij${dosp.length===1?'a':'e'}) — proveri tab Naplata`]);
     if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`Najrizičniji projekat: <b style="cursor:pointer;text-decoration:underline" onclick="openSite('${najrizik.id}')">${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova (projekti + zadaci)`]);
@@ -1735,7 +1738,7 @@ function viewDash(){
     const danas=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))===0).length;
     const kasneT=moji.filter(t=>daysBetween(TODAY,dParse(t.rok))<0).length;
     bl.push([kasneT?'var(--red)':'var(--green)',`Zadaci: <b>${danas}</b> dospeva danas${kasneT?`, <b>${kasneT}</b> već kasni`:', ništa ne kasni'}`]);
-    const vrac=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&smemNa(x.gr)&&pregledSit(x)==='vracena').length;
+    const vrac=(DATA.situacije||[]).filter(x=>ids.has(x.gr)&&imaNaplatu(grById[x.gr])&&smemNa(x.gr)&&pregledSit(x)==='vracena').length;
     if(vrac) bl.push(['var(--amber)',`<b>${vrac}</b> situacij${vrac===1?'a vraćena':'e vraćene'} na doradu — v. upozorenja`]);
     if(najrizik) bl.push([zdrBoja(zdravlje(najrizik)),`<b style="cursor:pointer;text-decoration:underline" onclick="openSite('${najrizik.id}')">${najrizik.naziv}</b> — zdravlje ${zdravlje(najrizik)}/100, rok ${fmtDate(najrizik.rok)}`]);
     bl.push(['var(--blue-2)',`U narednih 7 dana dospeva <b>${rokovi7}</b> rokova`]);
@@ -1751,8 +1754,8 @@ function viewDash(){
   const NCOLS = (fin ? 7 : 6) + (sitKol?1:0);
   const grpRed=(lab,boja,gs,klik)=>{
     if(!gs.length) return '';
-    const c=gs.reduce((a,b)=>a+b.budzet,0), n=gs.reduce((a,b)=>a+naplSum(b),0);
-    return `<tr class="grp" onclick="${klik}"><td colspan="${NCOLS}"><span class="g-dot" style="background:${boja}"></span>${lab} · ${gs.length} proj.${fin?` · ${fmtEurK(c)} · naplata ${c?Math.round(n/c*100):0}%`:''}</td></tr>`
+    const c=gs.reduce((a,b)=>a+b.budzet,0), gN=gs.filter(imaNaplatu), cN=gN.reduce((a,b)=>a+b.budzet,0), n=gN.reduce((a,b)=>a+naplSum(b),0);
+    return `<tr class="grp" onclick="${klik}"><td colspan="${NCOLS}"><span class="g-dot" style="background:${boja}"></span>${lab} · ${gs.length} proj.${fin?` · ${fmtEurK(c)}${gN.length?` · naplata ${cN?Math.round(n/cN*100):0}%`:''}`:''}</td></tr>`
       + dashSorted(gs).map(rowHtml).join('');
   };
   const grupe = (fin && MODUL==='sve') ? [
@@ -1765,13 +1768,13 @@ function viewDash(){
   if(grupe) finBody = grupe.map(x=>grpRed(x[0],x[1],x[2],x[3])).join('');
   else finBody = dashSorted(sites).map(rowHtml).join('');
   if(fin && sites.length>1){
-    const c=sites.reduce((a,b)=>a+b.budzet,0), n=sites.reduce((a,b)=>a+naplSum(b),0);
+    const c=sites.reduce((a,b)=>a+b.budzet,0), cN=sites.filter(imaNaplatu).reduce((a,b)=>a+b.budzet,0), n=sites.filter(imaNaplatu).reduce((a,b)=>a+naplSum(b),0);   // naplata samo Izvodjenje
     const ppl=new Set(); sites.forEach(g=>timNa(g.id).forEach(z=>ppl.add(z.id)));
     const wNap=c?Math.round(sites.reduce((a,b)=>a+b.napredak*b.budzet,0)/c):0;
     finBody += `<tr class="total">
       <td>UKUPNO · ${sites.length} projekata</td><td></td>${sitKol?'<td></td>':''}
       <td class="r num-cell">${fmtEurK(c)}</td>
-      <td class="r"><b class="num">${c?Math.round(n/c*100):0}%</b><div class="sub num">${fmtEurK(n)}</div></td>
+      <td class="r"><b class="num">${cN?Math.round(n/cN*100):0}%</b><div class="sub num">${fmtEurK(n)}</div></td>
       <td class="r num-cell">${ppl.size}</td>
       <td class="r num-cell">${wNap}%</td><td></td>
     </tr>`;
@@ -1843,7 +1846,7 @@ function sitesCards(){
       <div class="bd">
         <div class="kv"><span>Klijent</span><b>${cl?cl.naziv:'—'}</b></div>
         ${canFinance()?`<div class="kv"><span>Ugovorena cena</span><b>${fmtEurK(g.budzet)}</b></div>
-        <div class="kv"><span>Naplaćeno</span><b>${naplataPct(g)}%</b></div>`:''}
+        ${imaNaplatu(g)?`<div class="kv"><span>Naplaćeno</span><b>${naplataPct(g)}%</b></div>`:''}`:''}
         <div class="kv"><span>Rukovodilac</span><b>${ruk?kratkoIme(ruk.ime):'—'}</b></div>
         <div class="kv"><span>Početak</span><b>${fmtDate(g.pocetak)}</b></div>
         <div class="kv"><span>Rok završetka</span><b>${g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))<0?`<span style="color:var(--red)">${fmtDate(g.rok)}</span>`:fmtDate(g.rok)}</b></div>
@@ -3036,7 +3039,18 @@ function viewPredmer(){
   const list=predmerZa(g.id);
   const ugUk=list.reduce((a,b)=>a+b.kol*b.cena,0);
   const izUk=list.reduce((a,b)=>a+Math.min(b.izv||0,b.kol)*b.cena,0);
-  const rows=list.map((x,i)=>{
+  const tById={}; (DATA.zadaci||[]).forEach(t=>{ if(t.predmer_id) tById[t.predmer_id]=t; });
+  const ST={todo:['Čeka','b-gray'], inprogress:['U toku','b-blue'], done:['Završeno','b-green']};
+  const rows=pro?list.map((x,i)=>{ const t=tById[x.id], st=ST[(t&&t.kol)||'todo']||ST.todo;   // Projektovanje: sveska = dokument, bez JM/kolicine/izvedenog
+    return `<tr>
+      <td class="num" style="color:var(--faint)">${i+1}</td>
+      <td class="strong">${x.poz}</td>
+      <td>${fazaSveske(x.poz)}</td>
+      <td><span class="badge ${st[1]}">${st[0]}</span></td>
+      <td>${zaduzenIme(x.zaduzen)}</td>
+      ${fin?`<td class="r num-cell">${fmtEur(x.cena)}</td>`:''}
+      ${smemPredmer(g.id)?`<td class="r"><button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="formPredmerRed('${g.id}','${x.id}')">✎</button>${jeSuper()?' '+BRISI_DUGME('obrisiPredmerRed',x.id):''}</td>`:''}
+    </tr>`; }).join():list.map((x,i)=>{
     const pct=x.kol?Math.round(Math.min(x.izv||0,x.kol)/x.kol*100):0;
     return `<tr>
       <td class="num" style="color:var(--faint)">${i+1}</td>
@@ -3061,17 +3075,17 @@ function viewPredmer(){
     <div class="card kpi"><div class="accent" style="background:var(--amber)"></div><div class="lab">Preostalo</div><div class="val num">${fmtEur(ugUk-izUk)}</div><div class="sub">za izvođenje / fakturisanje</div></div>
   </div>`:''}
   <div class="tools">
+    ${pro?`${smemPredmer(g.id)?`<button class="btn" onclick="formPredmerRed('${g.id}')">${icon('plus')} Dodaj sveske (faza + ček-lista)</button>`:''}
+    ${isDirector()&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}`:`
     ${smem?`<button class="btn${isDirector()?' ghost':''}" onclick="formIzvedeno('${g.id}')">⇧ Učitaj izvedeno (Excel)</button>`:''}
-    ${!isDirector()&&smemPredmer(g.id)?`<button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj svesku / uslugu</button>`:''}
     ${isDirector()?`<button class="btn" onclick="formPredmerImport('${g.id}')">${icon('plus')} Uvezi iz Excela (nalepi)</button>
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
     <button class="btn ghost" onclick="izvozPredmer('${g.id}')">⇩ Izvoz izvedenih (CSV)</button>
     <button class="btn ghost" onclick="openKumulativ('${g.id}')">Kumulativni pregled</button>
-    ${pro&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}
-    ${!pro?`<button class="btn ghost" onclick="formIzSifarnika('${g.id}')">＋ Iz šifarnika</button>`:''}`:''}
+    <button class="btn ghost" onclick="formIzSifarnika('${g.id}')">＋ Iz šifarnika</button>`:''}`}
   </div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${cene?'<th class="r">Jed. cena (RSD, bez PDV)</th>':''}${fin?'<th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${isDirector()?'<th></th>':''}</tr></thead>
+    <thead>${pro?`<tr><th>#</th><th>Sveska / dokument</th><th>Faza</th><th>Status</th><th>Zadužen</th>${fin?'<th class="r">Cena (RSD, bez PDV)</th>':''}${smemPredmer(g.id)?'<th></th>':''}</tr>`:`<tr><th>#</th><th>Pozicija</th><th>JM</th><th class="r">Ugovoreno</th>${cene?'<th class="r">Jed. cena (RSD, bez PDV)</th>':''}${fin?'<th class="r">Ukupno</th>':''}<th class="r">Izvedeno</th><th class="r">%</th><th>Zadužen</th>${smemPredmer(g.id)?'<th></th>':''}</tr>`}</thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':`<div class="empty">Još nema pozicija — ${isDirector()?'uvezi predmer iz Excela ili dodaj poziciju ručno.':'direktor još nije uvezao predmer.'}</div>`}
   </div>`;
@@ -3290,12 +3304,52 @@ function primeniIzvedeno(grId){
 }
 /* formPredmerRed(grId) = nova pozicija; formPredmerRed(grId,pid) = izmena postojece (samo direktor). */
 function smemPredmer(grId){ const g=grById[grId]; return !!g && (isDirector() || (jePro(g) && smemNa(grId))); }   // rukovodilac dodaje/menja sveske (projektovanje), ne cenu
+/* Projektovanje (odluka klijenta 2026-10-14): sveska NEMA JM ni kolicinu — bira se iz tipova dokumenta: faza (IDR / IDP-PGD
+   / PZI, NIVOI_DOK = sifrarnik sf-p-*) + cek-lista dokumenata te faze koji jos nisu u specifikaciji. Red predmera i dalje
+   nosi jm 'kom' / kol 1 (napredak, done → izv=kol). SV_KAND: k → sifrarnik.id (JS mapa, lekcija 32). */
+let SV_KAND={};
+function fazaSveske(poz){   // „IDP/PGD — 1.0 Arhitektura" → IDP/PGD; stariji nazivi po skracenici u tekstu („PGD — sveska…", „Idejno rešenje (IDR)") ; inace Razno
+  const t=unesc(String(poz||'')); const i=t.indexOf(' — '); const f=i>0?t.slice(0,i):'';
+  if(NIVOI_DOK[f]) return f;
+  const k=Object.keys(NIVOI_DOK).find(n=>n.split('/').some(p=>new RegExp('(^|[^A-Za-z])'+p+'([^A-Za-z]|$)').test(t)));
+  return k||'Razno';
+}
+function sveskeKandidati(grId, faza){
+  const ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
+  return sifrarnikZa('projektovanje').filter(s=>s.grupa===faza && !ima.has((faza+' — '+unesc(s.naziv)).toLowerCase()) && !ima.has(unesc(s.naziv).toLowerCase()));
+}
+function osveziSveskeCeklistu(grId){
+  const sel=document.getElementById('f_sv_faza'), box=document.getElementById('f_sv_lista'); if(!box) return;
+  const faza=(sel&&sel.value)||(grById[grId]||{}).nivo||Object.keys(NIVOI_DOK)[0];
+  const kand=sveskeKandidati(grId, faza); SV_KAND={};
+  box.innerHTML=kand.length?`<div class="chk-list" style="max-height:260px;overflow-y:auto">${kand.map((s,k)=>{ SV_KAND[k]=s.id; return `<label class="chk"><input type="checkbox" id="f_sv_${k}" checked> ${s.naziv}</label>`; }).join('')}</div>`:'<div class="sub">Svi dokumenti ove faze su već u specifikaciji.</div>';
+}
 function formPredmerRed(grId,pid){
   if(!smemPredmer(grId)) return;
   const g=grById[grId]; if(!g) return;
   const pro=jePro(g);
   const x=pid?(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId):null;
   if(pid&&!x) return;
+  if(pro){
+    const opc=zaduzenOpcije(x?x.zaduzen:null), faze=Object.keys(NIVOI_DOK);
+    openModal(x?`
+    <div class="m-h"><h3>Sveska</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-b">
+      <div class="f-row"><label>Dokument (faza ${fazaSveske(x.poz)})</label><div style="padding:8px 0;font-weight:600">${x.poz}</div></div>
+      ${canFinance()?`<div class="f-row"><label>Cena usluge bez PDV (RSD)</label><input id="f_pm_cena" type="number" value="${x.cena||0}"></div>`:''}
+      <div class="f-row"><label>Zadužen</label><select id="f_pm_zad"><option value="">—</option>${opc}</select></div>
+      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}','${x.id}')">Sačuvaj izmene</button></div>
+    </div>`:`
+    <div class="m-h"><h3>Nove sveske — ${g.naziv}</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
+    <div class="m-b">
+      <div class="f-row"><label>Faza dokumentacije</label><select id="f_sv_faza" onchange="osveziSveskeCeklistu('${grId}')">${faze.map(f=>`<option value="${f}"${(g.nivo||faze[0])===f?' selected':''}>${f}</option>`).join('')}</select></div>
+      <div class="f-row"><label>Dokumenti (čekirano ulazi u specifikaciju; svaka sveska postaje zadatak zaduženog)</label><div id="f_sv_lista"></div></div>
+      <div class="f-row"><label>Zadužen (za sve čekirane)</label><select id="f_pm_zad"><option value="">— rukovodilac —</option>${opc}</select></div>
+      <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="savePredmerRed('${grId}')">Dodaj sveske</button></div>
+    </div>`);
+    if(!x) osveziSveskeCeklistu(grId);
+    return;
+  }
   const zs=x?x.zaduzen:null, sel=id=>id===zs?' selected':'';
   const opcije = pro ? zaduzenOpcije(zs)   // Projektovanje: tim nema UI — ko dobije svesku ulazi u tim (osigurajUTimu)
     : [...timNa(grId).map(z=>`<option value="${z.id}"${sel(z.id)}>${z.ime}</option>`), ...subsZa(grId).map(s=>`<option value="${s.id}"${sel(s.id)}>${s.naziv} (spoljni)</option>`)].join('');
@@ -3317,6 +3371,24 @@ function formPredmerRed(grId,pid){
 function savePredmerRed(grId,pid){
   if(!smemPredmer(grId)) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
+  const g=grById[grId];
+  if(g&&jePro(g)){   // Projektovanje: sveske iz cek-liste (nove) ili zaduzen/cena (izmena); bez JM i kolicine
+    if(pid){
+      const x=(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId); if(!x) return;
+      const ct=String(v('f_pm_cena')).trim(); if(canFinance()&&ct!==''&&Number.isFinite(+ct)) x.cena=+ct;
+      x.zaduzen=v('f_pm_zad')||null;
+      osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render(); osveziFioku(grId); return;
+    }
+    const faza=v('f_sv_faza')||g.nivo||Object.keys(NIVOI_DOK)[0], zad=v('f_pm_zad')||null, ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
+    const ts=Date.now(); let n=0;
+    Object.keys(SV_KAND).forEach(k=>{ const c=document.getElementById('f_sv_'+k); if(!c||!c.checked) return;
+      const sf=(DATA.sifrarnik||[]).find(y=>y.id===SV_KAND[k]); if(!sf||sf.grupa!==faza) return;
+      const poz=sifrarnikPoz(sf,'projektovanje'); if(ima.has(unesc(poz).toLowerCase())) return; ima.add(unesc(poz).toLowerCase());
+      DATA.predmer.push({ id:'pm'+ts+'-'+(n++), gr:grId, poz, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad }); });
+    if(!n){ alert('Čekiraj bar jedan dokument.'); return; }
+    SV_KAND={};
+    osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render(); osveziFioku(grId); return;
+  }
   const poz=esc(String(v('f_pm_poz')).trim()); if(!poz){ alert('Unesi opis pozicije.'); return; }
   if(pid){
     const x=(DATA.predmer||[]).find(r=>r.id===pid&&r.gr===grId); if(!x) return;
@@ -3795,13 +3867,13 @@ function openPresek(id){
       ${red('Ugovorena cena', fmtEur(g.budzet), 1)}
       ${red('Planirani troškovi', fmtEur(g.troskovi))}
       ${red('Utrošeno do sada', fmtEur(pot)+' — plan za trenutnu fazu '+fmtEur(ocek)+(pot>g.troskovi?' <b style="color:var(--amber)">⚠ troškovi iznad plana</b>':pot>ocek*1.1?' <b style="color:var(--amber)">⚠ ispred plana</b>':''))}
-      ${red('Naplaćeno', fmtEur(naplSum(g))+' ('+n+'%)')}
+      ${imaNaplatu(g)?red('Naplaćeno', fmtEur(naplSum(g))+' ('+n+'%)'):''}
       ${(r=>r?`<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:22px 0 8px">Ugovoreno vs situacije</h3>
       ${red('Ugovoreno (predmer)', fmtEur(r.ugovoreno), 1)}
       ${red('Privremene situacije'+(r.nPriv?' ('+r.nPriv+')':''), fmtEur(r.privremene)+(r.pPriv==null?'':' ('+r.pPriv+'% ugovorenog)')+(r.pPriv>100?' <b style="color:var(--red)">⚠ preko ugovorenog</b>':''))}
       ${red('Okončana situacija (ukupno sa privremenim)', r.okoncana==null?'—':fmtEur(r.okoncana)+(r.pOkon==null?'':' ('+r.pOkon+'% ugovorenog)')+(r.pOkon>100?' <b style="color:var(--red)">⚠ preko ugovorenog</b>':''))}`:'')(realizacijaSituacija(g))}
-      ${nenap?red('Izvedeno, a nenaplaćeno', '<b style="color:var(--amber)">'+fmtEur(nenap)+'</b>'):''}
-      ${dosp?red('Dospelo, neplaćeno (situacije)', '<b style="color:var(--red)">'+fmtEur(dosp)+'</b>'):''}
+      ${nenap&&imaNaplatu(g)?red('Izvedeno, a nenaplaćeno', '<b style="color:var(--amber)">'+fmtEur(nenap)+'</b>'):''}
+      ${dosp&&imaNaplatu(g)?red('Dospelo, neplaćeno (situacije)', '<b style="color:var(--red)">'+fmtEur(dosp)+'</b>'):''}
       ${Object.keys(kats).length?`<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin:22px 0 8px">Troškovi po kategorijama</h3>
         ${Object.entries(kats).sort((a,b)=>b[1]-a[1]).map(x=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px">
           <span style="width:130px">${x[0]}</span>
@@ -4045,7 +4117,7 @@ function saveRaspored(id){
 function viewPay(){
   if(!canFinance()){ current='dash'; return viewDash(); }
   const mIds=visibleSiteIds();
-  const sits=[...(DATA.situacije||[])].filter(x=>mIds.has(x.gr)).sort((a,b)=>dParse(b.izdato)-dParse(a.izdato));
+  const sits=[...(DATA.situacije||[])].filter(x=>mIds.has(x.gr)&&imaNaplatu(grById[x.gr])).sort((a,b)=>dParse(b.izdato)-dParse(a.izdato));   // samo Izvodjenje
   const uk=arr=>arr.reduce((a,b)=>a+(b.iznos||0),0);
   const izdato=uk(sits.filter(s=>pregledSit(s)==='odobrena')), placeno=uk(sits.filter(s=>s.status==='placeno'));   // na pregledu / vracene ne ulaze u izdato
   const dospele=sits.filter(s=>s.status!=='placeno'&&sitKasni(s));
@@ -4259,6 +4331,7 @@ let SIT_N=0, SIT_DODATNE={};   // k → sifrarnik.id (ne skriveno polje: dom-stu
 function formSituacija(grId, sitId){   // sitId = izmena VRACENE situacije (rukovodilac ispravi i posalje ponovo)
   if(!smemNa(grId)) return;
   const g=grById[grId], pm=predmerZa(grId);
+  if(!imaNaplatu(g)) return;   // Projektovanje nema situacija
   const s=sitId?(DATA.situacije||[]).find(x=>x.id===sitId&&x.gr===grId):null;
   if(sitId && (!s || pregledSit(s)!=='vracena')) return;
   const moje=s?stavkeZa(s.id):[], mojaKol=p=>{ const x=moje.find(y=>y.predmer_id===p.id); return x?x.kol:''; };
@@ -4306,7 +4379,7 @@ function dodajStavkuIzSifarnika(sfId){
   const i=document.getElementById('st_xk_'+k); if(i&&i.focus) i.focus();
 }
 async function saveSituacija(grId, sitId){
-  if(!smemNa(grId)) return;
+  if(!smemNa(grId) || !imaNaplatu(grById[grId])) return;   // Projektovanje nema situacija (pravilo 2: guard i u save-u)
   const v=id=>{ const e=document.getElementById(id); return e?String(e.value):''; };
   const br=esc(v('f_sbr').trim()); if(!br){ alert('Unesi broj situacije.'); return; }
   const vrsta=v('f_svrsta')==='okoncana'?'okoncana':'privremena';
@@ -4367,7 +4440,7 @@ function detaljSituacije(id){
 function osveziDetaljSituacije(id){ const m=document.getElementById('modal'); if(m && String(m.innerHTML||'').includes('situacija '+((DATA.situacije||[]).find(x=>x.id===id)||{}).br)) detaljSituacije(id); }
 /* Naplata → "Nova situacija": izbor gradilista (vodim), pa formSituacija */
 function formSit(){
-  const l=visibleSites().filter(g=>smemNa(g.id)); if(!l.length) return;
+  const l=visibleSites().filter(g=>smemNa(g.id)&&imaNaplatu(g)); if(!l.length) return;
   if(l.length===1) return formSituacija(l[0].id);
   openModal(`
     <div class="m-h"><h3>Nova situacija</h3><button class="x" style="position:static" onclick="closeModal()">${icon('x')}</button></div>
@@ -4804,7 +4877,7 @@ function openSite(id){
         <div class="dr-stat"><div class="l">Rok</div><div class="v" style="font-size:15px">${fmtDate(g.rok)}</div>
           <div style="font-size:12px;margin-top:6px">${rokTekst}</div>
         </div>
-        ${canFinance()?`<div class="dr-stat"><div class="l">Naplaćeno</div><div class="v" style="font-size:17px">${n}%</div>
+        ${canFinance()&&!pro?`<div class="dr-stat"><div class="l">Naplaćeno</div><div class="v" style="font-size:17px">${n}%</div>
           <div class="bar" style="margin-top:8px"><span style="width:${n}%;background:${n>=90?'var(--green)':'var(--blue)'}"></span></div>
         </div>`:''}
       </div>
@@ -4821,12 +4894,12 @@ function openSite(id){
         <div class="dr-kv"><span class="k">Ugovorena cena</span><span class="v num">${fmtEur(g.budzet)}</span></div>
         <div class="dr-kv"><span class="k">Planirani troškovi</span><span class="v num">${fmtEur(g.troskovi)}</span></div>
         <div class="dr-kv"><span class="k">Utrošeno do sada</span><span class="v num">${fmtEur(pot)} (${budPct}%)${trSt.length?' · iz '+trSt.length+' stavki':''}</span></div>
-        <div class="dr-kv"><span class="k">Naplaćeno</span><span class="v num">${fmtEur(naplSum(g))} (${n}%)</span></div>
+        ${pro?'':`<div class="dr-kv"><span class="k">Naplaćeno</span><span class="v num">${fmtEur(naplSum(g))} (${n}%)</span></div>`}
         <div class="budget-bar ${budPct>90?'hot':''}"><span style="width:${Math.min(100,budPct)}%"></span></div>
         ${trSt.length?`<div style="margin-top:12px"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600;margin-bottom:4px">Poslednji troškovi</div>${trSt.slice(-4).reverse().map(t=>`<div class="dr-kv"><span class="k">${fmtDate(t.datum)} · ${t.opis} <span style="color:var(--faint)">· ${t.kat}</span>${(t.dobavljac||t.fakt)?`<br><span class="sub">${[t.dobavljac,t.fakt?'fakt. '+t.fakt:''].filter(Boolean).join(' · ')}</span>`:''}${t.prilog?`<br><span style="color:var(--blue);font-weight:600;cursor:pointer;font-size:11px" onclick="otvoriTrosakPrilog('${t.id}')">📄 ${t.prilog.name}</span> <span style="color:var(--red);cursor:pointer;font-size:11px" onclick="ukloniTrosakPrilog('${t.id}')" title="Ukloni prilog">✕</span>`:`<br><span style="color:var(--blue);cursor:pointer;font-size:11px" onclick="uploadTrosakPrilog('${t.id}')">📎 Dodaj fakturu</span>`}</span><span class="v num">${fmtEur(t.iznos)}</span></div>`).join('')}</div>`:''}
         <button class="btn ghost" style="margin-top:10px;padding:6px 12px;font-size:12px" onclick="formTrosak('${id}')">＋ Dodaj trošak</button>
         ${trSt.length?`<button class="btn ghost" style="margin-top:10px;padding:6px 12px;font-size:12px" onclick="openTroskovi('${id}')">Svi troškovi (${trSt.length})</button>`:''}
-        ${sitZa(id).length?`<div style="margin-top:12px">${sitZa(id).map(s=>{
+        ${sitZa(id).length&&!pro?`<div style="margin-top:12px">${sitZa(id).map(s=>{
           const st=s.status==='placeno'?'<span class="badge b-green">Plaćeno</span>':sitKasni(s)?'<span class="badge b-red">Kasni</span>':'<span class="badge b-amber">Čeka</span>';
           return `<div class="dr-kv"><span class="k">${s.br} · ${s.opis}</span><span class="v num" style="display:flex;gap:8px;align-items:center;justify-content:flex-end">${fmtEurK(s.iznos)} ${st}</span></div>`;
         }).join('')}</div>`:''}
@@ -4865,11 +4938,11 @@ function openSite(id){
         <h4>${jePro(g)?'Spoljni saradnici':'Podizvođači'} (${subs.length})</h4>
         ${subs.map(x=>`<div class="dr-kv"><span class="k">${x.naziv}<div class="sub" style="font-size:11.5px">${x.delatnost} · ${x.osoba} · ${x.tel}</div></span><span class="v" style="font-weight:500">${canFinance()?'<span class="num">'+fmtEur(x.cena||0)+'</span> ':''}${x.status==='zavrsen'?'<span class="badge b-gray">Završen</span>':'<span class="badge b-green">Aktivan</span>'}</span></div>`).join('')}
       </div>`:''}
-      <div class="dr-sec">
+      ${pro?'':`<div class="dr-sec">
         <h4>Situacije (${sitZa(id).length})</h4>
         ${sitZa(id).slice().sort((a,b)=>dParse(b.izdato)-dParse(a.izdato)).map(s=>{ const rz=razlikaSit(s); return `<div class="dr-kv"><span class="k"><span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="detaljSituacije('${s.id}')">${s.br}</span> · ${sitVrsta(s)}<div class="sub" style="font-size:11.5px">${fmtDate(s.izdato)} · ${pregledSit(s)!=='odobrena'?pregledBadge(s):s.status==='placeno'?'plaćeno':sitKasni(s)?'kasni':'na čekanju'}${rz?' · <b style="color:var(--amber)">'+rz+' preko ugovora</b>':''}</div></span><span class="v num">${canFinance()&&s.iznos!=null?fmtEur(s.iznos):''}</span></div>`; }).join('')||'<div class="sub">Još nema situacija.</div>'}
         ${smemNa(id)?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="formSituacija('${id}')">＋ Nova situacija</button>`:''}
-      </div>
+      </div>`}
       <div class="dr-sec">
         <h4>Dokumenti${pro?' gradilišta':''} (${dokOpsti.length})</h4>
         ${dokOpsti.map(d=>`<div class="dr-kv"><span class="k">${String(d.tip||'').indexOf('image/')===0?'🖼':'📄'} <span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="otvoriDokument('${d.id}')">${d.naziv}</span><div class="sub" style="font-size:11.5px">${fmtDate(d.datum)} · ${osobaIme(d.autor)}${d.velicina?' · '+Math.round(d.velicina/1024)+' KB':''}${d.opis?' · '+d.opis:''}</div></span><span class="v">${smemObrisatiDokument(d)?`<span style="color:var(--red);cursor:pointer" onclick="obrisiDokument('${d.id}')" title="Obriši dokument">✕</span>`:''}</span></div>`).join('')}

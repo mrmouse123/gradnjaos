@@ -169,7 +169,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..25.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..26.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -189,6 +189,17 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   Rukovodilac projektovanja dodaje/menja sveske (`smemPredmer`: predmer insert policy + `zastiti_kolone_predmer`
   za pro dozvoljava poz/jm/kol/zaduzen/sifra, ne cenu); Izvođenje: predmer i dalje samo uprava, zadataka nema.
   Ručni zadaci bez `predmer_id` (= „razno") i dalje postoje (`formTask`). T44.
+  **Sveska = tip dokumenta, bez JM i količine (2026-10-14, odluka klijenta):** `formPredmerRed` na pro: nova = faza
+  (`NIVOI_DOK` ključevi, podrazumevano `g.nivo`) + ček-lista dokumenata te faze koji još nisu u specifikaciji
+  (`sveskeKandidati`, `osveziSveskeCeklistu`, `SV_KAND` k→sifrarnik.id) + jedan zadužen za sve; `savePredmerRed` dodaje
+  redove `faza — naziv` sa `jm:'kom', kol:1` (napredak i done→izv=kol ostaju na snazi) i dedupe; izmena = samo zadužen
+  (+ cena uz `canFinance`). Strana „Specifikacija usluga": kolone # · Sveska · Faza (`fazaSveske`) · Status (zadatak) ·
+  Zadužen (· Cena), bez JM/Ugovoreno/Izvedeno/%; alati samo „Dodaj sveske" i „Ubaci šablon nivoa". T56.
+  **Projektovanje NEMA situacija ni naplatu (2026-10-14, migracija 26):** `imaNaplatu(g)` = `!jePro(g)`; situacije se
+  ne nude (fioka, `formSit`, `formSituacija` guard), ne listaju (Naplata, fioka, presek), ne prave upozorenja ni brif;
+  tabla/kartica/fioka prikazuju „—"/ništa za naplatu; tab Naplata traži i modul izvođenje; `zdravlje(g)` i server
+  `zdravlje_gradilista` preskaču penal „naplata zaostaje" za pro (formula na DVA mesta). Stare pro situacije (demo
+  s20–s22, na bazi PF-01/26 g8, PF-01/26 i PF-02/26 g9) ostaju skrivene u bazi.
   **Fioka projektantskog gradilišta (2026-10-12, migracija 22, odluka klijenta):** NEMA „Tim na gradilištu" ni
   listu „Zadaci" — sekcija „Dokumentacija po osobi" (`sveskeHtml`): sveske grupisane po `zaduzen` (nedodeljene na
   kraju), status zadatka sveske, `tajmerLinija`, dokumenti uz svesku (`dokumenti.predmer_id`, FK on delete set null,
@@ -287,7 +298,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
    „Ukupno" situacije, „Plaćeno", kumulativ, izvoz — i dalje `canFinance()`. `preracunajSituacijeLokalno`
    piše `iznos` samo uz `canFinance()` (rukovodilac sa cenama ga ne računa — iznos je serverov). Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
-   gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` samo `canFinance`).
+   gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` samo `canFinance`
+   I modul izvođenje — Projektovanje nema situacija).
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
    `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
    Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati
