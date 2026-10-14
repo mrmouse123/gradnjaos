@@ -1,3 +1,9 @@
+# 2026-10-14: direktori modula (direktor_projektovanja / direktor_izvodjenja)
+- [x] Migracija 27 (živo + schema.sql): uloge + constraint modula, je_direktor() obuhvata direktore modula, modul iz imena uloge (moji_moduli), vodim_gradiliste = uprava ∧ modul_dozvoljen, smem_brisati, modul_moj za INSERT gradilišta; 24 polise sa golim je_direktor/je_super nad tabelama sa gr prepisane; obrisi_gradiliste/angazovanost/dodeli_ulogu/ukloni_pristup
+- [x] Klijent: MODUL_ULOGE/DIREKTORSKE/jeUpravaUloga, primeniUlogu, jeSuper = samo direktor, smemBrisati, upravaSve, smemNa po modulu, visibleSites filter i za upravu, tabDozvoljen, setRole dirpro/dirizv, Pogled kao, Admin kokpit (smemDodelitiUlogu/smemMenjatiNalog, čekboks modula), formSite
+- [x] Mock + T57 (2 provere), e2e 957/0; RLS proba na bazi kao direktor_projektovanja (admin privremeno flipovan u transakciji, vraćen)
+- [ ] Jovan: napraviti test-naloge za dve nove uloge (Add user u dashboardu → Admin kokpit kao direktor)
+
 # 2026-10-12: trebovanje iz predmera · fioka Projektovanja · cene/adresa/play · bez marže · zdravlje ×2 · pregled
 - [x] Trebovanje iz ugovorenog predmera (dropdown pozicija, zaključan naziv, ugovorena kol. kao polazna, predmer_id+sifra u stavci, mejl/kartica) — 53c3353, T49
 - [x] Fioka Projektovanja: bez tima i liste zadataka → „Dokumentacija po osobi" (sveske po zaduženom, status, tajmer, dodela, dokument uz svesku) — migracija 22 (dokumenti.predmer_id), tim izveden iz dodela (osigurajUTimu) — deb201d, T50

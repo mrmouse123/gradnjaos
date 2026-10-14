@@ -22,22 +22,23 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 
 ## Uloge (šta ko sme — i na serveru, ne samo u interfejsu)
 
-| | Direktor (IT super admin) | Admin | Rukovodilac 1 | Rukovodilac 2 | Radnik / Spoljni saradnik |
-|---|---|---|---|---|---|
-| vidi gradilišta | sva | sva | samo svoja, u svom modulu (projektovanje, izvođenje ili oba) | isto | samo ona gde je u timu / na kojima je saradnik; radnik u TAČNO jednom modulu |
-| tabovi | svi | svi | tabla, gradilišta, rokovi, zadaci (samo projektovanje), dnevnik, magacin (samo sa modulom izvođenje), trebovanje (naplata samo uprava) | isto | isto |
-| finansije (cene, troškovi, naplata) | da | da | **da** (zastavica „vidi finansije") | ne | ne |
-| kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | ne | ne | ne |
-| dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | svoja gradilišta | svoja gradilišta | ne |
-| dnevnik radova | sve | sve | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
-| zadaci (samo Projektovanje) | vidi sve | vidi sve | vidi sve zadatke svojih projektantskih gradilišta | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
-| dokumenta / fotografije na gradilištu | sve | sve | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
-| Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktore) | ne | ne | ne |
-| šifarnik artikala i usluga (samo Izvođenje; dugme na tabu Gradilišta) | da (i briše) | da | ne | ne | ne |
-| situacije (privremena / okončana) sa stavkama | pravi, vidi iznose i razlike | isto | pravi na svojim gradilištima; iznose vidi samo uz finansije | pravi, bez iznosa | ne |
-| **brisanje** (redovi, gradilišta) | **da** | ne | ne | ne | samo svoje unose/dokumenta |
+| | Direktor (IT super admin) | Admin | Direktor projektovanja / Direktor izvođenja | Rukovodilac 1 | Rukovodilac 2 | Radnik / Spoljni saradnik |
+|---|---|---|---|---|---|---|
+| vidi gradilišta | sva | sva | **sva u svom modulu** (samo projektovanje, odnosno samo izvođenje) | samo svoja, u svom modulu (projektovanje, izvođenje ili oba) | isto | samo ona gde je u timu / na kojima je saradnik; radnik u TAČNO jednom modulu |
+| tabovi | svi | svi | svi za svoj modul (projektovanje: bez magacina i naplate; izvođenje: bez zadataka) | tabla, gradilišta, rokovi, zadaci (samo projektovanje), dnevnik, magacin (samo sa modulom izvođenje), trebovanje (naplata samo uprava) | isto | isto |
+| finansije (cene, troškovi, naplata) | da | da | da (u svom modulu) | **da** (zastavica „vidi finansije") | ne | ne |
+| kreira gradilišta sa merama iz šifarnika, menja osnovne podatke | da | da | da, samo u svom modulu | ne | ne | ne |
+| dodeljuje ljude u tim, ažurira napredak/fazu, trebovanje, magacin izlaz, učitava izvedeno | da | da | da, u svom modulu | svoja gradilišta | svoja gradilišta | ne |
+| dnevnik radova | sve | sve | sve u svom modulu | pod svojim imenom | pod svojim imenom | pod svojim imenom (svoje unose i briše) |
+| zadaci (samo Projektovanje) | vidi sve | vidi sve | direktor projektovanja: vidi sve; direktor izvođenja: nema tab | vidi sve zadatke svojih projektantskih gradilišta | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
+| dokumenta / fotografije na gradilištu | sve | sve | sve u svom modulu | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
+| Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktorske uloge) | da — dodeljuje/uklanja SAMO rukovodioce i radnike svog modula; angažovanost svog modula | ne | ne | ne |
+| šifarnik artikala i usluga (samo Izvođenje; dugme na tabu Gradilišta) | da (i briše) | da | da (i briše) | ne | ne | ne |
+| situacije (privremena / okončana) sa stavkama | pravi, vidi iznose i razlike; odobrava/vraća | isto | isto, u svom modulu | pravi na svojim gradilištima; iznose vidi samo uz finansije | pravi, bez iznosa | ne |
+| **brisanje** (redovi, gradilišta) | **da** | ne | **da, samo redove i gradilišta svog modula** (zaposlene, klijente, podizvođače i šifarnik briše samo direktor) | ne | ne | samo svoje unose/dokumenta |
 
 Rukovodilac 1 i 2 su ista uloga (`rukovodilac`) sa zastavicom „vidi finansije" u Admin kokpitu. Spoljni saradnik je vezan za podizvođača/saradnika, radnik za zaposlenog.
+Direktor projektovanja i direktor izvođenja (od 2026-10-14) su uprava ograničena na jedan modul: modul im je u imenu uloge, a direktorske uloge (sve tri) dodeljuje i uklanja samo direktor.
 
 Bez prijave (anon ključ sam za sebe): **nula pristupa** — zato je u redu da `index.html` sa ključem bude u javnom repou.
 

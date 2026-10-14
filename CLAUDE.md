@@ -169,7 +169,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..26.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..27.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -258,6 +258,8 @@ nigde ne računa — ako zatreba, to je nova odluka (stopa, prikaz sa/bez).
 ## Nalozi (stanje 2026-10-11 — 6 test-profila, odluka klijenta)
 - direktor: `miske1431@gmail.com` (profili.uloga=direktor, zaposleni_id null)
 - admin: `admin@gradnjaos.test`
+- direktor projektovanja / direktor izvođenja (uloge od 2026-10-14): JOŠ NEMA test-naloga — Jovan pravi nalog u
+  dashboardu (Add user), pa ga direktor u Admin kokpitu veže za ulogu (samo direktor sme; moduli se postavljaju sami).
 - rukovodilac PROJEKTOVANJE + finansije: `nikola@gradnjaos.test` → `z17` (Nikola Vuković; vodi g9, trtr, test 1)
 - rukovodilac IZVOĐENJE bez finansija: `petar@gradnjaos.test` → `z1` (Petar Kovačević; vodi g1, Test 2)
 - radnik PROJEKTOVANJE: `sara@gradnjaos.test` → `z10` (Sara Ilić; tim g9 + trtr; 3 zadatka na g9 za tajmer)
@@ -283,8 +285,10 @@ na zahtev iz fioke `ubaciSablonFaza`, NE pri kreiranju; `fazeZa()` i dalje čita
 finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine), profili (auth).
 
 ## Pravila koja NE kršiti
-1. **Šest uloga (od 2026-10-07, migracija 14; odluka klijenta):** `direktor` (super:
-   sve + BRISANJE + dodela direktora), `admin` (sve bez brisanja; ne dira direktore),
+1. **Sedam uloga (od 2026-10-07, migracija 14; + direktori modula 2026-10-14, migracija 27; odluka klijenta):** `direktor` (super:
+   sve + BRISANJE + dodela direktorskih uloga), `admin` (sve bez brisanja; ne dira direktore),
+   **`direktor_projektovanja` / `direktor_izvodjenja`** (sva ovlašćenja direktora — finansije, cene, pregled situacija,
+   predmer, tim, BRISANJE, Admin kokpit — ali SAMO u svom modulu; v. pasus „Direktori modula" ispod),
    `rukovodilac` (svoja gradilišta; finansije SAMO uz `vidi_finansije` = „Rukovodilac 1"),
    `radnik` (gradilišta gde je u timu: čita, svoj dnevnik/zadaci/dokumenta), `spoljni`
    (kao radnik, vezan za `podizvodjaci.id`). Finansije (cene, naplata, kumulativ,
@@ -301,10 +305,30 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` = SAMO uprava
    (odluka 2026-10-14; rukovodilac sa finansijama situacije i dalje vidi/pravi u fioci gradilišta, `viewPay` vraća ostale na dash)).
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
-   `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
-   Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati
-   sva 4. „Pogled kao": `setRole('all'|'admin'|'<z>'|'<z>:fin'|'radnik:<z>'|'spoljni:<p>')`
+   `isDirector()` = UPRAVA (direktor|admin|direktor modula), `jeSuper()` = SAMO direktor, `vrstaUloge()`.
+   Uloge žive na 4 mesta: check constraint, `dodeli_ulogu` (+`ukloni_pristup`), `ULOGE`, mock `rpc` — menjati
+   sva 4. „Pogled kao": `setRole('all'|'admin'|'dirpro'|'dirizv'|'<z>'|'<z>:fin'|'radnik:<z>'|'spoljni:<p>')`
    + opcioni sufiks `|pro` / `|izv`.
+   **Direktori modula (2026-10-14, migracija 27, odluka klijenta):** modul se IZVODI iz imena uloge (`MODUL_ULOGE`,
+   server `moji_moduli()` — `profili.moduli` je samo snimak, constraint `profili_moduli_uloga_check` ga drži jednakim).
+   SERVER: `je_direktor()` (= uprava) ih OBUHVATA, pa svaki postojeći „uprava" uslov (trigeri `zastiti_kolone_*`,
+   view-ovi, `vidi_finansije()`) važi i za njih; ograničenje je u `modul_dozvoljen(gid)` → `vodim_gradiliste(gid)` =
+   `(je_direktor() and modul_dozvoljen(gid)) or rukovodilac…`. Zato polisa sa GOLIM `je_direktor()`/`je_super()` nad
+   tabelom koja ima `gr` NE SME više da postoji — koristi `vodim_gradiliste(gr)` (pisanje), `smem_brisati(gr)` (brisanje =
+   `je_super() or (je_direktor_modula() and vodim_gradiliste(gr))`; `gr null` → samo direktor), `modul_moj(modul)` za INSERT
+   gradilišta (red još ne postoji). `je_super()` ostaje SAMO direktor (globalne tabele: zaposleni, klijenti, podizvođači,
+   šifarnik, magacin). RPC: `obrisi_gradiliste` guard `smem_brisati`, `angazovanost` filtrira `modul_dozvoljen(gr)`.
+   NALOZI: direktorske uloge (`DIREKTORSKE`) dodeljuje/menja/uklanja SAMO `moja_uloga()='direktor'` (ni admin);
+   direktor modula dodeljuje/menja/uklanja SAMO rukovodioce i radnike čiji su moduli ⊆ njegov (spoljni = oba modula →
+   ne može), ne dira upravu ni tuđi modul. KLIJENT: `primeniUlogu` → `ROLE='all'`, `MODULI=[modul]`, `MODUL='sve'`;
+   `visibleSites` filtrira po `MODULI` i za upravu; `smemNa` za upravu traži `modulDozvoljen(g.modul)`; `smemBrisati(grId)`
+   umesto `jeSuper()` za svako brisanje reda gradilišta (dugmad + `obrisi*` guardovi); `upravaSve()` = puna uprava bez
+   filtera (liste bez `gr`: zaposleni, dnevnik, podizvođači, trebovanja, Kanban); `tabDozvoljen`: zadaci samo uz projektovanje,
+   magacin/naplata samo uz izvođenje — i za upravu; `formSite` nudi samo dozvoljene module, izmena tuđeg se ne otvara;
+   Admin kokpit `smemDodelitiUlogu`/`smemMenjatiNalog` + čekboks modula samo za `MODULI`; „Pogled kao" direktoru modula
+   ne nudi admina/drugog direktora/osobe drugog modula (`all` = njegova uloga). Mock: `UPRAVA`/`DIREKTORSKE`/`MODUL_ULOGE`,
+   `ctx.isModDir/mojiModuli/modulDozvoljen`, ista pravila u `dodeli_ulogu`/`ukloni_pristup`/`obrisi_gradiliste`/`angazovanost`
+   (redove mock i dalje NE filtrira — RLS po modulu dokazana probom na bazi 2026-10-14). T57.
    **Modul po nalogu (od 2026-10-11, migracija 18):** `profili.moduli text[]` ⊆ {projektovanje,
    izvodjenje}; rukovodilac 1–2, radnik TAČNO 1, uprava/spoljni oba. Server: `modul_dozvoljen(gid)`
    je unutar ne-uprava grana `vodim_gradiliste`/`moje_gradiliste` (sve polise/RPC-ovi nasleđuju);
