@@ -3041,7 +3041,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run('visibleSites().length') !== nPro || a.run('visibleSites().some(g=>!jePro(g))')) throw new Error('dirpro vidi izvodjenje');
     if (a.run('roleValue()') !== 'dirpro' || !a.run("ulogaLabela('direktor_projektovanja')").includes('direktor projektovanja') || !a.run("ulogaLabela('direktor_izvodjenja')").includes('direktor izvođenja')) throw new Error('roleValue/labela');
     const tabs = a.run('tabs().map(t=>t.id)');
-    if (tabs.includes('magacin') || tabs.includes('pay') || !tabs.includes('tasks') || !tabs.includes('nalozi') || !tabs.includes('clients')) throw new Error('dirpro tabovi: ' + tabs);
+    if (tabs.includes('magacin') || tabs.includes('pay') || !tabs.includes('tasks') || tabs.includes('nalozi') || !tabs.includes('clients')) throw new Error('dirpro tabovi (bez Admin kokpita, migracija 28): ' + tabs);
+    a.run("current='nalozi'; render();"); if (a.run('current') !== 'dash') throw new Error('viewNalozi nije vratio direktora modula na dash');
     if (!a.run("smemNa('g8')") || a.run("smemNa('g1')") || !a.run("smemBrisati('g8')") || a.run("smemBrisati('g1')") || !a.run("smemPredmer('g8')") || a.run("smemPredmer('g1')")) throw new Error('dirpro smemNa/smemBrisati/smemPredmer po modulu');
     if (a.run('smemBrisati(null)') || a.run('smemBrisati(undefined)')) throw new Error('smemBrisati bez gradilista mora biti false za direktora modula (resurs bez gr brise samo direktor)');
     const c0 = a.g._calls.confirm.length;
@@ -3063,7 +3064,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('dirizv')");
     if (JSON.stringify(a.run('MODULI')) !== '["izvodjenje"]' || a.run('visibleSites().length') !== nIzv || a.run('visibleSites().some(jePro)') || a.run('roleValue()') !== 'dirizv') throw new Error('dirizv vidi projektovanje');
     const t2 = a.run('tabs().map(t=>t.id)');
-    if (!t2.includes('magacin') || !t2.includes('pay') || t2.includes('tasks') || !t2.includes('nalozi')) throw new Error('dirizv tabovi: ' + t2);
+    if (!t2.includes('magacin') || !t2.includes('pay') || t2.includes('tasks') || t2.includes('nalozi')) throw new Error('dirizv tabovi: ' + t2);
     if (a.run("smemNa('g8')") || !a.run("smemNa('g1')") || a.run("smemBrisati('g8')") || !a.run("smemBrisati('g1')")) throw new Error('dirizv smemNa/smemBrisati');
     if (a.run('zadaciVidljivi().length') !== 0) throw new Error('dirizv vidi zadatke projektovanja');
     if (a.run('modulEfektivni()') !== 'izvodjenje' || a.run("tabs().find(t=>t.id==='subs').naziv") !== 'Podizvođači') throw new Error('dirizv: efektivni modul / naziv Podizvodjaci');
@@ -3077,7 +3078,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('all')"); if (!a.run('upravaSve()') || a.run('MODULI.length') !== 2 || !a.run('jeSuper()') || a.run('jeDirektorModula()')) throw new Error('direktor: sve');
     a.run("setRole('admin')"); if (a.run('jeSuper()') || !a.run("smemNa('g1')") || a.run("smemBrisati('g1')")) throw new Error('admin: ne brise, vodi sve');
   });
-  await acheck('nalog direktor_izvodjenja (initAuth): uprava sa jednim modulom; Pogled kao bez admina/dirpro/osoba projektovanja i ne simulira drugu upravu; Admin kokpit: uloge samo rukovodilac/radnik, cekboks samo izvodjenje, uprava i tudji modul zakljucani; mock dodeli_ulogu/ukloni_pristup/obrisi_gradiliste/angazovanost kao server; admin ne dodeljuje direktorske uloge; direktor dodeljuje direktora modula (moduli iz imena); ULOGE == migracija 27 == schema', async () => {
+  await acheck('nalog direktor_izvodjenja (initAuth): uprava sa jednim modulom; Pogled kao bez admina/dirpro/osoba projektovanja i ne simulira drugu upravu; NEMA Admin kokpit (tab, viewNalozi → dash, RPC nalozi/dodeli/ukloni/angazovanost odbijeni — migracija 28); obrisi_gradiliste po modulu; admin ne dodeljuje direktorske uloge; direktor dodeljuje direktora modula (moduli iz imena); ULOGE == migracija 27 == schema', async () => {
     const seed0 = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } } });
     const seed = JSON.parse(JSON.stringify(seed0.g.__mock._db));
     seed.profili = [
@@ -3099,33 +3100,23 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('dirpro')"); if (a.run('ULOGA') !== 'direktor_izvodjenja') throw new Error('dirizv simulirao direktora projektovanja');
     a.run("setRole('z1|izv')"); if (a.run('ROLE') !== 'z1') throw new Error('dirizv ne moze „Pogled kao" Petar');
     a.run("setRole('all')"); if (a.run('ULOGA') !== 'direktor_izvodjenja' || a.run('ROLE') !== 'all') throw new Error("setRole('all') nije vratio na direktora modula");
-    a.run("go('nalozi')"); for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));
-    if (a.run('current') !== 'nalozi') throw new Error('dirizv nema Admin kokpit');
-    const h = a.g.document.getElementById('view').innerHTML;
-    const sel = (h.match(/<select id="n_uloga"[\s\S]*?<\/select>/) || [''])[0];
-    if (!sel || /value="(direktor|admin|spoljni|direktor_projektovanja|direktor_izvodjenja)"/.test(sel) || !sel.includes('value="rukovodilac"') || !sel.includes('value="radnik"')) throw new Error('n_uloga opcije: ' + sel);
-    if (h.includes('id="n_mp"') || !h.includes('id="n_mi"')) throw new Error('cekboks modula: nudi projektovanje direktoru izvodjenja');
-    for (const e of ['direktor@test', 'admin@test', 'nikola@test']) if (h.includes(`dodeliUlogu('${e}'`)) throw new Error('dirizv moze da menja ' + e);
-    for (const e of ['petar@test', 'novi@test']) if (!h.includes(`dodeliUlogu('${e}'`)) throw new Error('dirizv ne moze da menja ' + e);
-    if (!h.includes('drugi modul, menja direktor') || !h.includes('menja samo direktor')) throw new Error('nema oznaka zakljucanih naloga');
-    if (!a.run("smemDodelitiUlogu('radnik')") || a.run("smemDodelitiUlogu('spoljni')") || a.run("smemDodelitiUlogu('direktor_izvodjenja')")) throw new Error('smemDodelitiUlogu');
+    if (a.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('direktor modula ima tab Admin kokpit');
+    a.run("current='nalozi'; render();"); if (a.run('current') !== 'dash') throw new Error('viewNalozi nije vratio direktora modula na dash');
+    if (a.g.__mock._log.some(l => l.op === 'rpc' && l.name === 'nalozi_pregled')) throw new Error('direktor modula je pozvao nalozi_pregled');
+    if (a.run("smemDodelitiUlogu('radnik')") || a.run("smemMenjatiNalog({bez_profila:true})")) throw new Error('smemDodelitiUlogu/smemMenjatiNalog za direktora modula');
     const rpc = (f, args) => a.run(`supa.rpc(${JSON.stringify(f)}, ${JSON.stringify(args)})`);
-    let r = await rpc('dodeli_ulogu', { p_email: 'novi@test', p_uloga: 'rukovodilac', p_zaposleni_id: 'z2', p_vidi_finansije: false, p_saradnik_id: null, p_moduli: ['izvodjenje'] });
-    if (r.error) throw new Error('dirizv ne moze rukovodioca izvodjenja: ' + r.error.message);
-    r = await rpc('dodeli_ulogu', { p_email: 'novi@test', p_uloga: 'rukovodilac', p_zaposleni_id: 'z2', p_moduli: ['projektovanje'] }); if (!r.error) throw new Error('dirizv dodelio projektovanje');
-    r = await rpc('dodeli_ulogu', { p_email: 'novi@test', p_uloga: 'rukovodilac', p_zaposleni_id: 'z2', p_moduli: ['projektovanje', 'izvodjenje'] }); if (!r.error) throw new Error('dirizv dodelio oba modula');
-    for (const u of ['direktor', 'admin', 'direktor_izvodjenja', 'direktor_projektovanja', 'spoljni']) { r = await rpc('dodeli_ulogu', { p_email: 'novi@test', p_uloga: u, p_saradnik_id: 'p1' }); if (!r.error) throw new Error('dirizv dodelio ' + u); }
-    r = await rpc('dodeli_ulogu', { p_email: 'nikola@test', p_uloga: 'rukovodilac', p_zaposleni_id: 'z17', p_moduli: ['izvodjenje'] }); if (!r.error) throw new Error('dirizv preuzeo rukovodioca projektovanja');
-    r = await rpc('ukloni_pristup', { p_email: 'nikola@test' }); if (!r.error) throw new Error('dirizv uklonio rukovodioca projektovanja');
-    r = await rpc('ukloni_pristup', { p_email: 'direktor@test' }); if (!r.error) throw new Error('dirizv uklonio direktora');
-    r = await rpc('ukloni_pristup', { p_email: 'admin@test' }); if (!r.error) throw new Error('dirizv uklonio admina');
-    r = await rpc('ukloni_pristup', { p_email: 'novi@test' }); if (r.error || a.g.__mock._db.profili.some(p => p.user_id === 'u-novi')) throw new Error('dirizv ne moze da ukloni svog rukovodioca: ' + (r.error && r.error.message));
+    let r = await rpc('nalozi_pregled', {}); if (!r.error) throw new Error('nalozi_pregled prosao direktoru modula');
+    r = await rpc('dodeli_ulogu', { p_email: 'novi@test', p_uloga: 'rukovodilac', p_zaposleni_id: 'z2', p_moduli: ['izvodjenje'] }); if (!r.error || a.g.__mock._db.profili.some(p => p.user_id === 'u-novi')) throw new Error('dodeli_ulogu prosao direktoru modula');
+    r = await rpc('ukloni_pristup', { p_email: 'petar@test' }); if (!r.error || !a.g.__mock._db.profili.some(p => p.user_id === 'u-ruk')) throw new Error('ukloni_pristup prosao direktoru modula');
+    r = await rpc('angazovanost', {}); if (!r.error) throw new Error('angazovanost prosla direktoru modula');
+    const pre0 = a.g._calls.alert.length; await a.run("dodeliUlogu('novi@test')"); await a.run("ukloniPristup('petar@test')");
+    if (a.g.__mock._log.some(l => l.op === 'rpc' && (l.name === 'dodeli_ulogu' || l.name === 'ukloni_pristup') && !l.args.p_email.startsWith('novi') && !l.args.p_email.startsWith('petar'))) throw new Error('klijentski guard');
     r = await rpc('obrisi_gradiliste', { p_gid: 'g8' }); if (!r.error || !a.g.__mock._db.gradilista.some(g => g.id === 'g8')) throw new Error('dirizv obrisao projektantsko gradiliste');
     r = await rpc('obrisi_gradiliste', { p_gid: 'g1' }); if (r.error || a.g.__mock._db.gradilista.some(g => g.id === 'g1')) throw new Error('dirizv ne moze da obrise svoje gradiliste: ' + (r.error && r.error.message));
-    a.g.__mock._db.rad_na_zadatku = [{ id: 'r-pro', zadatak: 't20', gr: 'g8', osoba: 'z4', start: new Date().toISOString(), kraj: null, minuta: null }, { id: 'r-izv', zadatak: 't1', gr: 'g2', osoba: 'z3', start: new Date().toISOString(), kraj: null, minuta: null }];
-    r = await rpc('angazovanost', {}); if (r.error || !r.data.some(x => x.gr === 'g2') || r.data.some(x => x.gr === 'g8')) throw new Error('angazovanost dirizv: ' + JSON.stringify(r.data));
     const b = await boot({ supabase: true, seed: kopija(), session: { user: { id: 'u-adm', email: 'admin@test' } }, users: USERS });
     for (const u of ['direktor', 'direktor_projektovanja', 'direktor_izvodjenja']) { r = await b.run(`supa.rpc('dodeli_ulogu', ${JSON.stringify({ p_email: 'novi@test', p_uloga: u })})`); if (!r.error) throw new Error('admin dodelio ' + u); }
+    if (!b.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('admin nema Admin kokpit');
+    r = await b.run(`supa.rpc('angazovanost', {})`); if (r.error) throw new Error('admin: angazovanost odbijena');
     r = await b.run(`supa.rpc('ukloni_pristup', ${JSON.stringify({ p_email: 'dirizv@test' })})`); if (!r.error) throw new Error('admin uklonio direktora modula');
     b.run("go('nalozi')"); for (let i = 0; i < 8; i++) await new Promise(r2 => setImmediate(r2));
     const hb = b.g.document.getElementById('view').innerHTML, selb = (hb.match(/<select id="n_uloga"[\s\S]*?<\/select>/) || [''])[0];
@@ -3141,6 +3132,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const fs2 = require('fs'), path2 = require('path'), mig = fs2.readFileSync(path2.join(__dirname, '..', 'supabase', 'migracija-27-direktori-modula.sql'), 'utf8'), sch = fs2.readFileSync(path2.join(__dirname, '..', 'supabase', 'schema.sql'), 'utf8');
     for (const u of ul) if (!mig.includes(`'${u}'`) || !sch.includes(`'${u}'`)) throw new Error('migracija 27 / schema.sql nema ulogu ' + u);
     if (!sch.includes('profili_moduli_uloga_check') || !sch.includes('smem_brisati')) throw new Error('schema.sql nema migraciju 27');
+    if (!sch.includes("create policy p_sel on log_koriscenja for select to authenticated using (je_puna_uprava());") || !/if not je_puna_uprava\(\) then raise exception 'Samo direktor i admin vide naloge\.'/.test(sch)) throw new Error('schema.sql nema migraciju 28');
   });
 
   /* ---- T56 (2026-10-14): Projektovanje — sveska = faza + cek-lista (bez JM/kolicine), bez situacija/naplate ---- */

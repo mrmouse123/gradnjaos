@@ -257,7 +257,6 @@ const UPRAVA = ['direktor', 'admin', 'direktor_projektovanja', 'direktor_izvodje
 const DIREKTORSKE = ['direktor', 'direktor_projektovanja', 'direktor_izvodjenja'];
 const MODUL_ULOGE = { direktor_projektovanja: 'projektovanje', direktor_izvodjenja: 'izvodjenje' };
 const SVI_MOD = ['projektovanje', 'izvodjenje'];
-const podskup = (a, b) => (a || SVI_MOD).every(m => b.includes(m));
 function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
   const db = clone(seed);
   const log = [];
@@ -267,6 +266,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
     isDir: () => { const p = profil(); return !!p && UPRAVA.includes(p.uloga); },   // uprava (migracija 14; + direktori modula, migracija 27)
     isSuper: () => { const p = profil(); return !!p && p.uloga === 'direktor'; },
     isModDir: () => { const p = profil(); return !!p && !!MODUL_ULOGE[p.uloga]; },
+    isPunaUprava: () => { const p = profil(); return !!p && (p.uloga === 'direktor' || p.uloga === 'admin'); },   // migracija 28: Admin kokpit
     mojiModuli: () => { const p = profil(); if (!p) return SVI_MOD.slice(); if (MODUL_ULOGE[p.uloga]) return [MODUL_ULOGE[p.uloga]]; if (p.uloga === 'direktor' || p.uloga === 'admin') return SVI_MOD.slice(); return p.moduli || SVI_MOD.slice(); },   // kao moji_moduli(): modul direktora modula IZ IMENA ULOGE
     modulDozvoljen: gid => { const p = profil(); if (!p) return false; if (p.uloga === 'direktor' || p.uloga === 'admin') return true; const g = (db.gradilista || []).find(x => x.id === gid); return !!g && ctx.mojiModuli().includes(g.modul || 'izvodjenje'); },
     vidiFin: () => { const p = profil(); return !!p && (UPRAVA.includes(p.uloga) || !!p.vidi_finansije); },
@@ -293,10 +293,10 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       const ja = auth._session() && auth._session().user;
       const upisiLog = (dogadjaj, detalj) => { db.log_koriscenja = db.log_koriscenja || []; db.log_koriscenja.push({ id: db.log_koriscenja.length + 1, ts: new Date().toISOString(), user_id: ja && ja.id, email: ja && ja.email, uloga: 'direktor', dogadjaj, detalj }); };
       if (name === 'angazovanost') {   // migracija 15: uprava — sati po osobi i gradilistu u periodu (otvorena sesija se racuna do sada)
-        if (!ctx.isDir()) return { data: null, error: { message: 'Samo uprava vidi angažovanost.' } };
+        if (!ctx.isPunaUprava()) return { data: null, error: { message: 'Samo direktor i admin vide angažovanost.' } };
         const od = args && args.p_od ? new Date(args.p_od) : new Date(Date.now() - 30 * 86400000), dod = args && args.p_do ? new Date(args.p_do) : new Date();
         const agg = {};
-        (db.rad_na_zadatku || []).forEach(r => { const s = new Date(r.start); if (s < od || s > new Date(dod.getTime() + 86400000)) return; if (!ctx.modulDozvoljen(r.gr)) return;   // migracija 27
+        (db.rad_na_zadatku || []).forEach(r => { const s = new Date(r.start); if (s < od || s > new Date(dod.getTime() + 86400000)) return;
           const k = r.osoba + '|' + r.gr; const a = agg[k] = agg[k] || { osoba: r.osoba, gr: r.gr, sesija: 0, minuta: 0, poslednji: null };
           a.sesija++; a.minuta += r.minuta != null ? r.minuta : Math.max(0, Math.floor((Date.now() - s.getTime()) / 60000)); const p = r.kraj || r.start; if (!a.poslednji || p > a.poslednji) a.poslednji = p; });
         return { data: Object.values(agg).sort((x, y) => (x.osoba + x.gr).localeCompare(y.osoba + y.gr)), error: null };
@@ -316,12 +316,12 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         return { data: d ? (d.data || null) : null, error: null };
       }
       if (name === 'nalozi_pregled') {
-        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor vidi naloge.' } };
+        if (!ctx.isPunaUprava()) return { data: null, error: { message: 'Samo direktor i admin vide naloge.' } };
         const rows = Object.entries(authOpts.users || {}).map(([email, u]) => { const p = (db.profili || []).find(x => x.user_id === u.id); return { user_id: u.id, email, uloga: p ? p.uloga : null, zaposleni_id: p ? p.zaposleni_id : null, saradnik_id: p ? (p.saradnik_id || null) : null, vidi_finansije: !!(p && (p.vidi_finansije || UPRAVA.includes(p.uloga))), moduli: (p && p.moduli) ? p.moduli : ['projektovanje', 'izvodjenje'], ime: p ? p.ime : null, kreiran: null, poslednja_prijava: null, bez_profila: !p }; });
         return { data: rows, error: null };
       }
-      if (name === 'dodeli_ulogu') {   // migracija 14: uloge, vidi_finansije, saradnik; migracija 27: direktorske uloge samo direktor, direktor modula samo svoj modul
-        if (!ctx.isDir()) return { data: null, error: { message: 'Samo uprava dodeljuje uloge.' } };
+      if (name === 'dodeli_ulogu') {   // migracija 14: uloge, vidi_finansije, saradnik; 27: direktorske uloge samo direktor; 28: samo puna uprava
+        if (!ctx.isPunaUprava()) return { data: null, error: { message: 'Uloge dodeljuju samo direktor i admin.' } };
         const uid = idOd(args.p_email); if (!uid) return { data: null, error: { message: `Nema naloga ${args.p_email}.` } };
         if (ja && uid === ja.id) return { data: null, error: { message: 'Sopstvenu ulogu ne možeš da menjaš — zamoli drugog direktora.' } };
         if (!SVE_ULOGE.includes(args.p_uloga)) return { data: null, error: { message: 'Nepoznata uloga: ' + args.p_uloga } };
@@ -338,11 +338,6 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         if (args.p_uloga === 'radnik' && mods.length !== 1) return { data: null, error: { message: 'Radnik se vezuje za tačno jedan modul.' } };
         if (MODUL_ULOGE[args.p_uloga]) mods = [MODUL_ULOGE[args.p_uloga]];
         else if (!['rukovodilac', 'radnik'].includes(args.p_uloga)) mods = ['projektovanje', 'izvodjenje'];
-        if (ctx.isModDir()) {   // migracija 27: samo rukovodioci i radnici SVOG modula; ne dira upravu ni tudji modul
-          const moji = ctx.mojiModuli();
-          if (!['rukovodilac', 'radnik'].includes(args.p_uloga) || !podskup(mods, moji)) return { data: null, error: { message: `Direktor modula dodeljuje samo rukovodioce i radnike svog modula (${moji[0]}).` } };
-          if (stara && (!['rukovodilac', 'radnik'].includes(stara) || !podskup(p.moduli, moji))) return { data: null, error: { message: 'Ovaj nalog ne pripada tvom modulu — menja ga direktor.' } };
-        }
         if (stara === 'direktor' && args.p_uloga !== 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor — prvo dodeli ulogu direktora nekom drugom.' } };
         const z = (db.zaposleni || []).find(x => x.id === zid), s = (db.podizvodjaci || []).find(x => x.id === sid); const ime = z ? z.ime : s ? s.naziv : args.p_email;
         if (p) { p.uloga = args.p_uloga; p.zaposleni_id = zid; p.saradnik_id = sid; p.vidi_finansije = fin; p.moduli = mods; p.ime = ime; } else db.profili.push({ user_id: uid, uloga: args.p_uloga, zaposleni_id: zid, saradnik_id: sid, vidi_finansije: fin, moduli: mods, ime });
@@ -350,12 +345,11 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         return { data: stara ? 'izmenjeno' : 'dodeljeno', error: null };
       }
       if (name === 'ukloni_pristup') {
-        if (!ctx.isDir()) return { data: null, error: { message: 'Samo direktor uklanja pristup.' } };
+        if (!ctx.isPunaUprava()) return { data: null, error: { message: 'Pristup uklanjaju samo direktor i admin.' } };
         const uid = idOd(args.p_email); if (!uid) return { data: null, error: { message: `Nema naloga ${args.p_email}.` } };
         if (ja && uid === ja.id) return { data: null, error: { message: 'Sopstveni pristup ne možeš da ukloniš.' } };
         const p = (db.profili || []).find(x => x.user_id === uid); if (!p) return { data: null, error: null };
         if (DIREKTORSKE.includes(p.uloga) && !ctx.isSuper()) return { data: null, error: { message: 'Samo direktor može da ukloni direktorsku ulogu.' } };   // migracija 27
-        if (ctx.isModDir() && (!['rukovodilac', 'radnik'].includes(p.uloga) || !podskup(p.moduli, ctx.mojiModuli()))) return { data: null, error: { message: 'Direktor modula uklanja samo rukovodioce i radnike svog modula.' } };
         if (p.uloga === 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor.' } };
         db.profili = db.profili.filter(x => x.user_id !== uid); upisiLog('pristup_uklonjen', { email: args.p_email, stara: p.uloga });
         return { data: null, error: null };

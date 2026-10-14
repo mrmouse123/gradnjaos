@@ -1155,6 +1155,7 @@ function modulDozvoljen(m){ return MODULI.includes(m); }   // uprava ima oba; di
 function vrstaUloge(){ if(ROLE==='all') return 'uprava'; return (ULOGA==='radnik'||ULOGA==='spoljni')?ULOGA:'rukovodilac'; }
 function jeSuper(){ return ROLE==='all' && ULOGA==='direktor'; }   // SAMO direktor: globalno brisanje, dodela direktorskih uloga (server je_super)
 function jeDirektorModula(){ return ROLE==='all' && !!MODUL_ULOGE[ULOGA]; }
+function jePunaUprava(){ return ROLE==='all' && !MODUL_ULOGE[ULOGA]; }   // direktor | admin: Admin kokpit (nalozi, uloge, angazovanost, log) — odluka 2026-10-14, migracija 28
 /* Brisanje reda gradilista: direktor svuda, direktor modula na svom gradilistu (server smem_brisati). Admin ne brise. */
 function smemBrisati(grId){ return jeSuper() || (jeDirektorModula() && smemNa(grId)); }
 function upravaSve(){ return isDirector() && MODUL==='sve' && MODULI.length>1; }
@@ -1437,8 +1438,8 @@ function tabs(){
     {id:'magacin', naziv:'Magacin', ic:'box', cnt:0},
     {id:'subs', naziv:(modulEfektivni()==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&(upravaSve()||(x.grs||[]).some(i=>ids.has(i)))).length},
     {id:'nabavka', naziv:'Trebovanje', ic:'cart', cnt:(DATA.narudzbe||[]).filter(n=>n.status==='poslato'&&(upravaSve()||ids.has(n.gr))).length},
-    {id:'nalozi', naziv:'Admin kokpit', ic:'client', dirOnly:true},
-  ].filter(t=>(!t.dirOnly || isDirector()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
+    {id:'nalozi', naziv:'Admin kokpit', ic:'client', dirOnly:true, punaUprava:true},
+  ].filter(t=>(!t.dirOnly || isDirector()) && (!t.punaUprava || jePunaUprava()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
 }
 function renderNav(){
   const t=tabs();
@@ -2609,13 +2610,13 @@ async function obrisiSifrarnik(id){
   if(ok!==false){ render(); osveziSifrarnikModal(); }
 }
 function viewNalozi(){
-  if(!isDirector()){ current='dash'; return viewDash(); }
+  if(!jePunaUprava()){ current='dash'; return viewDash(); }   // samo direktor/admin (migracija 28); direktor modula nema kokpit
   const h=head('Nalozi i log korišćenja','Ko ima pristup, sa kojom ulogom, i šta je ko radio u aplikaciji.');
   if(!supa) return h+'<div class="card" style="margin-bottom:18px"><div class="empty">Radi samo kad je aplikacija povezana sa bazom (Supabase). U demo režimu nema naloga.</div></div>'+angazovanostKartica();
   if(NALOZI===null && !NALOZI_MSG) ucitajNaloge();
   const zOpt=DATA.zaposleni.map(z=>`<option value="${z.id}">${z.ime}</option>`).join('');
   const sOpt=(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv}</option>`).join('');
-  /* direktorske uloge dodeljuje samo direktor; direktor modula samo rukovodioce/radnike svog modula (server to sprovodi; UI ne nudi) */
+  /* direktorske uloge dodeljuje samo direktor (server to sprovodi; UI ne nudi) */
   const ulOpt=(sel)=>ULOGE.filter(([v])=>v===sel||smemDodelitiUlogu(v)).map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
   const modChk=(idp,idi,nm)=>(MODULI.includes('projektovanje')?`<label class="chk" style="margin:0"><input type="checkbox" id="${idp}" ${nm.includes('projektovanje')?'checked':''}> projektovanje</label>`:'')
                             +(MODULI.includes('izvodjenje')?`<label class="chk" style="margin:0"><input type="checkbox" id="${idi}" ${nm.includes('izvodjenje')?'checked':''}> izvođenje</label>`:'');
@@ -2626,7 +2627,7 @@ function viewNalozi(){
     const st=n.bez_profila?'<span class="badge b-amber">bez uloge</span>':moj?'<span class="badge b-blue">ti</span>':'<span class="badge b-green">aktivan</span>';
     const u=esc(n.user_id), ul=n.uloga||'';
     const nm=normalizujModule(n.moduli), modPolja=(ul==='rukovodilac'||ul==='radnik'||n.bez_profila);
-    const kontrole = (moj||zakljucan) ? `<span class="sub">${ulogaLabela(n.uloga, n.vidi_finansije, n.moduli)}${zakljucan?(jeDirektorModula()&&!DIREKTORSKE.includes(n.uloga)&&n.uloga!=='admin'?' · drugi modul, menja direktor':' · menja samo direktor'):''}</span>` :
+    const kontrole = (moj||zakljucan) ? `<span class="sub">${ulogaLabela(n.uloga, n.vidi_finansije, n.moduli)}${zakljucan?' · menja samo direktor':''}</span>` :
       `<select id="nu_${u}" onchange="naloziTogglZap('${u}')">${n.bez_profila?'<option value="">— izaberi —</option>':''}${ulOpt(ul)}</select>
        <select id="nz_${u}" style="${ul==='rukovodilac'||ul==='radnik'||n.bez_profila?'':'display:none'}"><option value="">— zaposleni —</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${n.zaposleni_id===z.id?'selected':''}>${z.ime}</option>`).join('')}</select>
        <select id="ns_${u}" style="${ul==='spoljni'?'':'display:none'}"><option value="">— saradnik —</option>${(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}" ${n.saradnik_id===p.id?'selected':''}>${p.naziv}</option>`).join('')}</select>
@@ -2670,14 +2671,13 @@ function viewNalozi(){
       <tbody>${(LOG_K||[]).map(logRed).join('')||`<tr><td colspan="5" class="empty">${LOG_K===null?'Učitavam…':'Još nema zapisa.'}</td></tr>`}</tbody></table></div></div>
   </div>`;
 }
-/* Ko koju ulogu sme da dodeli / koji nalog sme da menja (isto kao server dodeli_ulogu / ukloni_pristup, migracija 27):
-   direktorske uloge samo direktor; admin ostalo; direktor modula samo rukovodilac/radnik SVOG modula, ne dira upravu ni tudji modul. */
-function smemDodelitiUlogu(v){ if(DIREKTORSKE.includes(v)) return jeSuper(); if(jeDirektorModula()) return v==='rukovodilac'||v==='radnik'; return isDirector(); }
+/* Ko koju ulogu sme da dodeli / koji nalog sme da menja (isto kao server dodeli_ulogu / ukloni_pristup, migracija 28):
+   samo puna uprava (direktor/admin); direktorske uloge samo direktor. Direktor modula nema Admin kokpit. */
+function smemDodelitiUlogu(v){ if(!jePunaUprava()) return false; if(DIREKTORSKE.includes(v)) return jeSuper(); return true; }
 function smemMenjatiNalog(n){
-  if(!isDirector()) return false;
+  if(!jePunaUprava()) return false;
   if(n.bez_profila) return true;
   if(DIREKTORSKE.includes(n.uloga)) return jeSuper();
-  if(jeDirektorModula()) return (n.uloga==='rukovodilac'||n.uloga==='radnik') && normalizujModule(n.moduli).every(m=>MODULI.includes(m));
   return true;
 }
 /* prikazi polja koja uloga trazi: zaposleni (rukovodilac/radnik), saradnik (spoljni), finansije (rukovodilac). uid='' = forma za novi */
@@ -2691,7 +2691,7 @@ function naloziTogglZap(uid){
   if(m) m.style.display=(v==='rukovodilac'||v==='radnik')?'inline-flex':'none';
 }
 async function ucitajNaloge(){
-  if(!isDirector()||!supa) return;
+  if(!jePunaUprava()||!supa) return;
   NALOZI_MSG='';
   try{
     const [od,do_]=angazPeriod();
@@ -2708,14 +2708,14 @@ async function ucitajNaloge(){
   if(current==='nalozi') render();
 }
 async function dodeliUlogu(email, uid){
-  if(!isDirector()||!supa) return;
+  if(!jePunaUprava()||!supa) return;
   const v=id=>{ const e=document.getElementById(id); return e?e.value:''; };
   email=(email||v('n_email')).trim().toLowerCase();
   const uloga=uid?v('nu_'+uid):v('n_uloga'), zap=(uid?v('nz_'+uid):v('n_zap'))||null, sar=(uid?v('ns_'+uid):v('n_sar'))||null;
   const finEl=document.getElementById(uid?'nf_'+uid:'n_fin'), fin=uloga==='rukovodilac'&&!!(finEl&&finEl.checked);
   if(!email||!/@/.test(email)){ alert('Unesi email naloga.'); return; }
   if(!ULOGE.some(u=>u[0]===uloga)){ alert('Izaberi ulogu.'); return; }
-  if(!smemDodelitiUlogu(uloga)){ alert(DIREKTORSKE.includes(uloga)?'Direktorske uloge dodeljuje samo direktor.':'Direktor modula dodeljuje samo rukovodioce i radnike svog modula.'); return; }
+  if(!smemDodelitiUlogu(uloga)){ alert('Direktorske uloge dodeljuje samo direktor.'); return; }
   if((uloga==='rukovodilac'||uloga==='radnik')&&!zap){ alert((uloga==='rukovodilac'?'Rukovodilac':'Radnik')+' mora biti vezan za zaposlenog.'); return; }
   if(uloga==='spoljni'&&!sar){ alert('Spoljni saradnik mora biti vezan za podizvođača / saradnika.'); return; }
   const chk=id=>{ const e=document.getElementById(id); return !!(e&&e.checked); };
@@ -2729,7 +2729,7 @@ async function dodeliUlogu(email, uid){
   await ucitajNaloge();
 }
 async function ukloniPristup(email){
-  if(!isDirector()||!supa) return;
+  if(!jePunaUprava()||!supa) return;
   if(!confirm('Ukloniti pristup za '+unesc(email)+'? Nalog ostaje, ali neće videti nijedan podatak dok mu ponovo ne dodeliš ulogu.')) return;
   const {error}=await supa.rpc('ukloni_pristup',{p_email:email});
   if(error){ alert('Nije uspelo: '+(error.message||error)); return; }

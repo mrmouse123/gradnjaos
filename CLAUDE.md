@@ -174,7 +174,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..27.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..28.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -293,7 +293,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
 1. **Sedam uloga (od 2026-10-07, migracija 14; + direktori modula 2026-10-14, migracija 27; odluka klijenta):** `direktor` (super:
    sve + BRISANJE + dodela direktorskih uloga), `admin` (sve bez brisanja; ne dira direktore),
    **`direktor_projektovanja` / `direktor_izvodjenja`** (sva ovlašćenja direktora — finansije, cene, pregled situacija,
-   predmer, tim, BRISANJE, Admin kokpit — ali SAMO u svom modulu; v. pasus „Direktori modula" ispod),
+   predmer, tim, BRISANJE — ali SAMO u svom modulu; BEZ Admin kokpita, migracija 28; v. pasus „Direktori modula" ispod),
    `rukovodilac` (svoja gradilišta; finansije SAMO uz `vidi_finansije` = „Rukovodilac 1"),
    `radnik` (gradilišta gde je u timu: čita, svoj dnevnik/zadaci/dokumenta), `spoljni`
    (kao radnik, vezan za `podizvodjaci.id`). Finansije (cene, naplata, kumulativ,
@@ -323,16 +323,18 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `je_super() or (je_direktor_modula() and vodim_gradiliste(gr))`; `gr null` → samo direktor), `modul_moj(modul)` za INSERT
    gradilišta (red još ne postoji). `je_super()` ostaje SAMO direktor (globalne tabele: zaposleni, klijenti, podizvođači,
    šifarnik, magacin). RPC: `obrisi_gradiliste` guard `smem_brisati`, `angazovanost` filtrira `modul_dozvoljen(gr)`.
-   NALOZI: direktorske uloge (`DIREKTORSKE`) dodeljuje/menja/uklanja SAMO `moja_uloga()='direktor'` (ni admin);
-   direktor modula dodeljuje/menja/uklanja SAMO rukovodioce i radnike čiji su moduli ⊆ njegov (spoljni = oba modula →
-   ne može), ne dira upravu ni tuđi modul. KLIJENT: `primeniUlogu` → `ROLE='all'`, `MODULI=[modul]`, `MODUL='sve'`;
+   NALOZI (migracija 28, odluka 2026-10-14): Admin kokpit vidi SAMO puna uprava — `je_puna_uprava()` guard na
+   `nalozi_pregled`/`dodeli_ulogu`/`ukloni_pristup`/`angazovanost` i `log_koriscenja` select; klijent `jePunaUprava()`
+   (tab `punaUprava:true`, `viewNalozi` vraća na dash, `smemDodelitiUlogu`/`smemMenjatiNalog`). Direktor modula NEMA
+   kokpit (grana „samo svoj modul" iz migracije 27 je uklonjena). Direktorske uloge (`DIREKTORSKE`) dodeljuje/menja/uklanja
+   SAMO `moja_uloga()='direktor'` (ni admin). KLIJENT: `primeniUlogu` → `ROLE='all'`, `MODULI=[modul]`, `MODUL='sve'`;
    `visibleSites` filtrira po `MODULI` i za upravu; `smemNa` za upravu traži `modulDozvoljen(g.modul)`; `smemBrisati(grId)`
    umesto `jeSuper()` za svako brisanje reda gradilišta (dugmad + `obrisi*` guardovi); `upravaSve()` = puna uprava bez
    filtera (liste bez `gr`: zaposleni, dnevnik, podizvođači, trebovanja, Kanban); `tabDozvoljen`: zadaci samo uz projektovanje,
    magacin/naplata samo uz izvođenje — i za upravu; `modulEfektivni()` (= `MODUL`, ili jedini modul naloga) bira prikazne
    grane koje su ranije gledale samo `MODUL` (naziv Spoljni saradnici/Podizvođači, dugme Šifarnik artikala, kolona „Ugov. vs
    situacije", grupisanje table) — `MODUL` sam ostaje `'sve'` (T42); `formSite` nudi samo dozvoljene module, izmena tuđeg se ne otvara;
-   Admin kokpit `smemDodelitiUlogu`/`smemMenjatiNalog` + čekboks modula samo za `MODULI`; „Pogled kao" direktoru modula
+   čekboks modula u Admin kokpitu samo za `MODULI` (puna uprava = oba); „Pogled kao" direktoru modula
    ne nudi admina/drugog direktora/osobe drugog modula (`all` = njegova uloga). Mock: `UPRAVA`/`DIREKTORSKE`/`MODUL_ULOGE`,
    `ctx.isModDir/mojiModuli/modulDozvoljen`, ista pravila u `dodeli_ulogu`/`ukloni_pristup`/`obrisi_gradiliste`/`angazovanost`
    (redove mock i dalje NE filtrira — RLS po modulu dokazana probom na bazi 2026-10-14). T57.
