@@ -1192,7 +1192,7 @@ let PODTIP = 'sve'; // samo za izvodjenje: 'sve' | 'visokogradnja' | 'niskogradn
 const MODUL_BOJA = {projektovanje:'var(--purple)', izvodjenje:'var(--blue)'};
 const PODTIPOVI = {visokogradnja:'Visokogradnja', niskogradnja:'Niskogradnja'};
 const PODTIP_BOJA = {visokogradnja:'var(--blue)', niskogradnja:'var(--amber)'};
-function modLab(g){ return (g.modul||'izvodjenje')==='projektovanje' ? 'Projektovanje' : PODTIPOVI[g.tip||'visokogradnja']; }   // nivo gradilista se ne prikazuje (faza je po svesci, 2026-10-14)
+function modLab(g){ return (g.modul||'izvodjenje')==='projektovanje' ? ('Projektovanje'+(g.nivo?' · '+g.nivo:'')) : PODTIPOVI[g.tip||'visokogradnja']; }
 function modCol(g){ return (g.modul||'izvodjenje')==='projektovanje' ? MODUL_BOJA.projektovanje : PODTIP_BOJA[g.tip||'visokogradnja']; }
 function setModul(m){ MODUL=m; PODTIP='sve'; renderNav(); render(); closeDrawer(); }
 function setPodtip(t){ PODTIP=t; renderNav(); render(); closeDrawer(); }
@@ -2993,7 +2993,17 @@ function ubaciSablonFaza(grId){
   if(n){ saveState(); renderNav(); render(); openSite(grId); }
 }
 /* Naknadno ubacivanje sablona nivoa (projektovanje): dodaje samo stavke kojih jos nema (isti oblik reda kao saveSite). */
-/* ubaciSablonNivoa (sablon nivoa gradilista) je OBRISAN 2026-10-14: faza je po svesci (formPredmerRed), gradiliste nema nivo. */
+function ubaciSablonNivoa(grId){
+  if(!isDirector()) return;
+  const g=grById[grId]; if(!g||!jePro(g)||!g.nivo) return;
+  const niv=g.nivo, sab=sifrarnikZa('projektovanje').filter(s=>s.grupa===niv);   // iz sifrarnika (naziv je vec esc-ovan pri upisu)
+  const ima=new Set(predmerZa(grId).map(r=>unesc(r.poz).trim().toLowerCase()));
+  const nove=sab.filter(s=>!ima.has((niv+' — '+unesc(s.naziv)).toLowerCase())&&!ima.has(unesc(s.naziv).toLowerCase()));
+  if(!nove.length){ alert('Sve stavke šablona već postoje u specifikaciji.'); return; }
+  const ts=Date.now();
+  nove.forEach((s,i)=>DATA.predmer.push({id:'pm'+ts+'-'+i, gr:grId, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:null}));
+  osveziNapredak(grId); sinhronizujSveske(grId); saveState(); render();
+}
 /* Izvodjenje: ceklirane pozicije iz sifrarnika (sifrarnikChecklist('izvodjenje')) → redovi predmera.
    Preskace nazive koji vec postoje na gradilistu. Vraca broj dodatih. Poziva ga saveSite (novo) i saveIzSifarnika (postojece). */
 function dodajIzSifarnika(grId){
@@ -3100,7 +3110,7 @@ function viewPredmer(){
   </div>`:''}
   <div class="tools">
     ${pro?`${smemPredmer(g.id)?`<button class="btn" onclick="formPredmerRed('${g.id}')">${icon('plus')} Dodaj sveske (faza + ček-lista)</button>`:''}
-`:`
+    ${isDirector()&&g.nivo?`<button class="btn ghost" onclick="ubaciSablonNivoa('${g.id}')">＋ Ubaci šablon nivoa (${g.nivo})</button>`:''}`:`
     ${smem?`<button class="btn${isDirector()?' ghost':''}" onclick="formIzvedeno('${g.id}')">⇧ Učitaj izvedeno (Excel)</button>`:''}
     ${isDirector()?`<button class="btn" onclick="formPredmerImport('${g.id}')">${icon('plus')} Uvezi iz Excela (nalepi)</button>
     <button class="btn ghost" onclick="formPredmerRed('${g.id}')">＋ Dodaj poziciju</button>
@@ -4543,7 +4553,7 @@ function formSite(id){
   const g=id?grById[id]:null, ed=!!g;
   if(id&&!g) return;
   if(ed ? !(isDirector() && smemNa(id)) : !isDirector()) return;   // izmena: samo uprava, u svom modulu (direktor modula ne menja tudje gradiliste)
-  const samoPro=!ed && !modulDozvoljen('izvodjenje');   // direktor projektovanja: novo gradiliste je samo projektantsko (bez nivoa i cek-liste — sveske se dodaju posle, 2026-10-14)
+  const samoPro=!ed && !modulDozvoljen('izvodjenje');   // direktor projektovanja: novo gradiliste je samo projektantsko
   const va=x=>ed?` value="${x}"`:'';                         // prefill (g.* je već esc-ovan → ispravan HTML atribut)
   const sel=(a,b)=>ed&&a===b?' selected':'';
   const rukLista=DATA.zaposleni.filter(z=>z.poz==='Rukovodilac gradilišta'||(ed&&z.id===g.rukovodilac));  // trenutni rukovodilac uvek u listi (inače bi se tiho zamenio)
@@ -4557,12 +4567,14 @@ function formSite(id){
       ${ed?`<div class="f-2">
         <div class="f-row"><label>Modul</label><div style="padding:8px 0;font-size:13.5px;font-weight:600">${jePro(g)?'Projektovanje':'Izvođenje radova'}</div></div>
         ${jePro(g)
-          ?''
+          ?`<div class="f-row"><label>Nivo dokumentacije</label><select id="f_nivo">${['IDR','IDP/PGD','PZI'].map(n=>`<option value="${n}"${sel(g.nivo,n)}>${n}</option>`).join('')}</select></div>`
           :`<div class="f-row"><label>Tip izvođenja</label><select id="f_tip">${Object.keys(PODTIPOVI).map(t=>`<option value="${t}"${sel(g.tip||'visokogradnja',t)}>${PODTIPOVI[t]}</option>`).join('')}</select></div>`}
       </div>`:`<div class="f-2">
         <div class="f-row"><label>Modul</label><select id="f_modul" onchange="toggleTipRadova(this.value)">${modulDozvoljen('izvodjenje')?'<option value="izvodjenje">Izvođenje radova</option>':''}${modulDozvoljen('projektovanje')?'<option value="projektovanje">Projektovanje</option>':''}</select></div>
         <div class="f-row" id="tipRadovaBox" style="display:${samoPro?'none':'block'}"><label>Tip izvođenja</label><select id="f_tip"><option value="visokogradnja">Visokogradnja</option><option value="niskogradnja">Niskogradnja</option></select></div>
+        <div class="f-row" id="nivoBox" style="display:${samoPro?'block':'none'}"><label>Trenutni nivo (faza)</label><select id="f_nivo"><option value="IDR">IDR</option><option value="IDP/PGD">IDP/PGD</option><option value="PZI">PZI</option></select></div>
       </div>
+      <div id="nivoFillBox" style="display:${samoPro?'block':'none'}">${sifrarnikChecklist('projektovanje', true)}</div>
       <div id="mereFillBox" style="display:${samoPro?'none':'block'}">${sifrarnikChecklist('izvodjenje', true)}
         <div class="f-row"><label>Ili učitaj ceo ugovoreni predmer iz Excela (investitorski šablon: list po vrsti radova, br. poz | opis | JM | količina | jed. cena bez PDV)</label>
           <div class="tools" style="margin:0"><label class="btn ghost" style="cursor:pointer">⇧ Učitaj predmer (.xlsx) <input id="pm_fajl" type="file" accept=".xlsx" style="display:none" onchange="predmerIzFajla(this,'pm_pregled')"></label><span class="sub">ukupno bez PDV se računa automatski; pozicije iz fajla se dodaju uz čekirane artikle</span></div>
@@ -4600,24 +4612,29 @@ function formSite(id){
 /* Projektovanje pri kreiranju: sve 3 faze (IDR / IDP-PGD / PZI) sa svim podfazama,
    svaka sa čekboksom (ukloni ako ne treba) i zaduženim (zaposleni ili spoljni saradnik).
    Čekirane postaju redovi Specifikacije usluga sa `zaduzen`. Indeks je globalan kroz nivoe. */
-/* Ceklista iz sifrarnika (DATA.sifrarnik) SAMO za Izvodjenje (od 2026-10-14). Indeks k = pozicija u sifrarnikZa('izvodjenje')
-   (globalan kroz grupe) — saveSite/saveIzSifarnika iteriraju ISTU listu: f_sf_k + f_sfk_k (kolicina) + f_sfc_k (cena) + f_sfz_k. */
+/* Ceklista iz sifrarnika (DATA.sifrarnik) za oba modula. Indeks k = pozicija u sifrarnikZa(modul)
+   (globalan kroz grupe) — saveSite/saveIzSifarnika iteriraju ISTU listu.
+   projektovanje: f_nd_k + f_ndz_k (podrazumevano cekirano); izvodjenje: f_sf_k + f_sfk_k (kolicina) + f_sfz_k (podrazumevano necekirano). */
 function sifrarnikPoz(s, modul){ return modul==='projektovanje' ? (s.grupa?s.grupa+' — ':'')+s.naziv : s.naziv; }
 function zaduzenOpcije(sel){ const s=id=>id===sel?' selected':''; return [...DATA.zaposleni.map(z=>`<option value="${z.id}"${s(z.id)}>${z.ime}</option>`), ...(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}"${s(p.id)}>${p.naziv} (spoljni)</option>`)].join(''); }
-/* „Razno" (Izvodjenje, samo pri kreiranju gradilista): slobodne stavke ispod sifarnika — f_nr_k (naziv), f_nrj_k (JM), f_nrk_k (kol),
-   f_nrc_k (cena), f_nrz_k (zaduzen); k = 0..RAZNO_N-1 (brojac, NE getElementById-petlja: dom-stub vraca element za svaki id).
-   Prazne se preskacu (dodajRaznoIzvodjenje). Projektovanje NEMA Razno pri kreiranju (od 2026-10-14; sveske se dodaju posle). */
-let RAZNO_N=0;
+/* „Razno" (projektovanje, samo pri kreiranju): slobodne stavke ispod svih svezaka — f_nr_k (naziv) + f_nrz_k (zaduzen),
+   k = 0..RAZNO_N-1 (brojac, NE getElementById-petlja: dom-stub vraca element za svaki id). Prazne se preskacu u saveSite. */
+let RAZNO_N=0, RAZNO_MODUL='projektovanje';   // RAZNO_MODUL postavlja sifrarnikChecklist(…, razno=true)
 function dodajRaznoRed(){
   const box=document.getElementById('raznoBox'); if(!box) return;
   const k=RAZNO_N++;
   const d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap';
   const st='font-size:12px;padding:5px 6px';
-  d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Usluga montaže, Dodatni materijal…" style="flex:1 1 160px;min-width:0;${st}">
+  if(RAZNO_MODUL==='izvodjenje'){
+    d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Usluga montaže, Dodatni materijal…" style="flex:1 1 160px;min-width:0;${st}">
       <select id="f_nrj_${k}" style="width:70px;${st}">${SF_JM.map(j=>`<option value="${j}"${j==='kom'?' selected':''}>${j}</option>`).join('')}</select>
       <input type="number" id="f_nrk_${k}" placeholder="količina" style="width:84px;${st}">
       ${canFinance()?`<input type="number" id="f_nrc_${k}" placeholder="cena RSD" title="jedinična cena bez PDV" style="width:84px;${st}">`:''}
       <select id="f_nrz_${k}" style="width:34%;min-width:0;${st}"><option value="">— zadužen —</option>${zaduzenOpcije()}</select>`;
+  } else {
+    d.innerHTML=`<input id="f_nr_${k}" placeholder="npr. Geodetski snimak, Elaborat…" style="flex:1;min-width:0;${st}">
+      <select id="f_nrz_${k}" style="width:46%;min-width:0;${st}"><option value="">— zadužen —</option>${zaduzenOpcije()}</select>`;
+  }
   box.appendChild(d);
   const i=document.getElementById('f_nr_'+k); if(i&&i.focus) i.focus();
 }
@@ -4634,16 +4651,16 @@ function dodajRaznoIzvodjenje(grId){
   RAZNO_N=0;
   return n;
 }
-function sifrarnikChecklist(modul, razno){   // SAMO Izvodjenje (od 2026-10-14; Projektovanje nema sifarnik u UI). razno=true SAMO gde saveSite cita f_nr_k (formSite novo)
-  if(modul!=='izvodjenje') return '';
+function sifrarnikChecklist(modul, razno){   // razno=true SAMO tamo gde saveSite cita f_nr_k (formSite novo); drugi pozivaoci ne smeju da je prikazu
+  const pro=modul==='projektovanje';
   const opcije=zaduzenOpcije();
-  RAZNO_N=0;
+  RAZNO_N=0; if(razno) RAZNO_MODUL=modul;
   const lista=sifrarnikZa(modul), grupe=[];
   lista.forEach((s,k)=>{ let gr=grupe.find(x=>x.naziv===s.grupa); if(!gr){ gr={naziv:s.grupa,red:[]}; grupe.push(gr); } gr.red.push([s,k]); });
-  const cid='f_sf_', zid='f_sfz_', pro=false;
-  const label='Predmer — artikli iz šifarnika (čekiraj šta ulazi, upiši količinu'+(canFinance()?' i jediničnu cenu bez PDV u RSD':'')+')';
+  const cid=pro?'f_nd_':'f_sf_', zid=pro?'f_ndz_':'f_sfz_';
+  const label=pro?'Specifikacija — sveske po nivoima dokumentacije (odčekiraj šta ne treba, dodeli zaduženog)':'Predmer — artikli iz šifarnika (čekiraj šta ulazi, upiši količinu'+(canFinance()?' i jediničnu cenu bez PDV u RSD':'')+')';
   return `<div class="f-row"><label>${label}</label>
-    <input placeholder="🔍 filtriraj po šifri, nazivu ili grupi" oninput="filtrirajSifrarnik(this)" style="margin-bottom:6px">
+    ${pro?'':`<input placeholder="🔍 filtriraj po šifri, nazivu ili grupi" oninput="filtrirajSifrarnik(this)" style="margin-bottom:6px">`}
     <div class="chk-list" style="max-height:260px;overflow-y:auto">${grupe.map(gr=>`
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:700;margin:8px 0 4px">${gr.naziv||'—'}</div>
       ${gr.red.map(([s,k])=>`<div class="sf-red" data-txt="${((s.sifra||'')+' '+s.naziv+' '+(s.grupa||'')).toLowerCase()}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
@@ -4667,6 +4684,8 @@ function filtrirajSifrarnik(inp){
 function toggleTipRadova(val){
   const pro = val==='projektovanje';
   const b=document.getElementById('tipRadovaBox'); if(b) b.style.display = pro?'none':'block';
+  const n=document.getElementById('nivoBox'); if(n) n.style.display = pro?'block':'none';
+  const f=document.getElementById('nivoFillBox'); if(f) f.style.display = pro?'block':'none';
   const m=document.getElementById('mereFillBox'); if(m) m.style.display = pro?'none':'block';
 }
 function toggleNoviKlijent(val){
@@ -4682,10 +4701,10 @@ function saveSite(grId){
     g.naziv=nazivE; g.lok=esc(String(v('f_lok')).trim())||'—'; g.adresa=esc(String(v('f_adresa')).trim())||null; g.povrsina=+v('f_povrsina')||null;   // nadzor: polje uklonjeno iz forme (2026-10-07), kolona ostaje za stare podatke
     g.klijent=v('f_kli')||g.klijent; g.rukovodilac=v('f_ruk')||g.rukovodilac;
     g.pocetak=v('f_poc')||g.pocetak; g.rok=v('f_rok')||g.rok;
-    const tipPre=g.tip;   // nivo gradilista se vise ne menja (faza je po svesci, 2026-10-14)
-    if(!jePro(g)) g.tip=v('f_tip')||g.tip||'visokogradnja';
+    const tipPre=g.tip, nivoPre=g.nivo;
+    if(jePro(g)) g.nivo=v('f_nivo')||g.nivo; else g.tip=v('f_tip')||g.tip||'visokogradnja';
     if(canFinance()){ const c=String(v('f_cena')).trim(), t=String(v('f_tro')).trim(); if(c!=='') g.budzet=+c||0; if(t!=='') g.troskovi=+t||0; }
-    if(g.tip!==tipPre&&!fazeZa(g).includes(g.faza)) g.faza=fazeZa(g)[0];   // promena tipa → stara faza ne postoji u novom šablonu
+    if((g.tip!==tipPre||g.nivo!==nivoPre)&&!fazeZa(g).includes(g.faza)) g.faza=fazeZa(g)[0];   // promena tipa → stara faza ne postoji u novom šablonu
     saveState(); closeModal(); rebuildMaps(); renderNav(); render(); openSite(grId);
     return;
   }
@@ -4701,11 +4720,25 @@ function saveSite(grId){
   const gid='g'+Date.now();
   const jeProNovi = v('f_modul')==='projektovanje';
   DATA.gradilista.push({
-    id:gid, naziv, modul:v('f_modul')||'izvodjenje', tip:(v('f_modul')==='projektovanje'?null:(v('f_tip')||'visokogradnja')), lok:esc(v('f_lok').trim())||'—', adresa:esc(String(v('f_adresa')).trim())||null, povrsina:+v('f_povrsina')||null, nadzor:'', adm:{}, nivo:null, klijent:klijentId, rukovodilac:v('f_ruk'),
+    id:gid, naziv, modul:v('f_modul')||'izvodjenje', tip:(v('f_modul')==='projektovanje'?null:(v('f_tip')||'visokogradnja')), lok:esc(v('f_lok').trim())||'—', adresa:esc(String(v('f_adresa')).trim())||null, povrsina:+v('f_povrsina')||null, nadzor:'', adm:{}, nivo:(jeProNovi?(v('f_nivo')||'IDR'):null), klijent:klijentId, rukovodilac:v('f_ruk'),
     pocetak:v('f_poc')||todayStr(), rok:v('f_rok')||plusDays(180), napredak:0, status:'planirano', faza:(jeProNovi?'Idejno rešenje':'Priprema terena'),
     budzet:cena, troskovi:tro, potroseno:0, naplaceno:0
   });
-  if(!jeProNovi){   /* Projektovanje: bez svezaka pri kreiranju (odluka 2026-10-14) - dodaju se posle kroz Dodaj sveske (faza + cek-lista) */
+  if(jeProNovi){
+    /* Čeklista iz šifarnika (sifrarnikChecklist): čekirane → redovi specifikacije sa zaduženim */
+    const ts=Date.now(); let n=0;
+    sifrarnikZa('projektovanje').forEach((s,idx)=>{
+      const c=document.getElementById('f_nd_'+idx); if(!c||!c.checked) return;
+      const z=document.getElementById('f_ndz_'+idx); const zad=(z&&z.value)||null;
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+    });
+    for(let k=0;k<RAZNO_N;k++){   // „Razno": slobodne stavke, prazne se preskacu
+      const inp=document.getElementById('f_nr_'+k); const naziv=esc(String((inp&&inp.value)||'').trim()); if(!naziv) continue;
+      const z=document.getElementById('f_nrz_'+k); const zad=(z&&z.value)||null;
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:'Razno — '+naziv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+    }
+    RAZNO_N=0;
+  } else {
     dodajIzSifarnika(gid); dodajRaznoIzvodjenje(gid); dodajPredmerIzPripreme(gid);
     rebuildMaps();
     /* Zadaci se pri kreiranju NE seju (odluka 2026-10-09): šablon faza ostaje opciono dugme u fioci (ubaciSablonFaza). */
@@ -4916,8 +4949,9 @@ function openSite(id){
         ${timHtml}
       </div>`}
 
-      ${(g.povrsina||g.nadzor)?`<div class="dr-sec">
+      ${(g.povrsina||g.nadzor||g.nivo)?`<div class="dr-sec">
         <h4>Osnovni podaci</h4>
+        ${g.nivo?`<div class="dr-kv"><span class="k">Nivo dokumentacije</span><span class="v" style="font-weight:600;color:${MODUL_BOJA.projektovanje}">${g.nivo}</span></div>`:''}
         ${g.povrsina?`<div class="dr-kv"><span class="k">Površina</span><span class="v num">${g.povrsina.toLocaleString('sr-RS')} m²</span></div>`:''}
         ${g.nadzor?`<div class="dr-kv"><span class="k">Kontakt nadzora</span><span class="v" style="font-weight:500">${g.nadzor}</span></div>`:''}
       </div>`:''}
