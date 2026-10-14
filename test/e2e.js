@@ -148,7 +148,7 @@ const MUTATORS = [
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
   ['saveTask', ''], ['saveDiary', ''], ['obrisiDokument', "'dk_x'"],
-  ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
+  ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
   ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-a-001'"], ['obrisiSifrarnik', "'sf-a-001'"], ['saveIzSifarnika', "'g1'"],
   ['pocniZadatak', "'t3'"], ['pauzirajZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
@@ -845,73 +845,23 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (const m of ['izvodjenje', 'projektovanje'])
       if (!a.run(`(()=>{const l=sifrarnikZa('${m}');return l.length>0&&l.every((s,k)=>k===0||l[k-1].redosled<=s.redosled)})()`)) throw new Error('nije sortirano: ' + m);
   });
-  await acheck('b) formSite(): mereFillBox (24 izv.) + nivoFillBox (36 proj.); toggleTipRadova prebacuje prikaz', async () => {
+  await acheck('b) formSite(): mereFillBox (81 artikala, samo Izvodjenje); Projektovanje bez cek-liste, Razno i nivoa (2026-10-14); toggleTipRadova prebacuje prikaz', async () => {
     const a = await boot();
     a.run("ROLE='all'; formSite();");
     const doc = a.g.document, html = doc.getElementById('modal').innerHTML;
-    if (!html.includes('id="mereFillBox"') || !html.includes('id="nivoFillBox"')) throw new Error('nema kontejnera');
+    if (!html.includes('id="mereFillBox"')) throw new Error('nema kontejnera');
+    if (/nivoFillBox|nivoBox|f_nivo|f_nd_|f_ndz_|Trenutni nivo|sveske po nivoima/.test(html)) throw new Error('forma jos nudi nivo / cek-listu projektovanja');
+    if (a.run("sifrarnikChecklist('projektovanje', true)") !== '') throw new Error('sifrarnikChecklist(projektovanje) nije prazan');
     const c = re => (html.match(re) || []).length;
     if (c(/id="f_sf_\d+"/g) !== 81 || c(/id="f_sfk_\d+"/g) !== 81 || c(/id="f_sfz_\d+"/g) !== 81) throw new Error(`f_sf_ ${c(/id="f_sf_\d+"/g)}, f_sfk_ ${c(/id="f_sfk_\d+"/g)}`);
     if (c(/id="f_sfc_\d+"/g) !== 81) throw new Error('cena po stavci (uprava): ' + c(/id="f_sfc_\d+"/g));
-    if (!html.includes('oninput="filtrirajSifrarnik(this)"') || c(/class="sf-red"/g) !== 117) throw new Error('nema filtera / sf-red redova: ' + c(/class="sf-red"/g));
-    if (c(/id="raznoBox"/g) !== 2) throw new Error('Razno mora biti i u Izvodjenju i u Projektovanju: ' + c(/id="raznoBox"/g));
-    if (c(/id="f_nd_\d+"/g) !== 36) throw new Error('f_nd_ ' + c(/id="f_nd_\d+"/g));
+    if (!html.includes('oninput="filtrirajSifrarnik(this)"') || c(/class="sf-red"/g) !== 81) throw new Error('nema filtera / sf-red redova: ' + c(/class="sf-red"/g));
+    if (c(/id="raznoBox"/g) !== 1) throw new Error('Razno samo u Izvodjenju: ' + c(/id="raznoBox"/g));
     if (!/id="f_sfk_0"[^>]*type="number"|type="number"[^>]*id="f_sfk_0"/.test(html)) throw new Error('kolicina nije type=number');
     a.run("toggleTipRadova('izvodjenje')");
-    if (doc.getElementById('mereFillBox').style.display !== 'block' || doc.getElementById('nivoFillBox').style.display !== 'none') throw new Error('izvodjenje: pogresan prikaz');
+    if (doc.getElementById('mereFillBox').style.display !== 'block' || doc.getElementById('tipRadovaBox').style.display !== 'block') throw new Error('izvodjenje: pogresan prikaz');
     a.run("toggleTipRadova('projektovanje')");
-    if (doc.getElementById('mereFillBox').style.display !== 'none' || doc.getElementById('nivoFillBox').style.display !== 'block') throw new Error('projektovanje: pogresan prikaz');
-  });
-  await acheck('c) novo IZVODJENJE gradiliste: cekirane pozicije iz sifarnika → predmer (kol, jm, zaduzen)', async () => {
-    const a = await boot();
-    a.run("ROLE='all'; formSite();");
-    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
-    const kli = a.run('DATA.clijenti[0].id');
-    set('f_naziv', 'Izv T34'); set('f_lok', 'NS'); set('f_modul', 'izvodjenje'); set('f_kli', kli); set('f_ruk', 'z1');
-    set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
-    doc.getElementById('f_sf_0').checked = true; set('f_sfk_0', '180'); set('f_sfz_0', 'z2');
-    doc.getElementById('f_sf_3').checked = true; set('f_sfk_3', '');
-    a.run('saveSite()');
-    const g = a.run('DATA.gradilista[DATA.gradilista.length-1]');
-    if (g.naziv !== 'Izv T34' || g.modul !== 'izvodjenje') throw new Error('gradiliste: ' + JSON.stringify(g));
-    const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
-    if (rows.length !== 2) throw new Error('redova ' + rows.length);
-    const s0 = a.run("sifrarnikZa('izvodjenje')[0]"), s3 = a.run("sifrarnikZa('izvodjenje')[3]");
-    if (rows[0].poz !== s0.naziv || rows[0].jm !== s0.jm || rows[0].kol !== 180 || rows[0].zaduzen !== 'z2' || rows[0].cena !== 0 || rows[0].izv !== 0) throw new Error('red 1: ' + JSON.stringify(rows[0]));
-    if (rows[1].poz !== s3.naziv || rows[1].jm !== s3.jm || rows[1].kol !== 1 || rows[1].zaduzen !== null) throw new Error('red 2: ' + JSON.stringify(rows[1]));
-    /* formIzSifarnika / saveIzSifarnika: dodaje samo nove, preskace postojece; rukovodilac nista */
-    a.run(`formIzSifarnika(${JSON.stringify(g.id)})`);
-    doc.getElementById('f_sf_0').checked = true; doc.getElementById('f_sf_5').checked = true; set('f_sfk_5', '40');
-    a.run(`ROLE='z1'; saveIzSifarnika(${JSON.stringify(g.id)}); ROLE='all';`);
-    if (a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)}).length`) !== 2) throw new Error('rukovodilac je dodao iz sifarnika');
-    a.run(`saveIzSifarnika(${JSON.stringify(g.id)})`);
-    const r2 = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
-    if (r2.length !== 3 || r2[2].kol !== 40) throw new Error('posle saveIzSifarnika: ' + JSON.stringify(r2.map(r => [r.poz, r.kol])));
-    a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='all';`);
-    if (!a.run('viewPredmer()').includes('formIzSifarnika')) throw new Error('nema dugmeta u viewPredmer (izvodjenje)');
-    if (a.run("PRED_ID='g8'; viewPredmer()").includes('formIzSifarnika')) throw new Error('dugme na projektovanju');
-    if (a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='z1'; viewPredmer()`).includes('formIzSifarnika')) throw new Error('rukovodilac vidi dugme');
-    a.run("ROLE='all';");
-  });
-  await acheck('e) ubaciSablonNivoa iz sifarnika: dodaje samo nedostajuce, drugi poziv 0 + alert', async () => {
-    const a = await boot();
-    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
-    const niv = JSON.stringify(a.run('grById.g8.nivo'));
-    const tpl = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).length`);
-    if (!(tpl > 2)) throw new Error('sablon ' + tpl);
-    const prvi = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv})[0].naziv`);
-    a.run(`DATA.predmer.push({id:'pm-t34', gr:'g8', poz:${niv}+' — '+${JSON.stringify(prvi)}, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null});`);
-    /* koliko stavki sablona vec postoji u g8 (pod punim ili golim imenom) */
-    const vec = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).filter(s=>predmerZa('g8').some(r=>r.poz===${niv}+' — '+s.naziv||r.poz===s.naziv)).length`);
-    if (vec < 1) throw new Error('pm-t34 nije prepoznat');
-    const n0 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') - n0 !== tpl - vec) throw new Error(`dodato ${cnt('g8') - n0}, ocekivano ${tpl - vec}`);
-    if (a.run("predmerZa('g8').filter(r=>r.id==='pm-t34').length") !== 1) throw new Error('pm-t34 dupliran');
-    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
-    if (a.g._calls.alert.length !== alerts + 1) throw new Error('nema alert-a');
+    if (doc.getElementById('mereFillBox').style.display !== 'none' || doc.getElementById('tipRadovaBox').style.display !== 'none') throw new Error('projektovanje: pogresan prikaz');
   });
   await acheck('f) saveSifrarnik / toggleSifrarnik / obrisiSifrarnik: guardovi po ulozi', async () => {
     const a = await boot();
@@ -1265,31 +1215,24 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T29 novo gradiliste (2026-10-07): bez kontakt nadzora; projektovanje = ceklista svih faza/podfaza sa zaduzenim ---- */
   section('T29 novo gradiliste: ceklista faza');
-  await acheck('formSite(): sve 3 faze i sve podfaze kao cekboksi + zaduzeni; cekirane postaju redovi specifikacije sa zaduzenim', async () => {
+  await acheck('novo PROJEKTANTSKO gradiliste (2026-10-14): forma bez nivoa i bez cek-liste svezaka, bez Razno; saveSite pravi gradiliste sa nivo=null i NULA redova specifikacije (sveske se dodaju posle)', async () => {
     const a = await boot();
-    a.run("ROLE='all'; formSite();");
+    a.run("ROLE='all'; formSite(); toggleTipRadova('projektovanje');");
     const html = a.g.document.getElementById('modal').innerHTML;
-    const ukupno = a.run("Object.values(NIVOI_DOK).reduce((s,l)=>s+l.length,0)");
-    const n = (html.match(/id="f_nd_\d+"/g) || []).length, nz = (html.match(/id="f_ndz_\d+"/g) || []).length;
-    if (n !== ukupno || nz !== ukupno) throw new Error(`cekboksa ${n}, zaduzenih ${nz}, ocekivano ${ukupno}`);
-    for (const niv of ['IDR', 'IDP/PGD', 'PZI']) if (!html.includes('>' + niv + '<')) throw new Error('nema naslova faze ' + niv);
-    if (!html.includes('(spoljni)')) throw new Error('zaduzeni ne nude spoljne saradnike');
-    if (html.includes('f_nivo_fill') || html.includes('f_nadzor')) throw new Error('stari cekboks sablona / polje nadzora jos postoje');
+    if (/f_nd_|f_ndz_|f_nivo|nivoBox|nivoFillBox|f_nivo_fill|f_nadzor/.test(html)) throw new Error('forma jos nudi nivo / cek-listu svezaka / nadzor');
     const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
-    const kli = a.run('DATA.clijenti[0].id'), nPre = a.run('DATA.predmer.length');
-    set('f_naziv', 'Pro T29'); set('f_lok', 'NS'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDP/PGD'); set('f_kli', kli); set('f_ruk', 'z1');
+    const kli = a.run('DATA.clijenti[0].id'), nPre = a.run('DATA.predmer.length'), zPre = a.run('DATA.zadaci.length');
+    set('f_naziv', 'Pro T29'); set('f_lok', 'NS'); set('f_modul', 'projektovanje'); set('f_kli', kli); set('f_ruk', 'z1');
     set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
-    /* stub ne parsira HTML -> cekboksi su podrazumevano false; cekiramo 0 (IDR/PDR) i 6 (IDP-PGD/1.0 Arhitektura) */
-    doc.getElementById('f_nd_0').checked = true; doc.getElementById('f_ndz_0').value = 'z2';
-    doc.getElementById('f_nd_6').checked = true; doc.getElementById('f_ndz_6').value = '';
     a.run('saveSite()');
     const g = a.run("DATA.gradilista[DATA.gradilista.length-1]");
-    if (g.naziv !== 'Pro T29' || g.modul !== 'projektovanje' || g.nivo !== 'IDP/PGD') throw new Error('gradiliste nije kreirano kako treba: ' + JSON.stringify(g));
-    if (g.nadzor !== '') throw new Error('nadzor treba da bude prazan');
-    const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
-    if (rows.length !== 2) throw new Error('redova specifikacije: ' + rows.length + ' (ocekivano 2 cekirana), ukupno pre ' + nPre);
-    if (rows[0].poz !== 'IDR — PDR' || rows[0].zaduzen !== 'z2') throw new Error('prvi red: ' + JSON.stringify(rows[0]));
-    if (rows[1].poz !== 'IDP/PGD — 1.0 Arhitektura' || rows[1].zaduzen !== null) throw new Error('drugi red: ' + JSON.stringify(rows[1]));
+    if (g.naziv !== 'Pro T29' || g.modul !== 'projektovanje' || g.nivo !== null || g.tip !== null || g.faza !== 'Idejno rešenje') throw new Error('gradiliste nije kreirano kako treba: ' + JSON.stringify(g));
+    if (a.run('DATA.predmer.length') !== nPre || a.run('DATA.zadaci.length') !== zPre) throw new Error('pro gradiliste dobilo redove specifikacije/zadatke pri kreiranju');
+    if (!a.run('modLab(DATA.gradilista[DATA.gradilista.length-1])').startsWith('Projektovanje') || a.run('modLab(grById.g8)') !== 'Projektovanje') throw new Error('modLab prikazuje nivo');
+    a.run(`formSite(${JSON.stringify(g.id)})`);
+    if (/f_nivo|Nivo dokumentacije/.test(doc.getElementById('modal').innerHTML)) throw new Error('izmena pro gradilista nudi nivo');
+    a.run("current='predmer'; PRED_ID='g8'; render();");
+    if (a.run("typeof ubaciSablonNivoa") !== 'undefined' || doc.getElementById('view').innerHTML.includes('ablon nivoa')) throw new Error('sablon nivoa jos postoji');
   });
 
   /* ---- T28 nalozi i log (migracija 12): tab samo direktor, RPC guardovi, log dogadjaji, log van PUSH_TABLES ---- */
@@ -1515,7 +1458,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot();
     a.run('ROLE=\'all\'; formSite();');
     const html = a.g.document.getElementById('modal').innerHTML;
-    for (const x of ['id="f_modul"', 'f_nd_0', 'f_ndz_0', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"', 'id="raznoBox"', 'dodajRaznoRed()'])
+    for (const x of ['id="f_modul"', 'f_sf_0', 'f_sfz_0', 'noviKlijentBox', '__novi__', 'Novo gradilište', 'onclick="saveSite()"', 'id="raznoBox"', 'dodajRaznoRed()'])
       if (!html.includes(x)) throw new Error('create forma nema: ' + x);
     if (html.includes('f_faze_fill')) throw new Error('sablon faza se vise ne nudi pri kreiranju (2026-10-09)');
     if (html.includes('f_nadzor')) throw new Error('polje kontakt nadzora je uklonjeno iz forme (2026-10-07)');
@@ -1630,50 +1573,6 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("formPredmerRed('g5');");
     if (!modal.innerHTML.includes('Nova pozicija') || modal.innerHTML.includes('Izmena pozicije')) throw new Error('bez pid nije "Nova pozicija"');
     if (!/<select id="f_pm_zad">/.test(modal.innerHTML)) throw new Error('izvođenje nema select Zadužen u formi');
-  });
-  await acheck('C3 savePredmerRed(gid,pid): izmena in-place, cena prazna = ostaje, izv klamp; rukovodilac ne menja ništa', async () => {
-    const a = await boot();
-    const doc = a.g.document, set = (id, val) => { doc.getElementById(id).value = val; };
-    const pre = a.run("DATA.predmer.length"), cena0 = a.run("DATA.predmer.find(r=>r.id==='pm1').cena");
-    if (a.run("DATA.predmer.find(r=>r.id==='pm1').izv") <= 2.5) throw new Error('setup: izv pm1 nije > 2.5');
-    set('f_pm_poz', 'Izmenjen & opis'); set('f_pm_kol', '2.5'); set('f_pm_cena', ''); set('f_pm_jm', 'm²'); set('f_pm_zad', '');
-    const before = a.run("JSON.stringify(DATA)");
-    a.run(`ROLE=${JSON.stringify(a.run("grById.g5.rukovodilac"))}; savePredmerRed('g5','pm1'); ROLE='all';`);
-    if (a.run("JSON.stringify(DATA)") !== before) throw new Error('rukovodilac je izmenio poziciju');
-    a.run("savePredmerRed('g5','pm1');");
-    const r = JSON.parse(a.run("JSON.stringify(DATA.predmer.find(r=>r.id==='pm1'))"));
-    if (r.poz !== 'Izmenjen &amp; opis') throw new Error('poz = ' + r.poz);
-    if (r.kol !== 2.5) throw new Error('kol = ' + r.kol);
-    if (r.cena !== cena0) throw new Error('cena promenjena: ' + r.cena);
-    if (r.izv !== 2.5) throw new Error('izv nije klampovan na kol: ' + r.izv);
-    if (r.jm !== 'm²' || r.zaduzen !== null) throw new Error('jm/zaduzen: ' + r.jm + '/' + r.zaduzen);
-    if (a.run("DATA.predmer.length") !== pre) throw new Error('izmena je dodala novi red');
-    set('f_pm_cena', '30');
-    a.run("savePredmerRed('g5','pm1');");
-    if (a.run("DATA.predmer.find(r=>r.id==='pm1').cena") !== 30) throw new Error('cena nije promenjena kad je uneta');
-  });
-  await acheck('D ubaciSablonNivoa: dodaje samo nepostojeće, drugi poziv 0 + alert, izvođenje ništa, rukovodilac ništa', async () => {
-    const a = await boot();
-    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
-    const tpl = JSON.parse(a.run("JSON.stringify(NIVOI_DOK[grById.g8.nivo])")).length;
-    const pre = cnt('g8');
-    a.run("ROLE='z4'; ubaciSablonNivoa('g8'); ROLE='all';");
-    if (cnt('g8') !== pre) throw new Error('rukovodilac je ubacio šablon');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== pre + tpl) throw new Error('dodato ' + (cnt('g8') - pre) + ', očekivano ' + tpl);
-    if (!a.run("DATA.predmer.some(r=>r.gr==='g8'&&r.poz==='IDP/PGD — 1.0 Arhitektura'&&r.kol===1&&r.cena===0&&r.zaduzen===null)")) throw new Error('red nema oblik kao saveSite');
-    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
-    if (a.g._calls.alert.length !== alerts + 1 || !/već postoje/.test(a.g._calls.alert[a.g._calls.alert.length - 1])) throw new Error('nema alert-a o postojećim stavkama');
-    const izv = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje').id"), n2 = cnt(izv);
-    a.run(`ubaciSablonNivoa('${izv}');`);
-    if (cnt(izv) !== n2) throw new Error('izvođenje dobilo šablon nivoa');
-    const h = a.run("ROLE='all'; PRED_ID='g8'; viewPredmer()");
-    if (!h.includes("ubaciSablonNivoa('g8')") || !h.includes('(IDP/PGD)')) throw new Error('nema dugmeta u viewPredmer (projektovanje)');
-    if (a.run("PRED_ID='g5'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('dugme na izvođenju');
-    if (a.run("ROLE='z4'; PRED_ID='g8'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('rukovodilac vidi dugme');
-    a.run("ROLE='all';");
   });
   await acheck('E openTroskovi + drawer: dobavljač/faktura, Ukupno, "Svi troškovi (N)"; rukovodilac ništa', async () => {
     const a = await boot();
@@ -3141,7 +3040,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.g._calls.confirm.length !== c0) throw new Error('confirm pozvan za tudje gradiliste');
     a.run('formSite()'); let m = a.g.document.getElementById('modal').innerHTML;
     if (m.includes('value="izvodjenje"') || !m.includes('value="projektovanje"')) throw new Error('formSite dirpro nudi izvodjenje');
-    if (!/id="nivoBox" style="display:block"/.test(m) || !/id="tipRadovaBox" style="display:none"/.test(m) || !/id="mereFillBox" style="display:none"/.test(m)) throw new Error('formSite dirpro: kutije nivo/tip/mere');
+    if (/nivoBox|f_nivo/.test(m) || !/id="tipRadovaBox" style="display:none"/.test(m) || !/id="mereFillBox" style="display:none"/.test(m)) throw new Error('formSite dirpro: kutije tip/mere (bez nivoa)');
     a.run("closeModal(); formSite('g1')"); if (a.g.document.getElementById('modal').innerHTML.includes('Izmeni podatke')) throw new Error('dirpro otvorio izmenu gradilista izvodjenja');
     a.run("formSite('g8')"); if (!a.g.document.getElementById('modal').innerHTML.includes('Izmeni podatke')) throw new Error('dirpro ne moze da izmeni svoje gradiliste');
     a.run('closeModal()');
@@ -3946,7 +3845,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
   await acheck('Razno u Izvodjenju: slobodna stavka (naziv, JM, kolicina, cena, zaduzen) → predmer red bez sifre; i kroz formIzSifarnika; Projektovanje bez sifarnika u situaciji', async () => {
     const a = await boot();
-    a.run("ROLE='all'; formSite(); document.getElementById('f_modul').value='izvodjenje'; toggleTipRadova('izvodjenje'); RAZNO_MODUL='izvodjenje'; dodajRaznoRed(); dodajRaznoRed();");
+    a.run("ROLE='all'; formSite(); document.getElementById('f_modul').value='izvodjenje'; toggleTipRadova('izvodjenje'); dodajRaznoRed(); dodajRaznoRed();");
     const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
     if (a.run('RAZNO_N') !== 2) throw new Error('RAZNO_N ' + a.run('RAZNO_N'));
     set('f_nr_0', ' Usluga montaže <i>x</i> '); set('f_nrj_0', 'h'); set('f_nrk_0', '12'); set('f_nrc_0', '45'); set('f_nrz_0', 'z2');
@@ -4118,40 +4017,22 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (const x of ['id="n_mp"', 'id="n_mi"', 'nmp_u-ruk', 'nmi_u-ruk', 'tačno jedan']) if (!h.includes(x)) throw new Error('Admin kokpit nema ' + x);
   });
 
-  /* ---- T40 Razno: slobodne stavke ispod svezaka (projektovanje, kreiranje) ---- */
+  /* ---- T40 Razno: samo Izvodjenje (projektantsko gradiliste nema cek-listu ni Razno pri kreiranju, 2026-10-14) ---- */
   section('T40 Razno ceklista');
-  await acheck('dodajRaznoRed + saveSite: popunjene stavke → redovi specifikacije "Razno — …" sa zaduzenim, prazne se preskacu, esc', async () => {
+  await acheck('Razno: samo u formi novog gradilista Izvodjenja (brojac se resetuje pri renderu, bez flaga nema Razno); pro forma bez Razno; izmena bez Razno', async () => {
     const a = await boot();
     a.run("ROLE='all'; formSite();");
     const html = a.g.document.getElementById('modal').innerHTML;
-    if (!html.includes('>Razno<') || !html.includes('id="raznoBox"')) throw new Error('nema sekcije Razno');
-    if (html.indexOf('id="raznoBox"') < html.lastIndexOf('f_nd_')) throw new Error('Razno nije ISPOD svih svezaka');
+    if (!html.includes('>Razno') || !html.includes('id="raznoBox"')) throw new Error('nema sekcije Razno (Izvodjenje)');
+    if (html.indexOf('id="raznoBox"') < html.lastIndexOf('f_sf_')) throw new Error('Razno nije ISPOD sifarnika');
     a.run('dodajRaznoRed(); dodajRaznoRed();');
-    a.run("sifrarnikChecklist('projektovanje', true)");   // ponovni render (nova forma) mora da resetuje brojac
+    a.run("sifrarnikChecklist('izvodjenje', true)");   // ponovni render (nova forma) mora da resetuje brojac
     if (a.run('RAZNO_N') !== 0) throw new Error('RAZNO_N nije resetovan pri ponovnom renderu: ' + a.run('RAZNO_N'));
-    if (a.run("sifrarnikChecklist('projektovanje')").includes('raznoBox')) throw new Error('Razno se prikazuje bez eksplicitnog flaga');
+    if (a.run("sifrarnikChecklist('izvodjenje')").includes('raznoBox')) throw new Error('Razno se prikazuje bez eksplicitnog flaga');
+    if (a.run("sifrarnikChecklist('projektovanje', true)") !== '' || a.run('typeof RAZNO_MODUL') !== 'undefined') throw new Error('projektovanje ima cek-listu/Razno');
     a.run("formSite(); dodajRaznoRed(); dodajRaznoRed(); dodajRaznoRed();");
-    if (a.run('RAZNO_N') !== 3) throw new Error('RAZNO_N = ' + a.run('RAZNO_N'));
-    const set = (id, val) => { a.g.document.getElementById(id).value = val; };
-    set('f_naziv', 'T40 projekat'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDR');
-    set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', a.run('DATA.zaposleni[0].id'));
-    set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(100)'));
-    const zad = a.run('DATA.zaposleni[1].id');
-    set('f_nr_0', '  Geodetski snimak '); set('f_nrz_0', zad);
-    set('f_nr_1', '');                                   // prazna → preskoci
-    set('f_nr_2', '<b>x</b>');                           // XSS → esc
-    a.run('saveSite();');
-    const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
-    const rows = a.run(`DATA.predmer.filter(r=>r.gr===${JSON.stringify(gid)} && r.poz.startsWith('Razno'))`);
-    if (rows.length !== 2) throw new Error('ocekujem 2 Razno reda, dobio ' + rows.length + ': ' + JSON.stringify(rows.map(r => r.poz)));
-    const r0 = rows.find(r => r.poz === 'Razno — Geodetski snimak');
-    if (!r0 || r0.zaduzen !== zad || r0.kol !== 1 || r0.jm !== 'kom') throw new Error('red: ' + JSON.stringify(r0));
-    if (rows.some(r => r.poz.includes('<b>'))) throw new Error('XSS: ' + JSON.stringify(rows.map(r => r.poz)));
-    if (!rows.some(r => r.poz.includes('&lt;b&gt;'))) throw new Error('esc nije primenjen');
-    if (a.run('RAZNO_N') !== 0) throw new Error('RAZNO_N nije resetovan');
-    const ids = new Set(a.run(`DATA.predmer.map(r=>r.id)`)); if (ids.size !== a.run('DATA.predmer.length')) throw new Error('duplirani id-jevi predmera');
-    // izmena postojeceg: nema Razno
-    a.run(`formSite(${JSON.stringify(gid)})`);
+    if (a.run('RAZNO_N') !== 3 || !a.g.document.getElementById('f_nrj_0') || !a.g.document.getElementById('f_nrk_0')) throw new Error('RAZNO_N = ' + a.run('RAZNO_N') + ' / red bez JM i kolicine');
+    a.run("closeModal(); formSite('g8')");
     if (a.g.document.getElementById('modal').innerHTML.includes('raznoBox')) throw new Error('Razno u formi izmene');
   });
 
