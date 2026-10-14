@@ -1163,7 +1163,7 @@ function primeniUlogu(uloga, ja, fin, moduli){
 const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','pay'];
 function tabDozvoljen(id){
   if(vrstaUloge()==='uprava') return true;
-  if(id==='pay') return canFinance() && MODULI.includes('izvodjenje');   // naplata = samo Izvodjenje (migracija 26)
+  if(id==='pay') return false;   // tab Naplata vidi SAMO uprava (direktor/admin) — odluka klijenta 2026-10-14; rukovodilac situacije radi iz fioke gradilista
   if(id==='tasks' && !MODULI.includes('projektovanje')) return false;   // bez projektovanja nema zadataka (Izvodjenje: podizvodjaci), odluka 2026-10-11
   if(id==='magacin' && !MODULI.includes('izvodjenje')) return false;   // magacin = sifarnik Izvodjenja (odluka 2026-10-12)
   return TABOVI_OSTALI.includes(id);
@@ -4115,7 +4115,7 @@ function saveRaspored(id){
 
 /* ---------- NAPLATA (SITUACIJE) ---------- */
 function viewPay(){
-  if(!canFinance()){ current='dash'; return viewDash(); }
+  if(!isDirector()){ current='dash'; return viewDash(); }   // samo uprava (tabDozvoljen); rukovodilac sa finansijama vidi situacije u fioci
   const mIds=visibleSiteIds();
   const sits=[...(DATA.situacije||[])].filter(x=>mIds.has(x.gr)&&imaNaplatu(grById[x.gr])).sort((a,b)=>dParse(b.izdato)-dParse(a.izdato));   // samo Izvodjenje
   const uk=arr=>arr.reduce((a,b)=>a+(b.iznos||0),0);

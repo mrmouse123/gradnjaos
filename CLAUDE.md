@@ -298,8 +298,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
    „Ukupno" situacije, „Plaćeno", kumulativ, izvoz — i dalje `canFinance()`. `preracunajSituacijeLokalno`
    piše `iznos` samo uz `canFinance()` (rukovodilac sa cenama ga ne računa — iznos je serverov). Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
-   gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` samo `canFinance`
-   I modul izvođenje — Projektovanje nema situacija).
+   gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` = SAMO uprava
+   (odluka 2026-10-14; rukovodilac sa finansijama situacije i dalje vidi/pravi u fioci gradilišta, `viewPay` vraća ostale na dash)).
    Klijent: `ULOGA`/`VIDI_FIN`/`JA` + `ROLE` ('all' = uprava, inače id osobe);
    `isDirector()` = UPRAVA (direktor|admin), `jeSuper()` = direktor, `vrstaUloge()`.
    Uloge žive na 4 mesta: check constraint, `dodeli_ulogu`, `ULOGE`, mock `rpc` — menjati

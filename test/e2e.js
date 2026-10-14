@@ -1046,7 +1046,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi)) throw new Error('admin nema iste tabove kao direktor: ' + adm);
     const r1 = tabs('z1:fin'), r2 = tabs('z1');
     const ocekR = ['dash', 'sites', 'time', 'tasks', 'diary', 'magacin', 'nabavka'];
-    if (JSON.stringify(r1) !== JSON.stringify([...ocekR.slice(0, 6), 'pay', 'nabavka'].sort()) && !(r1.includes('pay') && ocekR.every(t => r1.includes(t)) && r1.length === ocekR.length + 1)) throw new Error('rukovodilac 1: ' + r1);
+    if (r1.includes('pay') || JSON.stringify([...r1].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error('rukovodilac 1 (sa finansijama) ne sme da ima tab Naplata (samo uprava, 2026-10-14): ' + r1);
     if (JSON.stringify([...r2].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error('rukovodilac 2: ' + r2);
     const zid = a.run("(DATA.zaposleni.find(z=>!/[Rr]ukovodilac/.test(z.poz)&&(z.grs||[]).length)||{}).id");
     const pid = a.run("((DATA.podizvodjaci||[]).find(p=>(p.grs||[]).length)||{}).id");
@@ -1055,7 +1055,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (tPro.includes('magacin') || !tPro.includes('tasks')) throw new Error('radnik |pro: ' + tPro);
     const tIzv = tabs('z1|izv'); if (!tIzv.includes('magacin') || tIzv.includes('tasks')) throw new Error('rukovodilac |izv: ' + tIzv);
     const tFinPro = tabs('z1:fin|pro'); if (tFinPro.includes('pay')) throw new Error('rukovodilac sa finansijama samo Projektovanje ima Naplatu (Projektovanje nema situacija): ' + tFinPro);
-    const tFinIzv = tabs('z1:fin|izv'); if (!tFinIzv.includes('pay')) throw new Error('rukovodilac sa finansijama Izvodjenje nema Naplatu: ' + tFinIzv);
+    const tFinIzv = tabs('z1:fin|izv'); if (tFinIzv.includes('pay')) throw new Error('rukovodilac sa finansijama ima Naplatu (samo uprava): ' + tFinIzv);
+    a.run("setRole('z1:fin|izv'); current='pay'; render();"); if (a.run('current') !== 'dash') throw new Error('viewPay nije vratio rukovodioca na dash');
     a.run("setRole('z1'); current='pay'; renderNav();");
     if (a.run('current') !== 'dash') throw new Error('rukovodilac 2 na nedozvoljenom tabu nije vracen na dash');
   });
