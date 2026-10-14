@@ -91,6 +91,11 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   traži samo svoju sesiju + `vidimGr`; kartica tada nudi „⏸ Zaustavi tajmer" i na Izvođenju i na
   done zadatku; `dropTask` u done zatvara svoju sesiju) — inače sesija ostaje zaglavljena i
   blokira svaki novi start. Ne uklanjati taj izlaz. T36 0, a2.
+- **Projektantsko gradilište NEMA „nivo" (2026-10-14, odluka klijenta: „trenutni nivo mi ne treba, sveske i ček-liste
+  ispod mi trebaju"):** `formSite` ne nudi „Trenutni nivo (faza)" ni „Nivo dokumentacije" (izmena); `saveSite` upisuje
+  `nivo:null` i ne menja ga; ček-lista svezaka po nivoima (IDR/IDP-PGD/PZI) sa zaduženima i Razno OSTAJU pri kreiranju.
+  `ubaciSablonNivoa` + dugme OBRISANI (zavisili od nivoa); `gradilista.nivo` kolona ostaje (stari redovi), ne prikazuje se
+  (`modLab`, fioka); `formPredmerRed` je koristi samo kao podrazumevanu fazu ako postoji. T29 prilagođen, D/e) testovi uklonjeni.
 - **„Razno" u Projektovanju (2026-10-09):** `sifrarnikChecklist('projektovanje')` ispod svih svezaka
   nudi `#raznoBox` + `dodajRaznoRed()` (`f_nr_k`/`f_nrz_k`, brojač `RAZNO_N` — NE `getElementById`
   petlja, dom-stub vraća element za svaki id); `saveSite` pravi redove specifikacije
@@ -182,7 +187,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   cascade), dodeljen `zaduzen`-u (ili rukovodiocu); čovek na njemu klikne play/pauza/stop.
   `sinhronizujSveske(gr)` (samo ko VODI: pravi zadatke koji fale, prati naziv/zaduzen, uklanja zadatke
   obrisanih stavki) zove se pri pokretanju (`sinhronizujSveskeSve` posle snapshota → diff gurne nove),
-  posle `saveSite` (pro), `savePredmerRed`, `ubaciSablonNivoa`, `obrisiPredmerRed`. DEMO g8 ima t20–t24 sa
+  posle `saveSite` (pro), `savePredmerRed`, `obrisiPredmerRed`. DEMO g8 ima t20–t24 sa
   `predmer_id` (inače bi boot-sync slao zadatke i rušio „nepromenjen DATA ne šalje ništa"). Status ↔ sveska:
   `done` → `predmer.izv=kol`, povratak iz done → `izv=0` ako je bila puna — server `trg_zadatak_sveska_izv`
   (definer, pa radi i za radnika), klijent `uskladiSveskuIzZadatka` SAMO ako vodi (radnik ne sme u predmer).
@@ -190,11 +195,11 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   za pro dozvoljava poz/jm/kol/zaduzen/sifra, ne cenu); Izvođenje: predmer i dalje samo uprava, zadataka nema.
   Ručni zadaci bez `predmer_id` (= „razno") i dalje postoje (`formTask`). T44.
   **Sveska = tip dokumenta, bez JM i količine (2026-10-14, odluka klijenta):** `formPredmerRed` na pro: nova = faza
-  (`NIVOI_DOK` ključevi, podrazumevano `g.nivo`) + ček-lista dokumenata te faze koji još nisu u specifikaciji
+  (`NIVOI_DOK` ključevi, podrazumevano staro `g.nivo` ako postoji, inače IDR) + ček-lista dokumenata te faze koji još nisu u specifikaciji
   (`sveskeKandidati`, `osveziSveskeCeklistu`, `SV_KAND` k→sifrarnik.id) + jedan zadužen za sve; `savePredmerRed` dodaje
   redove `faza — naziv` sa `jm:'kom', kol:1` (napredak i done→izv=kol ostaju na snazi) i dedupe; izmena = samo zadužen
   (+ cena uz `canFinance`). Strana „Specifikacija usluga": kolone # · Sveska · Faza (`fazaSveske`) · Status (zadatak) ·
-  Zadužen (· Cena), bez JM/Ugovoreno/Izvedeno/%; alati samo „Dodaj sveske" i „Ubaci šablon nivoa". T56.
+  Zadužen (· Cena), bez JM/Ugovoreno/Izvedeno/%; alat samo „Dodaj sveske" (`ubaciSablonNivoa` obrisan 2026-10-14). T56.
   **Projektovanje NEMA situacija ni naplatu (2026-10-14, migracija 26):** `imaNaplatu(g)` = `!jePro(g)`; situacije se
   ne nude (fioka, `formSit`, `formSituacija` guard), ne listaju (Naplata, fioka, presek), ne prave upozorenja ni brif;
   tabla/kartica/fioka prikazuju „—"/ništa za naplatu; tab Naplata traži i modul izvođenje; `zdravlje(g)` i server
@@ -278,7 +283,7 @@ zaposleni (grs[] više projekata, bivsi[] istorija — v. join tabele), zadaci (
 situacije (naplata), narudzbe (UI: "Trebovanje", mailto/Edge Function na NABAVKA_EMAIL),
 troskovi_st (izvor za potroseno(g); opciono `prilog` = faktura kao PDF/slika, data-URL u pilotu),
 podizvodjaci (UI u Projektovanju: "Spoljni saradnici"), predmer (i "Specifikacija usluga" za
-projektovanje; NIVOI_DOK šablon: IDR/IDP-PGD/PZI auto-popuna; SABLONI_FAZA šablon za
+projektovanje; NIVOI_DOK = faze svezaka IDR/IDP-PGD/PZI, ček-lista pri kreiranju; SABLONI_FAZA šablon za
 Izvođenje: 8 faza × zadaci po tipu visoko/niskogradnja, `primeniSablonFaza()` — od 2026-10-09 SAMO
 na zahtev iz fioke `ubaciSablonFaza`, NE pri kreiranju; `fazeZa()` i dalje čita imena faza), resursi
 (istek → upozorenja), magacin + mag_promene, izveštaji (openIzvestaj=za investitora bez

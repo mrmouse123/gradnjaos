@@ -148,7 +148,7 @@ const MUTATORS = [
   ['saveArtikal', ''], ['saveResurs', 'null'], ['savePredmerRed', "'g1'"],
   ['savePredmerImport', "'g1'"], ['saveMagPromena', "'m1','ulaz'"],
   ['saveTask', ''], ['saveDiary', ''], ['obrisiDokument', "'dk_x'"],
-  ['ubaciSablonNivoa', "'g8'"], ['savePredmerRed', "'g5','pm1'"],
+  ['savePredmerRed', "'g5','pm1'"],
   ['saveEmp', "'z1'"], ['setAdmVazi', "'g1','polisa','2030-01-01'"],
   ['saveSifrarnik', ''], ['toggleSifrarnik', "'sf-a-001'"], ['obrisiSifrarnik', "'sf-a-001'"], ['saveIzSifarnika', "'g1'"],
   ['pocniZadatak', "'t3'"], ['pauzirajZadatak', "'t3'"], ['zavrsiZadatak', "'t3'"], ['obrisiStavku', "'zadaci','t1','x'"], ['obrisiZadatak', "'t1'"], ['obrisiUnosDnevnika', "'d2'"], ['obrisiTrosak', "'tr1'"],
@@ -859,59 +859,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!/id="f_sfk_0"[^>]*type="number"|type="number"[^>]*id="f_sfk_0"/.test(html)) throw new Error('kolicina nije type=number');
     a.run("toggleTipRadova('izvodjenje')");
     if (doc.getElementById('mereFillBox').style.display !== 'block' || doc.getElementById('nivoFillBox').style.display !== 'none') throw new Error('izvodjenje: pogresan prikaz');
+    if (/id="f_nivo"|nivoBox/.test(html)) throw new Error('forma nudi nivo gradilista (uklonjen 2026-10-14)');
     a.run("toggleTipRadova('projektovanje')");
     if (doc.getElementById('mereFillBox').style.display !== 'none' || doc.getElementById('nivoFillBox').style.display !== 'block') throw new Error('projektovanje: pogresan prikaz');
-  });
-  await acheck('c) novo IZVODJENJE gradiliste: cekirane pozicije iz sifarnika → predmer (kol, jm, zaduzen)', async () => {
-    const a = await boot();
-    a.run("ROLE='all'; formSite();");
-    const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
-    const kli = a.run('DATA.clijenti[0].id');
-    set('f_naziv', 'Izv T34'); set('f_lok', 'NS'); set('f_modul', 'izvodjenje'); set('f_kli', kli); set('f_ruk', 'z1');
-    set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
-    doc.getElementById('f_sf_0').checked = true; set('f_sfk_0', '180'); set('f_sfz_0', 'z2');
-    doc.getElementById('f_sf_3').checked = true; set('f_sfk_3', '');
-    a.run('saveSite()');
-    const g = a.run('DATA.gradilista[DATA.gradilista.length-1]');
-    if (g.naziv !== 'Izv T34' || g.modul !== 'izvodjenje') throw new Error('gradiliste: ' + JSON.stringify(g));
-    const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
-    if (rows.length !== 2) throw new Error('redova ' + rows.length);
-    const s0 = a.run("sifrarnikZa('izvodjenje')[0]"), s3 = a.run("sifrarnikZa('izvodjenje')[3]");
-    if (rows[0].poz !== s0.naziv || rows[0].jm !== s0.jm || rows[0].kol !== 180 || rows[0].zaduzen !== 'z2' || rows[0].cena !== 0 || rows[0].izv !== 0) throw new Error('red 1: ' + JSON.stringify(rows[0]));
-    if (rows[1].poz !== s3.naziv || rows[1].jm !== s3.jm || rows[1].kol !== 1 || rows[1].zaduzen !== null) throw new Error('red 2: ' + JSON.stringify(rows[1]));
-    /* formIzSifarnika / saveIzSifarnika: dodaje samo nove, preskace postojece; rukovodilac nista */
-    a.run(`formIzSifarnika(${JSON.stringify(g.id)})`);
-    doc.getElementById('f_sf_0').checked = true; doc.getElementById('f_sf_5').checked = true; set('f_sfk_5', '40');
-    a.run(`ROLE='z1'; saveIzSifarnika(${JSON.stringify(g.id)}); ROLE='all';`);
-    if (a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)}).length`) !== 2) throw new Error('rukovodilac je dodao iz sifarnika');
-    a.run(`saveIzSifarnika(${JSON.stringify(g.id)})`);
-    const r2 = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
-    if (r2.length !== 3 || r2[2].kol !== 40) throw new Error('posle saveIzSifarnika: ' + JSON.stringify(r2.map(r => [r.poz, r.kol])));
-    a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='all';`);
-    if (!a.run('viewPredmer()').includes('formIzSifarnika')) throw new Error('nema dugmeta u viewPredmer (izvodjenje)');
-    if (a.run("PRED_ID='g8'; viewPredmer()").includes('formIzSifarnika')) throw new Error('dugme na projektovanju');
-    if (a.run(`PRED_ID=${JSON.stringify(g.id)}; ROLE='z1'; viewPredmer()`).includes('formIzSifarnika')) throw new Error('rukovodilac vidi dugme');
-    a.run("ROLE='all';");
-  });
-  await acheck('e) ubaciSablonNivoa iz sifarnika: dodaje samo nedostajuce, drugi poziv 0 + alert', async () => {
-    const a = await boot();
-    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
-    const niv = JSON.stringify(a.run('grById.g8.nivo'));
-    const tpl = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).length`);
-    if (!(tpl > 2)) throw new Error('sablon ' + tpl);
-    const prvi = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv})[0].naziv`);
-    a.run(`DATA.predmer.push({id:'pm-t34', gr:'g8', poz:${niv}+' — '+${JSON.stringify(prvi)}, jm:'kom', kol:1, cena:0, izv:0, zaduzen:null});`);
-    /* koliko stavki sablona vec postoji u g8 (pod punim ili golim imenom) */
-    const vec = a.run(`sifrarnikZa('projektovanje').filter(s=>s.grupa===${niv}).filter(s=>predmerZa('g8').some(r=>r.poz===${niv}+' — '+s.naziv||r.poz===s.naziv)).length`);
-    if (vec < 1) throw new Error('pm-t34 nije prepoznat');
-    const n0 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') - n0 !== tpl - vec) throw new Error(`dodato ${cnt('g8') - n0}, ocekivano ${tpl - vec}`);
-    if (a.run("predmerZa('g8').filter(r=>r.id==='pm-t34').length") !== 1) throw new Error('pm-t34 dupliran');
-    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
-    if (a.g._calls.alert.length !== alerts + 1) throw new Error('nema alert-a');
   });
   await acheck('f) saveSifrarnik / toggleSifrarnik / obrisiSifrarnik: guardovi po ulozi', async () => {
     const a = await boot();
@@ -1274,17 +1224,20 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (n !== ukupno || nz !== ukupno) throw new Error(`cekboksa ${n}, zaduzenih ${nz}, ocekivano ${ukupno}`);
     for (const niv of ['IDR', 'IDP/PGD', 'PZI']) if (!html.includes('>' + niv + '<')) throw new Error('nema naslova faze ' + niv);
     if (!html.includes('(spoljni)')) throw new Error('zaduzeni ne nude spoljne saradnike');
-    if (html.includes('f_nivo_fill') || html.includes('f_nadzor')) throw new Error('stari cekboks sablona / polje nadzora jos postoje');
+    if (html.includes('f_nivo_fill') || html.includes('f_nadzor') || /id="f_nivo"|nivoBox|Trenutni nivo/.test(html)) throw new Error('stari cekboks sablona / polje nadzora / nivo gradilista jos postoje (nivo uklonjen 2026-10-14)');
     const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
     const kli = a.run('DATA.clijenti[0].id'), nPre = a.run('DATA.predmer.length');
-    set('f_naziv', 'Pro T29'); set('f_lok', 'NS'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDP/PGD'); set('f_kli', kli); set('f_ruk', 'z1');
+    set('f_naziv', 'Pro T29'); set('f_lok', 'NS'); set('f_modul', 'projektovanje'); set('f_kli', kli); set('f_ruk', 'z1');
     set('f_poc', '2026-10-01'); set('f_rok', '2027-03-01'); set('f_cena', '100000'); set('f_tro', '');
     /* stub ne parsira HTML -> cekboksi su podrazumevano false; cekiramo 0 (IDR/PDR) i 6 (IDP-PGD/1.0 Arhitektura) */
     doc.getElementById('f_nd_0').checked = true; doc.getElementById('f_ndz_0').value = 'z2';
     doc.getElementById('f_nd_6').checked = true; doc.getElementById('f_ndz_6').value = '';
     a.run('saveSite()');
     const g = a.run("DATA.gradilista[DATA.gradilista.length-1]");
-    if (g.naziv !== 'Pro T29' || g.modul !== 'projektovanje' || g.nivo !== 'IDP/PGD') throw new Error('gradiliste nije kreirano kako treba: ' + JSON.stringify(g));
+    if (g.naziv !== 'Pro T29' || g.modul !== 'projektovanje' || g.nivo !== null) throw new Error('gradiliste nije kreirano kako treba (nivo mora biti null): ' + JSON.stringify(g));
+    if (a.run('modLab(grById.g8)') !== 'Projektovanje') throw new Error('modLab prikazuje nivo');
+    a.run("current='predmer'; PRED_ID='g8'; render();"); if (a.run('typeof ubaciSablonNivoa') !== 'undefined' || doc.getElementById('view').innerHTML.includes('ablon nivoa')) throw new Error('sablon nivoa jos postoji');
+    a.run(`formSite(${JSON.stringify(g.id)})`); if (/f_nivo|Nivo dokumentacije/.test(doc.getElementById('modal').innerHTML)) throw new Error('izmena pro gradilista nudi nivo');
     if (g.nadzor !== '') throw new Error('nadzor treba da bude prazan');
     const rows = a.run(`DATA.predmer.filter(x=>x.gr===${JSON.stringify(g.id)})`);
     if (rows.length !== 2) throw new Error('redova specifikacije: ' + rows.length + ' (ocekivano 2 cekirana), ukupno pre ' + nPre);
@@ -1630,50 +1583,6 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("formPredmerRed('g5');");
     if (!modal.innerHTML.includes('Nova pozicija') || modal.innerHTML.includes('Izmena pozicije')) throw new Error('bez pid nije "Nova pozicija"');
     if (!/<select id="f_pm_zad">/.test(modal.innerHTML)) throw new Error('izvođenje nema select Zadužen u formi');
-  });
-  await acheck('C3 savePredmerRed(gid,pid): izmena in-place, cena prazna = ostaje, izv klamp; rukovodilac ne menja ništa', async () => {
-    const a = await boot();
-    const doc = a.g.document, set = (id, val) => { doc.getElementById(id).value = val; };
-    const pre = a.run("DATA.predmer.length"), cena0 = a.run("DATA.predmer.find(r=>r.id==='pm1').cena");
-    if (a.run("DATA.predmer.find(r=>r.id==='pm1').izv") <= 2.5) throw new Error('setup: izv pm1 nije > 2.5');
-    set('f_pm_poz', 'Izmenjen & opis'); set('f_pm_kol', '2.5'); set('f_pm_cena', ''); set('f_pm_jm', 'm²'); set('f_pm_zad', '');
-    const before = a.run("JSON.stringify(DATA)");
-    a.run(`ROLE=${JSON.stringify(a.run("grById.g5.rukovodilac"))}; savePredmerRed('g5','pm1'); ROLE='all';`);
-    if (a.run("JSON.stringify(DATA)") !== before) throw new Error('rukovodilac je izmenio poziciju');
-    a.run("savePredmerRed('g5','pm1');");
-    const r = JSON.parse(a.run("JSON.stringify(DATA.predmer.find(r=>r.id==='pm1'))"));
-    if (r.poz !== 'Izmenjen &amp; opis') throw new Error('poz = ' + r.poz);
-    if (r.kol !== 2.5) throw new Error('kol = ' + r.kol);
-    if (r.cena !== cena0) throw new Error('cena promenjena: ' + r.cena);
-    if (r.izv !== 2.5) throw new Error('izv nije klampovan na kol: ' + r.izv);
-    if (r.jm !== 'm²' || r.zaduzen !== null) throw new Error('jm/zaduzen: ' + r.jm + '/' + r.zaduzen);
-    if (a.run("DATA.predmer.length") !== pre) throw new Error('izmena je dodala novi red');
-    set('f_pm_cena', '30');
-    a.run("savePredmerRed('g5','pm1');");
-    if (a.run("DATA.predmer.find(r=>r.id==='pm1').cena") !== 30) throw new Error('cena nije promenjena kad je uneta');
-  });
-  await acheck('D ubaciSablonNivoa: dodaje samo nepostojeće, drugi poziv 0 + alert, izvođenje ništa, rukovodilac ništa', async () => {
-    const a = await boot();
-    const cnt = gid => a.run(`DATA.predmer.filter(r=>r.gr==='${gid}').length`);
-    const tpl = JSON.parse(a.run("JSON.stringify(NIVOI_DOK[grById.g8.nivo])")).length;
-    const pre = cnt('g8');
-    a.run("ROLE='z4'; ubaciSablonNivoa('g8'); ROLE='all';");
-    if (cnt('g8') !== pre) throw new Error('rukovodilac je ubacio šablon');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== pre + tpl) throw new Error('dodato ' + (cnt('g8') - pre) + ', očekivano ' + tpl);
-    if (!a.run("DATA.predmer.some(r=>r.gr==='g8'&&r.poz==='IDP/PGD — 1.0 Arhitektura'&&r.kol===1&&r.cena===0&&r.zaduzen===null)")) throw new Error('red nema oblik kao saveSite');
-    const alerts = a.g._calls.alert.length, n1 = cnt('g8');
-    a.run("ubaciSablonNivoa('g8');");
-    if (cnt('g8') !== n1) throw new Error('drugi poziv je dodao redove');
-    if (a.g._calls.alert.length !== alerts + 1 || !/već postoje/.test(a.g._calls.alert[a.g._calls.alert.length - 1])) throw new Error('nema alert-a o postojećim stavkama');
-    const izv = a.run("DATA.gradilista.find(g=>g.modul==='izvodjenje').id"), n2 = cnt(izv);
-    a.run(`ubaciSablonNivoa('${izv}');`);
-    if (cnt(izv) !== n2) throw new Error('izvođenje dobilo šablon nivoa');
-    const h = a.run("ROLE='all'; PRED_ID='g8'; viewPredmer()");
-    if (!h.includes("ubaciSablonNivoa('g8')") || !h.includes('(IDP/PGD)')) throw new Error('nema dugmeta u viewPredmer (projektovanje)');
-    if (a.run("PRED_ID='g5'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('dugme na izvođenju');
-    if (a.run("ROLE='z4'; PRED_ID='g8'; viewPredmer()").includes('ubaciSablonNivoa')) throw new Error('rukovodilac vidi dugme');
-    a.run("ROLE='all';");
   });
   await acheck('E openTroskovi + drawer: dobavljač/faktura, Ukupno, "Svi troškovi (N)"; rukovodilac ništa', async () => {
     const a = await boot();
@@ -3141,7 +3050,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.g._calls.confirm.length !== c0) throw new Error('confirm pozvan za tudje gradiliste');
     a.run('formSite()'); let m = a.g.document.getElementById('modal').innerHTML;
     if (m.includes('value="izvodjenje"') || !m.includes('value="projektovanje"')) throw new Error('formSite dirpro nudi izvodjenje');
-    if (!/id="nivoBox" style="display:block"/.test(m) || !/id="tipRadovaBox" style="display:none"/.test(m) || !/id="mereFillBox" style="display:none"/.test(m)) throw new Error('formSite dirpro: kutije nivo/tip/mere');
+    if (/nivoBox|f_nivo/.test(m) || !/id="nivoFillBox" style="display:block"/.test(m) || !/id="tipRadovaBox" style="display:none"/.test(m) || !/id="mereFillBox" style="display:none"/.test(m)) throw new Error('formSite dirpro: kutije cek-lista/tip/mere (bez nivoa)');
     a.run("closeModal(); formSite('g1')"); if (a.g.document.getElementById('modal').innerHTML.includes('Izmeni podatke')) throw new Error('dirpro otvorio izmenu gradilista izvodjenja');
     a.run("formSite('g8')"); if (!a.g.document.getElementById('modal').innerHTML.includes('Izmeni podatke')) throw new Error('dirpro ne moze da izmeni svoje gradiliste');
     a.run('closeModal()');
@@ -4133,7 +4042,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("formSite(); dodajRaznoRed(); dodajRaznoRed(); dodajRaznoRed();");
     if (a.run('RAZNO_N') !== 3) throw new Error('RAZNO_N = ' + a.run('RAZNO_N'));
     const set = (id, val) => { a.g.document.getElementById(id).value = val; };
-    set('f_naziv', 'T40 projekat'); set('f_modul', 'projektovanje'); set('f_nivo', 'IDR');
+    set('f_naziv', 'T40 projekat'); set('f_modul', 'projektovanje');
     set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', a.run('DATA.zaposleni[0].id'));
     set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(100)'));
     const zad = a.run('DATA.zaposleni[1].id');
