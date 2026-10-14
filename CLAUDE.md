@@ -120,6 +120,11 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
 - **Play samo na jednom zadatku** (2026-10-12): `mojaOtvorenaSesija()`; `tajmerLinija` na drugim zadacima NE nudi
   ▶ dok jedan radi (poruka „Radiš na: X — pauziraj ga", ■ Završi ostaje za zadatak u toku); `pocniZadatak` i dalje
   ima guard. T51.
+- **Ćirilica → latinica pri učitavanju** (2026-10-14, odluka klijenta: rukovodioci uvek šalju ćirilicu): `cir2lat(s)`
+  (srpska ćirilica, Љ/Њ/Џ → Lj/Nj/Dž, LJ/NJ/DŽ uz velika slova) se primenjuje u `citajXlsx` (sharedStrings, inlineStr,
+  str) i `citajCsv` na SVAKI tekst — uvezeni predmer/situacija/izvedeno su latinični — i u `normPoz`, pa uparivanje radi
+  za bilo koju kombinaciju pisama (stari ćirilični redovi u bazi i dalje se uparuju). Regexi parsera ostaju dvopisamski
+  (`укупно|ukupno`, `кумулатив|kumulativ`). Dummy g-osdr je prebačen na latinicu u bazi (predmer.poz, situacija_stavke.poz). T55.
 - **Pregled situacija** (2026-10-13, migracija 25, odluka klijenta): `situacije.pregled` ∈ {na_pregledu, odobrena,
   vracena} (+ `komentar`, `pregledao`, `pregledano`, `istorija jsonb[]`; sve u `situacije_v` i column grantu; stari
   redovi = odobrena). Tok: rukovodilac sačuva → `na_pregledu`; uprava (`isDirector()`, direktor I admin) `odobriSituaciju`

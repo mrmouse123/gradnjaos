@@ -3117,6 +3117,25 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T55 (2026-10-14): ćirilica → latinica pri učitavanju ---- */
+  section('T55 cirilica → latinica');
+  await acheck('cir2lat: Lj/Nj/Dž pravila i velika slova; citajXlsx/citajCsv vraćaju latinicu; normPoz uparuje oba pisma; ćirilična situacija se upari sa latiničnim predmerom', async () => {
+    const a = await boot();
+    const c = s => a.run('cir2lat(' + JSON.stringify(s) + ')');
+    const slucajevi = [['Љубљана', 'Ljubljana'], ['ЉУБЉАНА', 'LJUBLJANA'], ['Ђорђе Џ. Ћирић — шећер, чađ', 'Đorđe Dž. Ćirić — šećer, čađ'], ['Њ', 'Nj'], ['ИСКОП ТЕМЕЉА', 'ISKOP TEMELJA'], ['Iskop 12,5 m³', 'Iskop 12,5 m³'], ['Кабл N2XH 3x2,5', 'Kabl N2XH 3x2,5']];
+    for (const [u, o] of slucajevi) if (c(u) !== o) throw new Error(JSON.stringify(u) + ' → ' + JSON.stringify(c(u)) + ' (ocekujem ' + JSON.stringify(o) + ')');
+    const csv = a.run('citajCsv(' + JSON.stringify('Ископ темеља;m³;10\nЗидање;m²;5') + ')');
+    if (csv[0][0] !== 'Iskop temelja' || csv[1][0] !== 'Zidanje') throw new Error('citajCsv: ' + JSON.stringify(csv));
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'situacija.xlsx'));
+    a.g.__buf55 = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const redovi = await a.run('citajXlsx(__buf55, true)');
+    if (redovi.some(r => r.some(x => /[\u0400-\u04FF]/.test(String(x))))) throw new Error('citajXlsx vratio ćirilicu');
+    if (a.run("normPoz('Ископ темеља са одвозом')") !== a.run("normPoz('Iskop temelja sa odvozom')")) throw new Error('normPoz ne izjednačava pisma');
+    a.run("setRole('all')");
+    const rez = a.run("upariSituaciju('g5', [['Бр.','Опис','ЈМ','Уговорено','Претходно','Ова','Кумулатив'],['1','Ископ темеља са одвозом','m³',180,0,50,50],['2','Зидање гитер блоком d=25','m²',420,0,30,30],['9','Непостојећа позиција','kom',1,0,1,1]])");
+    if (rez.spojeni.length !== 2 || rez.nepovezani.length !== 1 || rez.spojeni[0].x.id !== 'pm1' || rez.nepovezani[0] !== 'Nepostojeća pozicija') throw new Error('upari ćirilica→latinica: ' + JSON.stringify({s: rez.spojeni.map(x => x.x.id), n: rez.nepovezani}));
+  });
+
   /* ---- T54 (2026-10-13): pregled situacija — na pregledu / odobrena / vracena, komentar, istorija ---- */
   section('T54 pregled situacija');
   await acheck('rukovodilac → na_pregledu (ne ulazi u naplatu/realizaciju, bez Placeno, bez kasni); uprava → odobrena; Vrati traži komentar i daje alert rukovodiocu (bez fin) + upravi (fin, sit); ispravka vracene (stavka obrisana server-prvo) → ponovo na pregledu; Odobri → naplata; istorija', async () => {
@@ -3540,15 +3559,15 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const rez = a.run(`upariPredmerSablon(${JSON.stringify(redovi)})`);
     const by = Object.fromEntries(rez.redovi.map(r => [r.poz, r]));
     if (rez.redovi.length !== 5) throw new Error('ocekujem 5 pozicija: ' + JSON.stringify(rez.redovi.map(r => r.sifra + ' ' + r.poz)));
-    const dem = by['Демонтажа у објектима од 500m² до 1000m²'];
+    const dem = by['Demontaža u objektima od 500m² do 1000m²'];   // fajl je ćiriličan, citajXlsx ga transliteruje
     if (!dem || dem.sifra !== '4.0.1' || dem.cena !== 350000 || dem.jm !== 'kompl') throw new Error('demontaza: ' + JSON.stringify(dem));
-    const p20 = by['Једнополни аутоматски прекидач 20A'];
+    const p20 = by['Jednopolni automatski prekidač 20A'];
     if (!p20 || p20.kol !== 1830 || p20.cena !== 810) throw new Error('tekst-brojevi: ' + JSON.stringify(p20));
     const kam = by['Bullet IP kamera 4 MP'];
-    if (!kam || kam.kol !== 3 || kam.sifra !== '3Д') throw new Error('prazan opis: ' + JSON.stringify(kam));
-    const rad = by['Панел радијатор К22 600x2000'];
+    if (!kam || kam.kol !== 3 || kam.sifra !== '3D') throw new Error('prazan opis: ' + JSON.stringify(kam));
+    const rad = by['Panel radijator K22 600x2000'];
     if (!rad || Math.abs(rad.kol - 0.6667) > 0.001 || rez.uskladjeno !== 1) throw new Error('uskladjivanje: ' + JSON.stringify(rad) + ' uskl ' + rez.uskladjeno);
-    if (rez.redovi.some(r => /ВИДЕО НАДЗОР|РЕКАПИТУЛАЦИЈА|УКУПНО/.test(r.poz))) throw new Error('zbirni/recap red kao pozicija');
+    if (rez.redovi.some(r => /VIDEO NADZOR|REKAPITULACIJA|UKUPNO|[\u0400-\u04FF]/.test(r.poz))) throw new Error('zbirni/recap red kao pozicija');
     // novo gradiliste: priprema → saveSite dodaje pozicije
     a.run("ROLE='all'; formSite();");
     const doc = a.g.document;

@@ -3141,6 +3141,22 @@ function preuzmiXlsx(ime, listovi){
   }catch(err){ console.error('xlsx:', err); }
   return u;
 }
+/* Ćirilica → latinica pri UČITAVANJU (odluka klijenta 2026-10-14: rukovodioci uvek šalju ćirilične Excel fajlove).
+   Primenjuje se na svaki tekst iz citajXlsx/citajCsv (pa su uvezene pozicije latinične) i u normPoz (uparivanje radi
+   za bilo koju kombinaciju pisama). Srpska ćirilica; Љ/Њ/Џ → Lj/Nj/Dž, a LJ/NJ/DŽ kad je sledeće slovo veliko. */
+const CIR_LAT={'а':'a','б':'b','в':'v','г':'g','д':'d','ђ':'đ','е':'e','ж':'ž','з':'z','и':'i','ј':'j','к':'k','л':'l','љ':'lj','м':'m','н':'n','њ':'nj','о':'o','п':'p','р':'r','с':'s','т':'t','ћ':'ć','у':'u','ф':'f','х':'h','ц':'c','ч':'č','џ':'dž','ш':'š'};
+function cir2lat(s){
+  s=String(s??''); if(!/[\u0400-\u04FF]/.test(s)) return s;
+  let out='';
+  for(let i=0;i<s.length;i++){
+    const ch=s[i], lo=ch.toLowerCase(), m=CIR_LAT[lo];
+    if(m===undefined){ out+=ch; continue; }
+    if(ch===lo){ out+=m; continue; }
+    const nx=s[i+1]||'', nxUp=nx!==''&&nx===nx.toUpperCase()&&nx!==nx.toLowerCase();
+    out+= m.length>1 && (nxUp || (s[i-1]||'')!==(s[i-1]||'').toLowerCase()) ? m.toUpperCase() : m[0].toUpperCase()+m.slice(1);
+  }
+  return out;
+}
 function xmlDek(s){ return String(s||'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&'); }
 async function zipInflate(bytes, metod){
   if(metod===0) return bytes;
@@ -3167,7 +3183,7 @@ async function zipCitaj(buf){
 async function citajXlsx(buf, sveListove){   // sveListove: redovi svih listova redom (situacija ima list po vrsti radova)
   const z=await zipCitaj(buf);
   const ss=[]; const ssx=await z.citaj('xl/sharedStrings.xml');
-  if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)) ss.push([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''));
+  if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)) ss.push(cir2lat([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join('')));
   const list=z.ime.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort((a,b)=>(+a.match(/\d+/)[0])-(+b.match(/\d+/)[0]));
   if(!list.length) throw new Error('U fajlu nema radnog lista.');
   const redovi=[];
@@ -3180,9 +3196,9 @@ async function citajXlsx(buf, sveListove){   // sveListove: redovi svih listova 
       const atr=c[2]||'', tel=c[3]||''; let v='';
       const vm=tel.match(/<v>([\s\S]*?)<\/v>/), im=tel.match(/<is>[\s\S]*?<\/is>/);
       if(/t="s"/.test(atr)&&vm) v=ss[+vm[1]]??'';
-      else if(/t="inlineStr"/.test(atr)&&im) v=[...im[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join('');
+      else if(/t="inlineStr"/.test(atr)&&im) v=cir2lat([...im[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''));
       else if(/t="b"/.test(atr)&&vm) v=vm[1]==='1'?'DA':'NE';
-      else if(vm) v=/t="str"/.test(atr)?xmlDek(vm[1]):Number(vm[1]);
+      else if(vm) v=/t="str"/.test(atr)?cir2lat(xmlDek(vm[1])):Number(vm[1]);
       red[kol]=v;
     }
     for(let i=0;i<red.length;i++) if(red[i]===undefined) red[i]='';
@@ -3194,12 +3210,12 @@ async function citajXlsx(buf, sveListove){   // sveListove: redovi svih listova 
 }
 function citajCsv(txt){
   const sep=(txt.match(/;/g)||[]).length>=(txt.match(/\t/g)||[]).length?';':'\t';
-  return txt.replace(/^﻿/,'').split(/\r?\n/).map(l=>l.split(sep).map(c=>c.trim().replace(/^"(.*)"$/,'$1'))).filter(r=>r.some(c=>c!==''));
+  return txt.replace(/^﻿/,'').split(/\r?\n/).map(l=>l.split(sep).map(c=>cir2lat(c.trim().replace(/^"(.*)"$/,'$1')))).filter(r=>r.some(c=>c!==''));
 }
 /* Uparivanje: zaglavlje (ako ga ima) bira kolone "izved…" i "poz/opis/usluga"; "#" je rezerva.
    Bez zaglavlja: kolona 0 = pozicija, poslednja popunjena = izvedeno. Ime se poredi
    normalizovano (unesc, mala slova, sažeti razmaci). Rezultat: {spojeni:[{x,novo}], nepovezani:[...]} */
-const normPoz=s=>unesc(String(s??'')).toLowerCase().replace(/\s+/g,' ').trim();
+const normPoz=s=>cir2lat(unesc(String(s??''))).toLowerCase().replace(/\s+/g,' ').trim();   // oba pisma se uparuju (cir2lat)
 function upariIzvedeno(grId, redovi){
   const lista=predmerZa(grId), spojeni=[], nepovezani=[];
   if(!redovi.length) return {spojeni,nepovezani};
@@ -4214,7 +4230,7 @@ function upariSituaciju(grId, redovi){
     const ime=desc||lastDesc, sifra=code||lastCode;
     if(desc) lastDesc=desc; if(code) lastCode=code;   // prazan red-nastavak ispod stavke nasledjuje STAVKU, ne naslov sekcije
     let x=poIme.get(normPoz(ime)); if(!x&&sifra) x=poSifri.get(sifra.toLowerCase());
-    if(!x){ nepovezani.push(ime||sifra||'?'); return; }
+    if(!x){ nepovezani.push(cir2lat(ime||sifra||'?')); return; }   // i nalepljeni/rucni redovi se prijavljuju latinicom
     if(videno.has(x.id)) return; videno.add(x.id);
     const ds=doSada[x.id]||0;
     spojeni.push({x, kum, doSada:ds, ova:Math.max(0, kum-ds)});
