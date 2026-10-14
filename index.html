@@ -1157,7 +1157,9 @@ function jeSuper(){ return ROLE==='all' && ULOGA==='direktor'; }   // SAMO direk
 function jeDirektorModula(){ return ROLE==='all' && !!MODUL_ULOGE[ULOGA]; }
 /* Brisanje reda gradilista: direktor svuda, direktor modula na svom gradilistu (server smem_brisati). Admin ne brise. */
 function smemBrisati(grId){ return jeSuper() || (jeDirektorModula() && smemNa(grId)); }
-function upravaSve(){ return isDirector() && MODUL==='sve' && MODULI.length>1; }   // „vidi sve" za liste bez gradilista: samo puna uprava bez filtera modula
+function upravaSve(){ return isDirector() && MODUL==='sve' && MODULI.length>1; }
+/* Modul koji UI prikazuje: izabrani segment, ili jedini modul naloga (direktor modula, rukovodilac/radnik jednog modula) — MODUL tada ostaje 'sve'. */
+function modulEfektivni(){ return MODUL!=='sve' ? MODUL : (MODULI.length===1 ? MODULI[0] : 'sve'); }   // „vidi sve" za liste bez gradilista: samo puna uprava bez filtera modula
 function primeniUlogu(uloga, ja, fin, moduli){
   ULOGA=uloga||'direktor'; JA=ja||null;
   const uprava=jeUpravaUloga(ULOGA);
@@ -1433,7 +1435,7 @@ function tabs(){
     {id:'diary', naziv:'Dnevnik radova', ic:'book', cnt:DATA.dnevnik.filter(d=>upravaSve()||ids.has(d.gr)).length},
     {id:'resursi', naziv:'Resursi', ic:'truck', cnt:(DATA.resursi||[]).filter(r=>r.istice&&daysBetween(TODAY,dParse(r.istice))<=30).length},
     {id:'magacin', naziv:'Magacin', ic:'box', cnt:0},
-    {id:'subs', naziv:(MODUL==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&(upravaSve()||(x.grs||[]).some(i=>ids.has(i)))).length},
+    {id:'subs', naziv:(modulEfektivni()==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&(upravaSve()||(x.grs||[]).some(i=>ids.has(i)))).length},
     {id:'nabavka', naziv:'Trebovanje', ic:'cart', cnt:(DATA.narudzbe||[]).filter(n=>n.status==='poslato'&&(upravaSve()||ids.has(n.gr))).length},
     {id:'nalozi', naziv:'Admin kokpit', ic:'client', dirOnly:true},
   ].filter(t=>(!t.dirOnly || isDirector()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
@@ -1645,7 +1647,7 @@ function viewDash(){
   const ukNapl = sites.filter(imaNaplatu).reduce((s,g)=>s+naplSum(g),0);
   const nenap = sites.filter(g=>g.status!=='zavrseno'&&imaNaplatu(g)).reduce((s,g)=>s+Math.max(0, g.napredak/100*g.budzet - naplSum(g)),0);
   const fin = canFinance();
-  const sitKol = fin && MODUL!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
+  const sitKol = fin && modulEfektivni()!=='projektovanje';   // druga mera zdravlja (Izvodjenje): ugovoreno vs privremene vs okoncana
   const alerts = computeAlerts();
 
   // finansijska tabela po projektu
@@ -1780,7 +1782,7 @@ function viewDash(){
   const grupe = (fin && MODUL==='sve') ? [
       ['Projektovanje', MODUL_BOJA.projektovanje, sites.filter(g=>(g.modul||'izvodjenje')==='projektovanje'), "setModul('projektovanje')"],
       ['Izvođenje radova', MODUL_BOJA.izvodjenje, sites.filter(g=>(g.modul||'izvodjenje')==='izvodjenje'), "setModul('izvodjenje')"]
-    ] : (fin && MODUL==='izvodjenje'&&PODTIP==='sve') ? [
+    ] : (fin && modulEfektivni()==='izvodjenje'&&PODTIP==='sve') ? [
       ['Visokogradnja', PODTIP_BOJA.visokogradnja, sites.filter(g=>(g.tip||'visokogradnja')==='visokogradnja'), "setPodtip('visokogradnja')"],
       ['Niskogradnja', PODTIP_BOJA.niskogradnja, sites.filter(g=>(g.tip||'visokogradnja')==='niskogradnja'), "setPodtip('niskogradnja')"]
     ] : null;
@@ -1844,8 +1846,8 @@ function viewSites(){
   `<div class="tools">
     <div class="search">${icon('search')}<input id="siteSearch" placeholder="Pretraži gradilišta ili lokaciju…" value="${esc(siteQuery)}"></div>
     ${filters.map(f=>`<button class="chip ${siteFilter===f[0]?'active':''}" onclick="setSiteFilter('${f[0]}')">${f[1]}</button>`).join('')}
-    ${isDirector()?`${MODUL!=='projektovanje'?`<button class="btn ghost" style="margin-left:auto" onclick="formSifrarnik()">Šifarnik artikala</button>`:''}
-    <button class="btn"${MODUL==='projektovanje'?' style="margin-left:auto"':''} onclick="formSite()">${icon('plus')} Novo gradilište</button>`:''}
+    ${isDirector()?`${modulEfektivni()!=='projektovanje'?`<button class="btn ghost" style="margin-left:auto" onclick="formSifrarnik()">Šifarnik artikala</button>`:''}
+    <button class="btn"${modulEfektivni()==='projektovanje'?' style="margin-left:auto"':''} onclick="formSite()">${icon('plus')} Novo gradilište</button>`:''}
   </div>
   <div id="sitesGrid" class="grid sites-grid">${sitesCards()}</div>`;
 }
@@ -3727,7 +3729,7 @@ function obrisiZaposlenog(id){
 }
 function obrisiPodizvodjaca(id){
   const p=(DATA.podizvodjaci||[]).find(x=>x.id===id); if(!p||!jeSuper()) return false;
-  return obrisiStavku('podizvodjaci', id, (MODUL==='projektovanje'?'spoljnog saradnika "':'podizvođača "')+unesc(p.naziv)+'"', false, ()=>{
+  return obrisiStavku('podizvodjaci', id, (modulEfektivni()==='projektovanje'?'spoljnog saradnika "':'podizvođača "')+unesc(p.naziv)+'"', false, ()=>{
     (DATA.predmer||[]).forEach(r=>{ if(r.zaduzen===id) r.zaduzen=null; });
     const pj=PUSHED.podizvodjac_gradiliste; if(pj) Object.keys(pj).filter(k=>k.indexOf(id+'|')===0).forEach(k=>delete pj[k]);
     saveState();
@@ -3774,7 +3776,7 @@ function viewSubs(){
       ${jeSuper()?`<td class="r">${BRISI_DUGME('obrisiPodizvodjaca',x.id)}</td>`:''}
     </tr>`;
   }).join('');
-  return head(MODUL==='projektovanje'?'Spoljni saradnici':'Podizvođači','Angažovane firme po gradilištima — kontakt i status.') +
+  return head(modulEfektivni()==='projektovanje'?'Spoljni saradnici':'Podizvođači','Angažovane firme po gradilištima — kontakt i status.') +
   `<div class="tools">${isDirector()?`<button class="btn" onclick="formSub()">${icon('plus')} Novi podizvođač</button>`:''}</div>
   <div class="card"><div style="overflow-x:auto"><table>
     <thead><tr><th>Podizvođač</th><th>Kontakt</th><th>Gradilišta</th>${fin?'<th class="r">Ugovoreno</th>':''}<th>Status</th>${jeSuper()?'<th></th>':''}</tr></thead>

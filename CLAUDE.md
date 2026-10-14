@@ -324,7 +324,9 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `visibleSites` filtrira po `MODULI` i za upravu; `smemNa` za upravu traži `modulDozvoljen(g.modul)`; `smemBrisati(grId)`
    umesto `jeSuper()` za svako brisanje reda gradilišta (dugmad + `obrisi*` guardovi); `upravaSve()` = puna uprava bez
    filtera (liste bez `gr`: zaposleni, dnevnik, podizvođači, trebovanja, Kanban); `tabDozvoljen`: zadaci samo uz projektovanje,
-   magacin/naplata samo uz izvođenje — i za upravu; `formSite` nudi samo dozvoljene module, izmena tuđeg se ne otvara;
+   magacin/naplata samo uz izvođenje — i za upravu; `modulEfektivni()` (= `MODUL`, ili jedini modul naloga) bira prikazne
+   grane koje su ranije gledale samo `MODUL` (naziv Spoljni saradnici/Podizvođači, dugme Šifarnik artikala, kolona „Ugov. vs
+   situacije", grupisanje table) — `MODUL` sam ostaje `'sve'` (T42); `formSite` nudi samo dozvoljene module, izmena tuđeg se ne otvara;
    Admin kokpit `smemDodelitiUlogu`/`smemMenjatiNalog` + čekboks modula samo za `MODULI`; „Pogled kao" direktoru modula
    ne nudi admina/drugog direktora/osobe drugog modula (`all` = njegova uloga). Mock: `UPRAVA`/`DIREKTORSKE`/`MODUL_ULOGE`,
    `ctx.isModDir/mojiModuli/modulDozvoljen`, ista pravila u `dodeli_ulogu`/`ukloni_pristup`/`obrisi_gradiliste`/`angazovanost`

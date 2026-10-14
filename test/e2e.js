@@ -3146,6 +3146,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("formSite('g8')"); if (!a.g.document.getElementById('modal').innerHTML.includes('Izmeni podatke')) throw new Error('dirpro ne moze da izmeni svoje gradiliste');
     a.run('closeModal()');
     if (a.run('zadaciVidljivi().some(t=>!jePro(grById[t.gr]))') || a.run('zadaciVidljivi().length') === 0) throw new Error('dirpro zadaci');
+    if (a.run('modulEfektivni()') !== 'projektovanje' || a.run("tabs().find(t=>t.id==='subs').naziv") !== 'Spoljni saradnici') throw new Error('dirpro: efektivni modul / naziv Spoljni saradnici');
+    a.run("current='sites'; render();"); if (a.g.document.getElementById('view').innerHTML.includes('formSifrarnik()')) throw new Error('dirpro: nudi Sifarnik artikala (Izvodjenje)');
+    a.run("current='dash'; render();"); if (a.g.document.getElementById('view').innerHTML.includes('Ugov. vs situacije')) throw new Error('dirpro: kolona Ugov. vs situacije na tabli');
+    a.run("current='subs'; render();"); if (!a.g.document.getElementById('view').innerHTML.includes('Spoljni saradnici')) throw new Error('dirpro: naslov Podizvodjaci umesto Spoljni saradnici');
     for (const id of tabs) { a.run(`current=${JSON.stringify(id)}; render();`); if (a.run('current') !== id) throw new Error('dirpro: tab ' + id + ' vracen na ' + a.run('current')); }
     a.run("setRole('dirizv')");
     if (JSON.stringify(a.run('MODULI')) !== '["izvodjenje"]' || a.run('visibleSites().length') !== nIzv || a.run('visibleSites().some(jePro)') || a.run('roleValue()') !== 'dirizv') throw new Error('dirizv vidi projektovanje');
@@ -3153,6 +3157,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!t2.includes('magacin') || !t2.includes('pay') || t2.includes('tasks') || !t2.includes('nalozi')) throw new Error('dirizv tabovi: ' + t2);
     if (a.run("smemNa('g8')") || !a.run("smemNa('g1')") || a.run("smemBrisati('g8')") || !a.run("smemBrisati('g1')")) throw new Error('dirizv smemNa/smemBrisati');
     if (a.run('zadaciVidljivi().length') !== 0) throw new Error('dirizv vidi zadatke projektovanja');
+    if (a.run('modulEfektivni()') !== 'izvodjenje' || a.run("tabs().find(t=>t.id==='subs').naziv") !== 'Podizvođači') throw new Error('dirizv: efektivni modul / naziv Podizvodjaci');
+    a.run("current='sites'; render();"); if (!a.g.document.getElementById('view').innerHTML.includes('formSifrarnik()')) throw new Error('dirizv: nema Sifarnik artikala');
+    a.run("current='dash'; render();"); if (!a.g.document.getElementById('view').innerHTML.includes('Ugov. vs situacije')) throw new Error('dirizv: nema kolone Ugov. vs situacije');
     for (const id of t2) { a.run(`current=${JSON.stringify(id)}; render();`); if (a.run('current') !== id) throw new Error('dirizv: tab ' + id + ' vracen na ' + a.run('current')); }
     a.run("current='pay'; render();"); const pv = a.g.document.getElementById('view').innerHTML;
     if (!pv.includes('obrisiSituaciju') ) throw new Error('dirizv: Naplata bez dugmeta brisanja na svojim situacijama');
