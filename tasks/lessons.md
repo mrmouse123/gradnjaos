@@ -252,3 +252,12 @@ CLAUDE.md / lessons, ne u kod koji test skenira.
 Umesto dve kartice marže u fioci stavio sam karticu „Utrošeno %" — isti broj naopačke (100 − ostvarena marža).
 Savetnik je uhvatio. Pravilo: kad uklanjaš meru, ne izmišljaj zamenu „da popuni prostor"; prazan slot u gridu
 je bolji od mere koju klijent nije tražio. Isto za KPI kartice na tabli (`kpis3`).
+
+## Lekcija 37 (2026-10-16, Postgres: `create or replace view` ne menja redosled kolona)
+Migracija 29 je dodala `izvor` u `predmer_v` ISPRED `cena` → „cannot change name of view column cena to izvor".
+Pravilo: nova kolona u postojećem view-u ide NA KRAJ liste; ako baš mora u sredinu, `drop view` + `create view` + ponovni grant.
+
+## Lekcija 38 (2026-10-14, `git revert` na Windows-u upisuje CRLF)
+Posle `git revert` tri fajla (index.html, e2e.js, CLAUDE.md) su u radnoj kopiji dobila CRLF (autocrlf), pa zakrpe sa
+višelinijskim anchor-ima više nisu uparivale (`"\n}\n"` nije nađen). Pravilo: posle revert/checkout/merge proveriti
+`count(b'\r\n')` i normalizovati na LF pre zakrpa i komita (git tada vidi samo stvarne izmene).

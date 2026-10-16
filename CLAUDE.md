@@ -321,7 +321,9 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    `vidi_finansije() or (vodim_gradiliste(gr) and not gradiliste_je_pro(gr))`; mock `ctx.rukIzv`). Cene
    „fiksira" uprava — `zastiti_kolone_predmer` ne-upravi ne da da ih menja, `formPredmerRed` nudi cenu samo uz
    `canFinance()`, `rowsZa` je rukovodiocu i dalje ne šalje. KPI vrednosti (ugovoreno/izvedeno/preostalo),
-   „Ukupno" situacije, „Plaćeno", kumulativ, izvoz — i dalje `canFinance()`. `preracunajSituacijeLokalno`
+   „Ukupno" situacije, „Plaćeno", kumulativ, izvoz predmera — i dalje `canFinance()`. JEDINI IZUZETAK: `izvozSituacije`
+   (Excel za investitora, odluka 2026-10-16) računa iznose iz jediničnih cena i za rukovodioca bez finansija
+   (`smemIzvozSituacije` = vidi gradilište ∧ (`canFinance()` ∨ `vidimCene`)) — ne „popravljati" nazad na `canFinance()`. `preracunajSituacijeLokalno`
    piše `iznos` samo uz `canFinance()` (rukovodilac sa cenama ga ne računa — iznos je serverov). Tabovi po ulozi: `tabDozvoljen()` (uprava sve; ostali: tabla,
    gradilišta, rokovi, zadaci (samo modul projektovanje), dnevnik, magacin (samo modul izvođenje), trebovanje; `pay` = SAMO uprava
    (odluka 2026-10-14; rukovodilac sa finansijama situacije i dalje vidi/pravi u fioci gradilišta, `viewPay` vraća ostale na dash)).
@@ -444,7 +446,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    polisu na redu koji se ažurira) — zato column-level grant + view.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
-36 lekcija; najvažnije za svaku izmenu:
+38 lekcija; najvažnije za svaku izmenu:
 - U fajlu postoje LITERALNE \uXXXX sekvence u JS stringovima — grep pre zamene.
 - Svaki search-replace mora imati assert (`test/patch-lib.js`, `Patcher`).
 - Upis fajla: temp fajl pa atomic rename.
