@@ -3029,6 +3029,105 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T58 (2026-10-16): izvoz situacije u investitorskom sablonu, latinica/cirilica; predmer.izvor iz uvoza ---- */
+  section('T58 izvoz situacije lat/cir');
+  await acheck('lat2cir: srpski tekst, digrafi (lj/nj/dž, velika slova), tokeni sa ciframa/qwxy i skracenice ostaju latinicni; round-trip sa cir2lat; rimski', async () => {
+    const a = await boot();
+    const l2c = s => a.run(`lat2cir(${JSON.stringify(s)})`);
+    if (l2c('Demontaža postojećih razvodnih ormana i tabli') !== 'Демонтажа постојећих разводних ормана и табли') throw new Error('osnovno: ' + l2c('Demontaža postojećih razvodnih ormana i tabli'));
+    if (l2c('Ljubljana njiva džak LJUBLJANA DŽAK') !== 'Љубљана њива џак ЉУБЉАНА ЏАК') throw new Error('digrafi: ' + l2c('Ljubljana njiva džak LJUBLJANA DŽAK'));
+    if (l2c('Bullet IP kamera IPC2314LE-ADF28K-WP, 4MP') !== 'Буллет IP камера IPC2314LE-ADF28K-WP, 4MP') throw new Error('mesano: ' + l2c('Bullet IP kamera IPC2314LE-ADF28K-WP, 4MP'));
+    if (l2c('LED svetiljka N2XH-J 3x1.5mm² (PVC)') !== 'LED светиљка N2XH-J 3x1.5mm² (PVC)') throw new Error('skracenice: ' + l2c('LED svetiljka N2XH-J 3x1.5mm² (PVC)'));
+    const cist = 'Jednopolni automatski prekidač, grebenasti prekidač i šuko priključnica za zid';
+    if (a.run(`cir2lat(lat2cir(${JSON.stringify(cist)}))`) !== cist) throw new Error('round-trip: ' + a.run(`cir2lat(lat2cir(${JSON.stringify(cist)}))`));
+    if (a.run("lat2cir('Демонтажа 500m²')") !== 'Демонтажа 500m²' || a.run("lat2cir('')") !== '') throw new Error('cirilica/prazno netaknuto');
+    if (a.run('[1,2,3,4,5,9,10].map(rimski).join()') !== 'I,II,III,IV,V,IX,X') throw new Error('rimski: ' + a.run('[1,2,3,4,5,9,10].map(rimski).join()'));
+  });
+  await acheck('citajXlsx: red.list = ime lista iz workbook.xml (redosled), red.izvorno = original pre cir2lat; upariPredmerSablon puni izvor {list, sekcija, nadpoz, cir}; T47 broj pozicija nepromenjen; dodajPredmerIzPripreme cuva izvor (esc)', async () => {
+    const a = await boot();
+    const buf = fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'predmer-sablon.xlsx'));
+    a.g.__buf = new Uint8Array(buf).buffer;
+    const redovi = await a.run('citajXlsx(__buf, true)');
+    const listovi = [...new Set(redovi.map(r => r.list))];
+    if (JSON.stringify(listovi) !== JSON.stringify(['ЕЛЕКТРОИНСТАЛАЦИЈЕ', 'ТЕХНИЧКА ЗАШТИТА', 'РЕКАПИТУЛАЦИЈА'])) throw new Error('imena listova: ' + JSON.stringify(listovi));
+    const r0 = redovi.find(r => String(r[1]).startsWith('Demontaža u objektima'));
+    if (!r0 || !r0.izvorno || !String(r0.izvorno[1]).startsWith('Демонтажа у објектима')) throw new Error('izvorno nije sacuvano: ' + JSON.stringify(r0 && r0.izvorno));
+    a.g.__rows = redovi; const rez = a.run('upariPredmerSablon(__rows)');
+    const dem = rez.redovi.find(r => r.poz.startsWith('Demontaža u objektima'));
+    if (!dem || !dem.izvor || dem.izvor.list !== 'ЕЛЕКТРОИНСТАЛАЦИЈЕ' || dem.izvor.sekcija !== '4.0 ДЕМОНТАЖНИ РАДОВИ' || !String(dem.izvor.nadpoz).startsWith('4.0.1 Демонтажа постојећих') || !String(dem.izvor.cir).startsWith('Демонтажа у објектима')) throw new Error('izvor demontaza: ' + JSON.stringify(dem && dem.izvor));
+    const kam = rez.redovi.find(r => /Bullet IP kamera/.test(r.poz));
+    if (!kam || kam.izvor.list !== 'ТЕХНИЧКА ЗАШТИТА' || kam.izvor.sekcija !== 'И ВИДЕО НАДЗОР' || kam.izvor.nadpoz !== '3Д Bullet IP kamera 4 MP' || kam.izvor.cir !== null) throw new Error('izvor kamera: ' + JSON.stringify(kam && kam.izvor));
+    const rad = rez.redovi.find(r => r.sifra === '453');
+    if (!rad || rad.izvor.nadpoz !== null || rad.izvor.sekcija !== 'И ВИДЕО НАДЗОР') throw new Error('stavka sa sopstvenom sifrom ne sme imati nadpoz: ' + JSON.stringify(rad && rad.izvor));
+    // isti broj pozicija kao pre (T47)
+    const bez = rez.redovi.map(r => ({ sifra: r.sifra, poz: r.poz, kol: r.kol, cena: r.cena }));
+    if (bez.length !== rez.redovi.length || bez.length < 5) throw new Error('broj pozicija ' + bez.length);
+    a.g.__rez = rez.redovi.map(r => ({ ...r, poz: r.poz + ' <b>x</b>', izvor: { ...r.izvor, sekcija: (r.izvor && r.izvor.sekcija) ? r.izvor.sekcija + ' & co' : null } }));
+    a.run("setRole('all'); PREDMER_PRIPREMA={redovi:__rez};");
+    const gid = a.run("DATA.gradilista.find(g=>!jePro(g)).id"), n0 = a.run('DATA.predmer.length');
+    a.run(`dodajPredmerIzPripreme(${JSON.stringify(gid)})`);
+    const novi = a.run('DATA.predmer.slice(' + n0 + ')');
+    if (!novi.length || novi.some(r => !r.izvor) || !novi.some(r => r.izvor.sekcija && r.izvor.sekcija.includes('&amp; co')) || novi.some(r => r.poz.includes('<b>'))) throw new Error('izvor nije esc/sacuvan: ' + JSON.stringify(novi[0]));
+  });
+  await acheck('izvozSituacije: privremena (lat) — listovi po vrsti radova + REKAPITULACIJA, zaglavlja, sekcija + UKUPNO, nadpozicija, kumulativ sa servera, UKUPNO = Σ kol×cena; cirilica = cirilicni naslovi i original stavke; okoncana ima kolonu po ranijoj situaciji; guardovi (tudje gradiliste null, radnik bez cena alert, Petar bez finansija moze); dugmad u detalju', async () => {
+    const a = await boot();
+    a.run("setRole('all')");
+    const g = a.run("DATA.gradilista.find(x=>!jePro(x)&&predmerZa(x.id).length>=3)"); if (!g) throw new Error('DEMO bez izvodjenja sa predmerom');
+    // predmer sa izvorom: dva lista, sekcije, nadpozicija; stare situacije brisemo da bi I privremena bila prva
+    a.run(`DATA.situacije=DATA.situacije.filter(s=>s.gr!==${JSON.stringify(g.id)}); DATA.situacija_stavke=DATA.situacija_stavke.filter(x=>x.gr!==${JSON.stringify(g.id)});`);
+    const pm = a.run(`predmerZa(${JSON.stringify(g.id)})`);
+    a.run(`const l=predmerZa(${JSON.stringify(g.id)}); l[0].izvor={list:'ЕЛЕКТРОИНСТАЛАЦИЈЕ',sekcija:'4.0 ДЕМОНТАЖНИ РАДОВИ',nadpoz:'4.0.1 Демонтажа постојећих инсталација',cir:'Демонтажа у објектима'}; l[1].izvor={list:'ЕЛЕКТРОИНСТАЛАЦИЈЕ',sekcija:'4.2 РАЗВОДНИ ОРМАНИ',nadpoz:null,cir:null}; l[2].izvor={list:'ТЕХНИЧКА ЗАШТИТА',sekcija:'И ВИДЕО НАДЗОР',nadpoz:null,cir:null};`);
+    // I privremena: stavke za prve dve pozicije
+    const mk = (id, br, dan, kol0, kol1, vrsta) => a.run(`(()=>{ const s={id:${JSON.stringify(id)}, gr:${JSON.stringify(g.id)}, br:${JSON.stringify(br)}, opis:'t58', izdato:${JSON.stringify(dan)}, valuta:${JSON.stringify(dan)}, status:'ceka', vrsta:${JSON.stringify(vrsta)}, iznos:0, pregled:'odobrena'}; DATA.situacije.push(s);
+      const l=predmerZa(${JSON.stringify(g.id)}); [[l[0],${kol0}],[l[1],${kol1}]].forEach(([p,k],i)=>{ if(k==null) return; DATA.situacija_stavke.push({id:s.id+'-'+i, sit:s.id, gr:s.gr, predmer_id:p.id, sifra:p.sifra||null, poz:p.poz, jm:p.jm, kol:k, kol_ugovoreno:p.kol, kumulativ:0, razlika:0}); });
+      preracunajSituacijeLokalno(s.gr); return s.id; })()`);
+    mk('t58-s1', 'PS-1/26', '2026-10-01', 1, 2, 'privremena');
+    const u1 = await a.run("izvozSituacije('t58-s1','lat')");
+    if (!u1 || !u1.length) throw new Error('izvoz nije vratio bajtove');
+    a.g.__u1 = u1; const red1 = await a.run('citajXlsx(__u1.buffer, true)');
+    const listovi = [...new Set(red1.map(r => r.list))];
+    if (JSON.stringify(listovi) !== JSON.stringify(['ELEKTROINSTALACIJE', 'TEHNIČKA ZAŠTITA', 'PREDMER', 'REKAPITULACIJA'])) throw new Error('listovi lat (pozicije bez izvora idu u PREDMER): ' + JSON.stringify(listovi));
+    const L1 = red1.filter(r => r.list === 'ELEKTROINSTALACIJE'), txt = r => r.map(String).join('|');
+    if (!txt(L1[0]).includes('PRIVREMENA SITUACIJA br. PS-1/26') || !txt(L1[1]).includes('Objekat:') || !txt(L1[1]).includes('Investitor:')) throw new Error('info redovi: ' + txt(L1[0]) + ' / ' + txt(L1[1]));
+    const zag = L1.find(r => r.includes('UGOVORENO')); if (!zag || !zag.includes('KUMULATIVNO IZVEDENO') || !zag.includes('IZVEDENO U PRETHODNIM SITUACIJAMA') || !zag.includes('IZVEDENO U I PRIVREMENOJ SITUACIJI')) throw new Error('grupe kolona: ' + txt(zag || []));
+    const pod = L1.find(r => r[0] === 'Br. poz.'); if (!pod || pod.filter(x => x === 'kol.').length !== 4 || pod.filter(x => x === 'jed. cena bez PDV-a').length !== 4) throw new Error('podzaglavlje: ' + txt(pod || []));
+    if (!L1.some(r => r[0] === '4.0' && r[1] === 'DEMONTAŽNI RADOVI') || !L1.some(r => r[0] === '4.0.1' && String(r[1]).startsWith('Demontaža postojećih')) || !L1.some(r => r[0] === '4.2' && r[1] === 'RAZVODNI ORMANI')) throw new Error('sekcija/nadpozicija nedostaje');
+    if (!L1.some(r => r[1] === 'UKUPNO DEMONTAŽNI RADOVI') || !L1.some(r => r[1] === 'UKUPNO RAZVODNI ORMANI') || !L1.some(r => r[0] === 'REKAPITULACIJA')) throw new Error('UKUPNO po sekciji / rekap lista: ' + L1.filter(r => /UKUPNO|REKAP/.test(txt(r))).map(txt).join(' / '));
+    const st0 = L1.find(r => String(r[1]) === a.run('unesc(predmerZa(' + JSON.stringify(g.id) + ')[0].poz)'));
+    const c0 = +pm[0].cena, k0 = +pm[0].kol;
+    if (!st0 || st0[0] !== '' || st0[3] !== k0 || st0[4] !== c0 || Math.abs(st0[5] - k0 * c0) > 0.01 || st0[6] !== 1 || st0[9] !== 0 || st0[12] !== 1 || Math.abs(st0[14] - c0) > 0.01) throw new Error('red stavke 0: ' + txt(st0 || []));
+    const uk = L1.filter(r => r[1] === 'UKUPNO').pop(); const ugov = pm.filter(p => (p.izvor || {}).list === 'ЕЛЕКТРОИНСТАЛАЦИЈЕ').reduce((s2, p) => s2 + p.kol * p.cena, 0);
+    if (!uk || Math.abs(uk[5] - ugov) > 0.01 || Math.abs(uk[14] - (1 * c0 + 2 * pm[1].cena)) > 0.01) throw new Error('UKUPNO lista: ' + txt(uk || []) + ' ocekivano ugov ' + ugov);
+    const R = red1.filter(r => r.list === 'REKAPITULACIJA'); const rb = R.find(r => r[1] === 'UKUPNO BEZ PDV-a'), svi = pm.reduce((s2, p) => s2 + p.kol * p.cena, 0);
+    if (!rb || Math.abs(rb[2] - svi) > 0.01 || !R.some(r => r[0] === 'I' && r[1] === 'ELEKTROINSTALACIJE') || !R.some(r => r[0] === 'II' && r[1] === 'TEHNIČKA ZAŠTITA')) throw new Error('rekapitulacija: ' + R.map(txt).join(' / '));
+    // cirilica: naslovi i original stavke (ZIP je STORED pa se tekst vidi direktno)
+    const u1c = await a.run("izvozSituacije('t58-s1','cir')"); const s1c = Buffer.from(u1c).toString('utf8');
+    for (const x of ['ПРИВРЕМЕНА СИТУАЦИЈА бр. PS-1/26', 'УГОВОРЕНО', 'КУМУЛАТИВНО ИЗВЕДЕНО', 'ИЗВЕДЕНО У I ПРИВРЕМЕНОЈ СИТУАЦИЈИ', 'ДЕМОНТАЖНИ РАДОВИ', 'Демонтажа у објектима', 'УКУПНО БЕЗ ПДВ-а', 'ЕЛЕКТРОИНСТАЛАЦИЈЕ']) if (!s1c.includes(x)) throw new Error('cirilica nema: ' + x);
+    if (s1c.includes('UGOVORENO') || s1c.includes('<t xml:space="preserve">Demontaža u objektima')) throw new Error('cirilicni izvoz sadrzi latinicne naslove/stavku');
+    // II privremena pa okoncana: kolone po ranijim situacijama, prethodne = kumulativ - ova
+    mk('t58-s2', 'PS-2/26', '2026-11-01', 2, null, 'privremena');
+    mk('t58-s3', 'OK-1/26', '2026-12-01', 1, 1, 'okoncana');
+    const u3 = await a.run("izvozSituacije('t58-s3','lat')"); a.g.__u3 = u3; const red3 = await a.run('citajXlsx(__u3.buffer, true)');
+    const L3 = red3.filter(r => r.list === 'ELEKTROINSTALACIJE'), z3 = L3.find(r => r.includes('UGOVORENO'));
+    if (!z3.includes('IZVEDENO U I PRIVREMENOJ SITUACIJI') || !z3.includes('IZVEDENO U II PRIVREMENOJ SITUACIJI') || !z3.includes('IZVEDENO U OKONČANOJ SITUACIJI') || z3.includes('IZVEDENO U III PRIVREMENOJ SITUACIJI')) throw new Error('okoncana grupe: ' + txt(z3));
+    const s30 = L3.find(r => String(r[1]) === a.run('unesc(predmerZa(' + JSON.stringify(g.id) + ')[0].poz)'));
+    // kolone: 3 + [ugov 3][kum 3][preth 3][I 3][II 3][okon 3]
+    if (s30[6] !== 4 || s30[9] !== 3 || s30[12] !== 1 || s30[15] !== 2 || s30[18] !== 1) throw new Error('okoncana kolicine: ' + txt(s30));
+    const R3 = red3.filter(r => r.list === 'REKAPITULACIJA'), rz = R3.find(r => r[2] === 'Ugovoreno');
+    if (!rz || !rz.includes('Izvedeno po I Privremenoj situaciji') || !rz.includes('Izvedeno po II Privremenoj situaciji') || !rz.includes('Izvedeno po okončanoj situaciji')) throw new Error('rekap okoncane: ' + txt(rz || []));
+    // guardovi
+    const drugi = a.run(`DATA.gradilista.find(x=>!jePro(x)&&x.id!==${JSON.stringify(g.id)}&&x.rukovodilac!==${JSON.stringify(g.rukovodilac)}).rukovodilac`);
+    a.run(`setRole(${JSON.stringify(drugi + '|izv')})`);
+    if (a.run("izvozSituacije('t58-s1','lat')") !== null) throw new Error('rukovodilac drugog gradilista izvezao situaciju');
+    const radnik = a.run(`DATA.zaposleni.find(z=>(z.grs||[]).includes(${JSON.stringify(g.id)})&&z.id!==${JSON.stringify(g.rukovodilac)})`);
+    if (radnik) { a.run(`setRole('radnik:${radnik.id}|izv')`); const al = a.g._calls.alert.length; if (a.run("izvozSituacije('t58-s1','lat')") !== null || a.g._calls.alert.length !== al + 1) throw new Error('radnik bez cena izvezao / bez alert-a'); a.run("detaljSituacije('t58-s1')"); if (a.g.document.getElementById('modal').innerHTML.includes('izvozSituacije(')) throw new Error('radnik ima dugme izvoza'); }
+    a.run(`setRole(${JSON.stringify(g.rukovodilac + '|izv')})`);   // rukovodilac bez finansija: vidimCene → sme
+    const uP = await a.run("izvozSituacije('t58-s1','lat')"); if (!uP || !uP.length) throw new Error('rukovodilac gradilista (bez finansija) ne moze da izveze');
+    a.run("detaljSituacije('t58-s1')"); const m = a.g.document.getElementById('modal').innerHTML;
+    if (!m.includes("izvozSituacije('t58-s1','lat')") || !m.includes("izvozSituacije('t58-s1','cir')")) throw new Error('nema dugmadi izvoza u detalju');
+    a.run("closeModal(); setRole('all')");
+  });
+
   /* ---- T57 (2026-10-14): direktori modula — sva ovlascenja direktora, SAMO u svom modulu (migracija 27) ---- */
   section('T57 direktori modula');
   await acheck('setRole dirpro/dirizv: uprava + finansije + jedan modul; visibleSites/tabovi/smemNa/smemBrisati/smemPredmer po modulu; jeSuper samo direktor; obrisi* na tudjem gradilistu false bez confirm-a; formSite nudi samo svoj modul, tudje ne menja; Naplata/zadaci/upravaSve po modulu; svi tabovi se renderuju', async () => {

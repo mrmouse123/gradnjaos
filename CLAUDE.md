@@ -165,6 +165,22 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   Izvođenja (`formSite`, `pm_fajl`, primena u `saveSite` uz čekirane artikle i Razno) i „Uvezi iz Excela" na
   strani Predmer (`formPredmerImport`, `pm_fajl2`, pre nalepljenog). Fixture `test/fixtures/predmer-sablon.xlsx`;
   T47 uz pravi predmer OŠ (87 pozicija, 20.935.367 RSD) kad postoji lokalno.
+- **Izvoz situacije u investitorskom šablonu, latinica/ćirilica** (2026-10-16, migracija 29, zahtev klijenta): dugmad
+  „⬇ Excel (latinica / ćirilica)" u `detaljSituacije` → `izvozSituacije(sitId, 'lat'|'cir')` (`smemIzvozSituacije` = vidi
+  gradilište I cene: uprava ili rukovodilac gradilišta Izvođenja — ODLUKA 2026-10-16: dokument za investitora mora imati
+  iznose, pa ih rukovodilac bez finansija ovde dobija iz jediničnih cena koje već vidi (`vidimCene`); `situacije_v.iznos`
+  i UI ostaju kao pre). Šablon = isti kao ulazna PPS/okončana: list po vrsti radova, sekcija („4.0 ДЕМОНТАЖНИ РАДОВИ") +
+  „UKUPNO <sekcija>", naslov nadpozicije iznad stavki, trojke kolona kol · jed. cena · ukupno za UGOVORENO ·
+  KUMULATIVNO · PRETHODNE · (okončana: svaka ranija situacija I/II/…) · OVA, REKAPITULACIJA po listu + list
+  REKAPITULACIJA (+ red „Preostalo"). Kumulativ je serverov (`stavka.kumulativ`), prethodne = kumulativ − ova; pozicije
+  bez stavke 0; stavke bez `predmer_id` na list „VAN PREDMERA". Naslovi su DVA literalna skupa (`SIT_H.cir/lat`), ne
+  transliteracija. **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
+  (`citajXlsx` sada daje `red.list` iz workbook.xml+rels i `red.izvorno` = ćelije pre `cir2lat`; `upariPredmerSablon`:
+  naslov velikim slovima = sekcija, osim ako ODMAH iza njega ide stavka bez šifre; mešovita slova = nadpoz; stavka sa
+  sopstvenom šifrom briše nadpoz; `escIzvor` pri upisu). Nije finansijska kolona (grant + `predmer_v` NA KRAJU — view ne
+  menja redosled kolona), ne-uprava je ne menja (trigger). Izvoz: `T()` = unesc → ćirilica: tekst koji već jeste ćiriličan
+  ostaje, inače `lat2cir` (token sa cifrom/qwxy ili iz `LAT_OSTAJE` ostaje latiničan); latinica: `cir2lat`. g-osdr je
+  popunjen iz originalnog predmera (87/87, 4 lista); g-dm1..3 nemaju izvor → jedan list „PREDMER". T58.
 - **Situacija iz Excela** (2026-10-11): `formSituacija` (Izvođenje, kad ima predmera) ima „⇧ Učitaj iz Excela" —
   `citajXlsx(buf, true)` čita SVE listove (investitorska PPS/okončana: list po vrsti radova), `upariSituaciju`
   prepoznaje stavke (JM = prvi kratak tekst posle opisa iza koga je broj; prazan opis → prethodni red; zaglavlje
@@ -174,7 +190,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..28.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..29.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)

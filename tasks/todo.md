@@ -1,3 +1,10 @@
+# 2026-10-16: izvoz situacije u investitorskom šablonu (lat/ćir), predmer.izvor
+- [x] Migracija 29 (živo + schema.sql): predmer.izvor jsonb {list, sekcija, nadpoz, cir}; predmer_v (na kraju), grant, trigger
+- [x] citajXlsx: imena listova (workbook.xml + rels) + red.izvorno; upariPredmerSablon puni izvor (sekcija/nadpoz heuristika sa pogledom unapred); g-osdr popunjen iz originalnog predmera
+- [x] izvozSituacije lat/cir (SIT_H, lat2cir, rimski), dugmad u detalju situacije; odluka: rukovodilac bez finansija dobija iznose u izvozu
+- [x] T58 (3 provere), e2e 955/0
+- [ ] Obračunski list građevinske knjige (list po poziciji, mesečne količine) — ponuđeno kao sledeći korak
+
 # 2026-10-14: direktori modula (direktor_projektovanja / direktor_izvodjenja)
 - [x] Migracija 27 (živo + schema.sql): uloge + constraint modula, je_direktor() obuhvata direktore modula, modul iz imena uloge (moji_moduli), vodim_gradiliste = uprava ∧ modul_dozvoljen, smem_brisati, modul_moj za INSERT gradilišta; 24 polise sa golim je_direktor/je_super nad tabelama sa gr prepisane; obrisi_gradiliste/angazovanost/dodeli_ulogu/ukloni_pristup
 - [x] Klijent: MODUL_ULOGE/DIREKTORSKE/jeUpravaUloga, primeniUlogu, jeSuper = samo direktor, smemBrisati, upravaSve, smemNa po modulu, visibleSites filter i za upravu, tabDozvoljen, setRole dirpro/dirizv, Pogled kao, Admin kokpit (smemDodelitiUlogu/smemMenjatiNalog, čekboks modula), formSite

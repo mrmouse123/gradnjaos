@@ -3183,6 +3183,99 @@ function preuzmiXlsx(ime, listovi){
    Primenjuje se na svaki tekst iz citajXlsx/citajCsv (pa su uvezene pozicije latinične) i u normPoz (uparivanje radi
    za bilo koju kombinaciju pisama). Srpska ćirilica; Љ/Њ/Џ → Lj/Nj/Dž, a LJ/NJ/DŽ kad je sledeće slovo veliko. */
 const CIR_LAT={'а':'a','б':'b','в':'v','г':'g','д':'d','ђ':'đ','е':'e','ж':'ž','з':'z','и':'i','ј':'j','к':'k','л':'l','љ':'lj','м':'m','н':'n','њ':'nj','о':'o','п':'p','р':'r','с':'s','т':'t','ћ':'ć','у':'u','ф':'f','х':'h','ц':'c','ч':'č','џ':'dž','ш':'š'};
+/* Latinica → ćirilica za IZVOZ (2026-10-16). Token ostaje latiničan ako ima cifru, q/w/x/y (strani modeli: IPC2314LE, N2XH-J)
+   ili je poznata skraćenica (LED, IP, PoE…). Originalni ćirilični tekst iz uvoza (predmer.izvor.cir) ima prednost — ovo je rezerva. */
+const LAT_CIR={a:'а',b:'б',c:'ц',č:'ч',ć:'ћ',d:'д',đ:'ђ',e:'е',f:'ф',g:'г',h:'х',i:'и',j:'ј',k:'к',l:'л',m:'м',n:'н',o:'о',p:'п',r:'р',s:'с',š:'ш',t:'т',u:'у',v:'в',z:'з',ž:'ж'};
+const LAT_OSTAJE=new Set(['LED','IP','PoE','NVR','DVR','HDD','SSD','UTP','FTP','SFTP','FID','HFX','USB','HDMI','VGA','LAN','WAN','WiFi','CCTV','UPS','AC','DC','CE','ENEC','EN','IEC','ISO','SRPS','RAL','PVC','DIN','PE','PP','MDF','GSM','RFID','NFC']);
+function lat2cir(s){
+  s=String(s??''); if(!/[A-Za-zČĆĐŠŽčćđšž]/.test(s)) return s;
+  return s.replace(/\S+/g, tok=>{
+    if(/\d/.test(tok)||/[qwxyQWXY]/.test(tok)) return tok;
+    const slova=tok.replace(/[^\p{L}]/gu,''); if(LAT_OSTAJE.has(slova)) return tok;
+    let out='';
+    for(let i=0;i<tok.length;i++){
+      const two=tok.slice(i,i+2), lo2=two.toLowerCase(), d={lj:'љ',nj:'њ','dž':'џ'}[lo2];
+      if(d){ const c0=two[0], c1=two[1]; out+= c0===c0.toUpperCase()&&c0!==c0.toLowerCase() ? d.toUpperCase() : d; i++; if(c1!==c1.toLowerCase()&&c0===c0.toLowerCase()){ /* lJ — nema smisla, ostavi */ } continue; }
+      const ch=tok[i], m=LAT_CIR[ch.toLowerCase()];
+      if(m===undefined){ out+=ch; continue; }
+      out+= ch===ch.toLowerCase() ? m : m.toUpperCase();
+    }
+    return out;
+  });
+}
+function rimski(n){ const t=[[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']]; let r=''; n=Math.max(1,Math.round(n)); for(const [v,z] of t) while(n>=v){ r+=z; n-=v; } return r; }
+function escIzvor(iz){ if(!iz||typeof iz!=='object') return null; const o={}; for(const k of ['list','sekcija','nadpoz','cir']) o[k]=iz[k]?esc(String(iz[k])):null; return o; }
+/* Izvoz situacije u investitorskom šablonu (2026-10-16, zahtev klijenta): list po vrsti radova (predmer.izvor.list),
+   sekcije sa „UKUPNO <sekcija>", naslov nadpozicije iznad stavki, trojke kolona (kol · jed. cena · ukupno) za
+   UGOVORENO · KUMULATIVNO · PRETHODNE · (okončana: svaka ranija situacija) · OVA, rekapitulacija po listu i list
+   REKAPITULACIJA. pismo = 'lat' | 'cir'. Kumulativ je serverov (stavka.kumulativ), prethodne = kumulativ − ova.
+   Ko: ko vidi gradilište I jedinične cene (uprava ili rukovodilac gradilišta Izvođenja) — dokument za investitora mora
+   imati iznose, pa ih rukovodilac bez finansija ovde dobija iz cena koje već vidi (odluka 2026-10-16). */
+const SIT_H={
+  cir:{naslov:'ПРЕДМЕР И ПРЕДРАЧУН', ugov:'УГОВОРЕНО', kum:'КУМУЛАТИВНО ИЗВЕДЕНО', preth:'ИЗВЕДЕНО У ПРЕТХОДНИМ СИТУАЦИЈАМА',
+       priv:n=>'ИЗВЕДЕНО У '+n+' ПРИВРЕМЕНОЈ СИТУАЦИЈИ', okon:'ИЗВЕДЕНО У ОКОНЧАНОЈ СИТУАЦИЈИ', jm:'јед. мере', kol:'кол.',
+       cena:'јед. цена без ПДВ-а', uk:'укупна цена без ПДВ-а', ukupno:'УКУПНО', rekap:'РЕКАПИТУЛАЦИЈА', ukBez:'УКУПНО БЕЗ ПДВ-а',
+       brPoz:'Бр. поз.', opis:'Врста и опис радова', privS:'ПРИВРЕМЕНА СИТУАЦИЈА', okonS:'ОКОНЧАНА СИТУАЦИЈА', br:'бр.',
+       objekat:'Објекат', investitor:'Инвеститор', datum:'Датум', vanPred:'ВАН ПРЕДМЕРА', predmer:'ПРЕДМЕР', ugovoreno:'Уговорено',
+       kumul:'Кумулативно изведено', poPriv:n=>'Изведено по '+n+' Привременој ситуацији', poOkon:'Изведено по окончаној ситуацији', razlika:'Преостало (уговорено − кумулативно)'},
+  lat:{naslov:'PREDMER I PREDRAČUN', ugov:'UGOVORENO', kum:'KUMULATIVNO IZVEDENO', preth:'IZVEDENO U PRETHODNIM SITUACIJAMA',
+       priv:n=>'IZVEDENO U '+n+' PRIVREMENOJ SITUACIJI', okon:'IZVEDENO U OKONČANOJ SITUACIJI', jm:'jed. mere', kol:'kol.',
+       cena:'jed. cena bez PDV-a', uk:'ukupna cena bez PDV-a', ukupno:'UKUPNO', rekap:'REKAPITULACIJA', ukBez:'UKUPNO BEZ PDV-a',
+       brPoz:'Br. poz.', opis:'Vrsta i opis radova', privS:'PRIVREMENA SITUACIJA', okonS:'OKONČANA SITUACIJA', br:'br.',
+       objekat:'Objekat', investitor:'Investitor', datum:'Datum', vanPred:'VAN PREDMERA', predmer:'PREDMER', ugovoreno:'Ugovoreno',
+       kumul:'Kumulativno izvedeno', poPriv:n=>'Izvedeno po '+n+' Privremenoj situaciji', poOkon:'Izvedeno po okončanoj situaciji', razlika:'Preostalo (ugovoreno − kumulativno)'},
+};
+function smemIzvozSituacije(s){ return !!s && vidimGr(s.gr) && (canFinance()||vidimCene(s.gr)); }
+function izvozSituacije(id, pismo){
+  const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!vidimGr(s.gr)) return null;
+  if(!smemIzvozSituacije(s)){ alert('Izvoz situacije traži jedinične cene — dostupan je upravi i rukovodiocu gradilišta.'); return null; }
+  const cir=pismo==='cir', H=SIT_H[cir?'cir':'lat'], g=grById[s.gr], okon=s.vrsta==='okoncana';
+  const T=t=>{ const u=unesc(String(t??'')); return cir ? (/[\u0400-\u04FF]/.test(u)?u:lat2cir(u)) : cir2lat(u); };
+  const okr=v=>Math.round(v*100)/100;
+  const sve=sitZa(s.gr).slice().sort((a,b)=>String(a.izdato).localeCompare(String(b.izdato))||String(a.id).localeCompare(String(b.id)));
+  const idx=sve.findIndex(x=>x.id===id), pre=idx>0?sve.slice(0,idx):[], privPre=pre.filter(x=>x.vrsta!=='okoncana');
+  const mapa=sid=>{ const m={}; stavkeZa(sid).forEach(x=>{ if(x.predmer_id) m[x.predmer_id]=(m[x.predmer_id]||0)+(+x.kol||0); }); return m; };
+  const ova=mapa(id), preMape=pre.map(x=>mapa(x.id)), stOva={}; stavkeZa(id).forEach(x=>{ if(x.predmer_id) stOva[x.predmer_id]=x; });
+  const naslovOve=okon?H.okon:H.priv(rimski(privPre.length+1));
+  const grupe=[H.ugov,H.kum,H.preth,...(okon?pre.map(x=>x.vrsta==='okoncana'?H.okon:H.priv(rimski(privPre.indexOf(x)+1))):[]),naslovOve];
+  const nT=grupe.length, prazno=()=>new Array(nT).fill(0);
+  const kolicine=p=>{ const k=+p.kol||0, o=ova[p.id]||0, prevQ=preMape.reduce((a,m)=>a+(m[p.id]||0),0), st=stOva[p.id];
+    const kum=st&&st.kumulativ!=null?+st.kumulativ:prevQ+o, preth=st?Math.max(0,kum-(+st.kol||0)):prevQ;
+    return [k,kum,preth,...(okon?preMape.map(m=>m[p.id]||0):[]),o]; };
+  const trojke=(q,c)=>q.flatMap(v=>[okr(v), c, c==null?null:okr(v*c)]);
+  const zaglavlje=()=>{ const r5=['','',''], r6=[H.brPoz,H.opis,H.jm]; grupe.forEach(n=>{ r5.push(n,'',''); r6.push(H.kol,H.cena,H.uk); }); return [r5,r6]; };
+  const kli=g&&g.klijent?cliById[g.klijent]:null;
+  const info=[[`${okon?H.okonS:H.privS} ${H.br} ${T(s.br)}`],[`${H.objekat}: ${T(g?g.naziv:'')}${g&&g.adresa?', '+T(g.adresa):''}${g&&g.lok&&g.lok!=='—'?', '+T(g.lok):''} · ${H.investitor}: ${kli?T(kli.naziv):'—'} · ${H.datum}: ${fmtDate(s.izdato)}`],[]];
+  const red=(a,b,c,q,cena)=>[a,b,c,...trojke(q,cena)];
+  const poListu=new Map(); predmerZa(s.gr).forEach(p=>{ const l=p.izvor&&p.izvor.list?T(p.izvor.list):''; if(!poListu.has(l)) poListu.set(l,[]); poListu.get(l).push(p); });
+  const listovi=[], rekap=[];
+  for(const [imeL, lista] of poListu){
+    const rows=[...info,[H.naslov],...zaglavlje()]; const sekcije=[]; let sek=null, sekSum=null, nad=null; const sumL=prazno();
+    const zatvoriSek=()=>{ if(sek==null) return; rows.push(['', H.ukupno+' '+sek.ime, '', ...sekSum.flatMap(v=>['', '', okr(v)])]); sekcije.push({sifra:sek.sifra, ime:sek.ime, sume:sekSum}); sek=null; };
+    lista.forEach(p=>{
+      const iz=p.izvor||{}, sekT=iz.sekcija?T(iz.sekcija):null, nadT=iz.nadpoz?T(iz.nadpoz):null;
+      if(sekT!==(sek?sek.puno:null)){ zatvoriSek(); if(sekT){ const m=sekT.match(/^(\S+)\s+(.*)$/); sek={puno:sekT, sifra:m?m[1]:'', ime:m?m[2]:sekT}; sekSum=prazno(); rows.push([sek.sifra, sek.ime]); } nad=null; }
+      if(nadT&&nadT!==nad){ const m=nadT.match(/^(\S+)\s+(.*)$/); rows.push([m?m[1]:'', m?m[2]:nadT]); nad=nadT; } else if(!nadT) nad=null;
+      const c=p.cena!=null?+p.cena:null, q=kolicine(p);
+      rows.push(red(nadT?'':T(p.sifra||''), T(cir&&iz.cir?iz.cir:p.poz), T(p.jm||''), q, c));
+      if(c!=null) q.forEach((v,i)=>{ if(sekSum) sekSum[i]+=v*c; sumL[i]+=v*c; });
+    });
+    zatvoriSek();
+    if(sekcije.length>1){ rows.push([], [H.rekap]); sekcije.forEach(x=>rows.push([x.sifra, x.ime, '', ...x.sume.flatMap(v=>['','',okr(v)])])); }
+    rows.push(['', H.ukupno, '', ...sumL.flatMap(v=>['','',okr(v)])]);
+    rows.push([], ['', H.razlika, '', okr(sumL[0]-sumL[1])]);
+    listovi.push({ime:imeL||T(H.predmer), redovi:rows}); rekap.push({ime:imeL||T(H.predmer), sume:sumL});
+  }
+  const van=stavkeZa(id).filter(x=>!x.predmer_id);
+  if(van.length){ const rows=[...info,[H.vanPred],[H.brPoz,H.opis,H.jm,H.kol]]; van.forEach(x=>rows.push([T(x.sifra||''),T(x.poz),T(x.jm||''),okr(+x.kol||0)])); listovi.push({ime:H.vanPred, redovi:rows}); }
+  const rr=[...info,[H.rekap],['','',H.ugovoreno,H.kumul,...(okon?pre.map(x=>x.vrsta==='okoncana'?H.poOkon:H.poPriv(rimski(privPre.indexOf(x)+1))):[]),okon?H.poOkon:H.poPriv(rimski(privPre.length+1))]];
+  rekap.forEach((x,i)=>rr.push([rimski(i+1), x.ime, okr(x.sume[0]), okr(x.sume[1]), ...x.sume.slice(3).map(okr)]));
+  const tot=prazno(); rekap.forEach(x=>x.sume.forEach((v,i)=>tot[i]+=v));
+  rr.push(['', H.ukBez, okr(tot[0]), okr(tot[1]), ...tot.slice(3).map(okr)]);
+  listovi.push({ime:H.rekap, redovi:rr});
+  const ime='situacija-'+unesc(String(s.br)).replace(/[^\p{L}\p{N}]+/gu,'-')+'-'+(g?unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-').slice(0,40):s.gr)+'-'+(cir?'cir':'lat');
+  return preuzmiXlsx(ime, listovi);
+}
 function cir2lat(s){
   s=String(s??''); if(!/[\u0400-\u04FF]/.test(s)) return s;
   let out='';
@@ -3219,28 +3312,38 @@ async function zipCitaj(buf){
     return td.decode(await zipInflate(u.subarray(s,s+z.csz), z.metod)); } };
 }
 async function citajXlsx(buf, sveListove){   // sveListove: redovi svih listova redom (situacija ima list po vrsti radova)
+  /* Svaki red (niz celija, tekst vec kroz cir2lat) nosi i red.list = ime lista i red.izvorno = celije PRE cir2lat
+     (migracija 29: izvor predmera cuva originalni ćirilični tekst i sekcije za izvoz situacije). */
   const z=await zipCitaj(buf);
-  const ss=[]; const ssx=await z.citaj('xl/sharedStrings.xml');
-  if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)) ss.push(cir2lat([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join('')));
-  const list=z.ime.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort((a,b)=>(+a.match(/\d+/)[0])-(+b.match(/\d+/)[0]));
+  const ss=[], ssRaw=[]; const ssx=await z.citaj('xl/sharedStrings.xml');
+  if(ssx) for(const m of ssx.matchAll(/<si>([\s\S]*?)<\/si>/g)){ const t=[...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''); ssRaw.push(t); ss.push(cir2lat(t)); }
+  let list=z.ime.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort((a,b)=>(+a.match(/\d+/)[0])-(+b.match(/\d+/)[0])).map(f=>({fajl:f, ime:''}));
+  try{   // imena i REDOSLED listova iz workbook.xml (rId → fajl kroz rels); broj u imenu fajla nije garantovan redosled
+    const wb=await z.citaj('xl/workbook.xml'), rels=await z.citaj('xl/_rels/workbook.xml.rels');
+    if(wb&&rels){
+      const cilj={}; for(const m of rels.matchAll(/<Relationship\b[^>]*>/g)){ const id=m[0].match(/\bId="([^"]+)"/), t=m[0].match(/\bTarget="([^"]+)"/); if(id&&t){ let p=t[1].replace(/^\//,''); if(!p.startsWith('xl/')) p='xl/'+p; cilj[id[1]]=p; } }
+      const l2=[]; for(const m of wb.matchAll(/<sheet\b[^>]*>/g)){ const nm=m[0].match(/\bname="([^"]*)"/), rid=m[0].match(/\br:id="([^"]+)"/); const f=rid&&cilj[rid[1]]; if(f&&z.ime.includes(f)) l2.push({fajl:f, ime:xmlDek(nm?nm[1]:'')}); }
+      if(l2.length) list=l2;
+    }
+  }catch(e){ /* bez imena listova — redovi i dalje idu po broju fajla */ }
   if(!list.length) throw new Error('U fajlu nema radnog lista.');
   const redovi=[];
-  for(const ime of (sveListove?list:[list[0]])){
-  const x=await z.citaj(ime);
+  for(const L of (sveListove?list:[list[0]])){
+  const x=await z.citaj(L.fajl);
   for(const r of x.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)){
-    const red=[];
+    const red=[], raw=[];
     for(const c of r[1].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)){
       let kol=0; for(const ch of c[1]) kol=kol*26+(ch.charCodeAt(0)-64); kol--;
-      const atr=c[2]||'', tel=c[3]||''; let v='';
+      const atr=c[2]||'', tel=c[3]||''; let v='', o='';
       const vm=tel.match(/<v>([\s\S]*?)<\/v>/), im=tel.match(/<is>[\s\S]*?<\/is>/);
-      if(/t="s"/.test(atr)&&vm) v=ss[+vm[1]]??'';
-      else if(/t="inlineStr"/.test(atr)&&im) v=cir2lat([...im[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''));
-      else if(/t="b"/.test(atr)&&vm) v=vm[1]==='1'?'DA':'NE';
-      else if(vm) v=/t="str"/.test(atr)?cir2lat(xmlDek(vm[1])):Number(vm[1]);
-      red[kol]=v;
+      if(/t="s"/.test(atr)&&vm){ v=ss[+vm[1]]??''; o=ssRaw[+vm[1]]??''; }
+      else if(/t="inlineStr"/.test(atr)&&im){ o=[...im[0].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map(t=>xmlDek(t[1])).join(''); v=cir2lat(o); }
+      else if(/t="b"/.test(atr)&&vm){ v=vm[1]==='1'?'DA':'NE'; o=v; }
+      else if(vm){ if(/t="str"/.test(atr)){ o=xmlDek(vm[1]); v=cir2lat(o); } else { v=Number(vm[1]); o=v; } }
+      red[kol]=v; raw[kol]=o;
     }
-    for(let i=0;i<red.length;i++) if(red[i]===undefined) red[i]='';
-    if(red.some(c=>c!=='')) redovi.push(red);
+    for(let i=0;i<red.length;i++){ if(red[i]===undefined) red[i]=''; if(raw[i]===undefined) raw[i]=''; }
+    if(red.some(c=>c!=='')){ red.list=L.ime; red.izvorno=raw; redovi.push(red); }
     if(redovi.length>5000) break;
   }
   }
@@ -4249,21 +4352,35 @@ function preracunajSituacijeLokalno(grId){
    duplikat kamere, se preskace). Ukupno se NE cita — racuna se kol × cena; ako fajl ima ukupno koje odstupa > 0,5,
    kolicina se uskladi sa ukupnim (Excel formule sa skrivenim udelom) i to se prijavi. Vraca {redovi:[{sifra,poz,jm,kol,cena}], uskladjeno, listova}. */
 function upariPredmerSablon(redovi){
-  const out=[], kljucevi=new Set(); let lastDesc='', lastCode='', uskladjeno=0;
+  const out=[], kljucevi=new Set(); let lastDesc='', lastDescRaw='', lastCode='', uskladjeno=0;
+  /* izvor (migracija 29): list = ime lista (vrsta radova), sekcija = naslov VELIKIM slovima sa šifrom („4.0 ДЕМОНТАЖНИ РАДОВИ"),
+     nadpoz = naslov pozicije iznad stavki bez sopstvene šifre („4.0.1 Демонтажа…"), cir = originalni tekst stavke ako je ćiriličan.
+     Sve u ORIGINALNOM pismu iz fajla (red.izvorno) — izvoz ih konvertuje po potrebi. */
+  let list=null, sekcija=null, nadpoz=null;
   const broj2=v=>{ if(typeof v==='number') return v; if(v===''||v==null||!/\d/.test(String(v))) return null; const n=broj(v); return Number.isFinite(n)?n:null; };
-  (redovi||[]).forEach(r=>{
-    const code=String(r[0]??'').trim(), desc=String(r[1]??'').replace(/\s+/g,' ').trim();
-    let jmIdx=-1;
-    for(let i=2;i<r.length;i++){ const v=r[i]; if(typeof v==='string'&&v.trim()&&v.trim().length<=10&&i+1<r.length&&broj2(r[i+1])!=null){ jmIdx=i; break; } }
-    if(jmIdx<0){ if(code&&desc){ lastCode=code; lastDesc=desc; } else if(desc){ lastDesc=desc; } else if(code){ lastCode=code; } return; }
+  const cist=v=>String(v??'').replace(/\s+/g,' ').trim();
+  const jmIndex=r=>{ for(let i=2;i<r.length;i++){ const v=r[i]; if(typeof v==='string'&&v.trim()&&v.trim().length<=10&&i+1<r.length&&broj2(r[i+1])!=null) return i; } return -1; };
+  (redovi||[]).forEach((r,ri)=>{
+    const lst=r.list||null; if(lst!==list){ list=lst; sekcija=null; nadpoz=null; }
+    const raw=r.izvorno||r, code=cist(r[0]), desc=cist(r[1]), descRaw=cist(raw[1]);
     if(/^(укупно|ukupno|рекапитулација|rekapitulacija)/i.test(desc)||/^(укупно|ukupno)/i.test(code)) return;
-    const ime=desc||lastDesc, sifra=code||lastCode;
-    if(desc) lastDesc=desc; if(code) lastCode=code;
+    const jmIdx=jmIndex(r);
+    if(jmIdx<0){
+      if(code&&desc){ lastCode=code; lastDesc=desc; lastDescRaw=descRaw;
+        const nx=redovi[ri+1], nxStavkaBezSifre=!!nx && (nx.list||null)===lst && !cist(nx[0]) && jmIndex(nx)>=0;   // naslov iza koga ODMAH ide stavka bez šifre = pozicija velikim slovima, ne sekcija
+        if(desc===desc.toUpperCase()&&/\p{L}/u.test(desc)&&!nxStavkaBezSifre){ sekcija=cist(raw[0])+' '+descRaw; nadpoz=null; } else nadpoz=cist(raw[0])+' '+descRaw; }
+      else if(desc){ lastDesc=desc; lastDescRaw=descRaw; }
+      else if(code){ lastCode=code; }
+      return; }
+    const ime=desc||lastDesc, imeRaw=desc?descRaw:lastDescRaw, sifra=code||lastCode;
+    if(code) nadpoz=null;   // stavka sa sopstvenom šifrom nije pod nadpozicijom
+    if(desc){ lastDesc=desc; lastDescRaw=descRaw; } if(code) lastCode=code;
     const kol=broj2(r[jmIdx+1]), cena=broj2(r[jmIdx+2]), tot=broj2(r[jmIdx+3]);
     if(kol==null||kol<=0||cena==null||!ime) return;
     let k=kol; if(tot!=null&&cena>0&&Math.abs(kol*cena-tot)>0.5){ k=Math.round(tot/cena*10000)/10000; uskladjeno++; }
     const kljuc=(sifra+'|'+normPoz(ime)); if(kljucevi.has(kljuc)) return; kljucevi.add(kljuc);
-    out.push({sifra:sifra||null, poz:ime, jm:String(r[jmIdx]).trim(), kol:k, cena});
+    const izvor={list:list||null, sekcija:sekcija||null, nadpoz:nadpoz||null, cir:/[\u0400-\u04FF]/.test(imeRaw)?imeRaw:null};
+    out.push({sifra:sifra||null, poz:ime, jm:String(r[jmIdx]).trim(), kol:k, cena, izvor:Object.values(izvor).some(Boolean)?izvor:null});
   });
   return {redovi:out, uskladjeno};
 }
@@ -4294,7 +4411,7 @@ function dodajPredmerIzPripreme(grId){
   const ts=Date.now(); let n=0;
   PREDMER_PRIPREMA.redovi.forEach(r=>{
     const poz=esc(r.poz), k=String(r.sifra||'')+'|'+normPoz(poz); if(ima.has(k)) return; ima.add(k);
-    DATA.predmer.push({id:'pm'+ts+'-x'+(n++), gr:grId, poz, jm:esc(r.jm)||'kom', kol:r.kol, cena:canFinance()?r.cena:0, izv:0, zaduzen:null, sifra:r.sifra?esc(String(r.sifra)):null});
+    DATA.predmer.push({id:'pm'+ts+'-x'+(n++), gr:grId, poz, jm:esc(r.jm)||'kom', kol:r.kol, cena:canFinance()?r.cena:0, izv:0, zaduzen:null, sifra:r.sifra?esc(String(r.sifra)):null, izvor:escIzvor(r.izvor)});
   });
   PREDMER_PRIPREMA=null;
   return n;
@@ -4457,6 +4574,7 @@ function detaljSituacije(id){
         ${isDirector()&&pregledSit(s)!=='odobrena'?`<button class="btn ghost" onclick="odobriSituaciju('${s.id}')">✓ Odobri</button>`:''}
         ${!isDirector()&&smemNa(s.gr)&&pregledSit(s)==='vracena'?`<button class="btn ghost" onclick="closeModal();formSituacija('${s.gr}','${s.id}')">✎ Ispravi i pošalji ponovo</button>`:''}
         ${nap&&s.status!=='placeno'&&pregledSit(s)==='odobrena'?`<button class="btn ghost" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}
+        ${smemIzvozSituacije(s)?`<button class="btn ghost" onclick="izvozSituacije('${s.id}','lat')">⬇ Excel (latinica)</button><button class="btn ghost" onclick="izvozSituacije('${s.id}','cir')">⬇ Excel (ćirilica)</button>`:''}
         <button class="btn" onclick="closeModal()">Zatvori</button>
       </div>
     </div>`, {siroka:true, kljuc:'situacija'});
