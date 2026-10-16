@@ -3226,6 +3226,11 @@ const SIT_H={
        kumul:'Kumulativno izvedeno', poPriv:n=>'Izvedeno po '+n+' Privremenoj situaciji', poOkon:'Izvedeno po okončanoj situaciji', razlika:'Preostalo (ugovoreno − kumulativno)'},
 };
 function smemIzvozSituacije(s){ return !!s && vidimGr(s.gr) && (canFinance()||vidimCene(s.gr)); }
+function izvozLinkovi(s){   // „⬇ lat · ćir" uz svaku situaciju (fioka, Naplata) — ista funkcija kao dugmad u detalju
+  if(!smemIzvozSituacije(s)) return '';
+  const st='padding:2px 7px;font-size:11px;min-height:0';
+  return `<span style="white-space:nowrap" title="Preuzmi situaciju kao Excel (investitorski šablon)"><button class="btn ghost" style="${st}" onclick="event.stopPropagation();izvozSituacije('${s.id}','lat')">⬇ lat</button> <button class="btn ghost" style="${st}" onclick="event.stopPropagation();izvozSituacije('${s.id}','cir')">⬇ ćir</button></span>`;
+}
 function izvozSituacije(id, pismo){
   const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!vidimGr(s.gr)) return null;
   if(!smemIzvozSituacije(s)){ alert('Izvoz situacije traži jedinične cene — dostupan je upravi i rukovodiocu gradilišta.'); return null; }
@@ -4259,7 +4264,7 @@ function viewPay(){
       <td class="num-cell">${fmtDate(s.izdato)}</td>
       <td class="num-cell">${fmtDate(s.valuta)}</td>
       <td>${st}</td>
-      <td class="r">${s.status!=='placeno'&&pregledSit(s)==='odobrena'?`<button class="btn ghost" style="padding:5px 10px;font-size:12px" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}</td>
+      <td class="r" style="white-space:nowrap">${s.status!=='placeno'&&pregledSit(s)==='odobrena'?`<button class="btn ghost" style="padding:5px 10px;font-size:12px" onclick="markPaid('${s.id}')">✓ Plaćeno</button> `:''}${izvozLinkovi(s)}</td>
       ${brisiKol?`<td class="r">${smemBrisati(s.gr)?BRISI_DUGME('obrisiSituaciju',s.id):''}</td>`:''}
     </tr>`;
   }).join('');
@@ -5080,7 +5085,7 @@ function openSite(id){
       </div>`:''}
       ${pro?'':`<div class="dr-sec">
         <h4>Situacije (${sitZa(id).length})</h4>
-        ${sitZa(id).slice().sort((a,b)=>dParse(b.izdato)-dParse(a.izdato)).map(s=>{ const rz=razlikaSit(s); return `<div class="dr-kv"><span class="k"><span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="detaljSituacije('${s.id}')">${s.br}</span> · ${sitVrsta(s)}<div class="sub" style="font-size:11.5px">${fmtDate(s.izdato)} · ${pregledSit(s)!=='odobrena'?pregledBadge(s):s.status==='placeno'?'plaćeno':sitKasni(s)?'kasni':'na čekanju'}${rz?' · <b style="color:var(--amber)">'+rz+' preko ugovora</b>':''}</div></span><span class="v num">${canFinance()&&s.iznos!=null?fmtEur(s.iznos):''}</span></div>`; }).join('')||'<div class="sub">Još nema situacija.</div>'}
+        ${sitZa(id).slice().sort((a,b)=>dParse(b.izdato)-dParse(a.izdato)).map(s=>{ const rz=razlikaSit(s); return `<div class="dr-kv"><span class="k"><span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="detaljSituacije('${s.id}')">${s.br}</span> · ${sitVrsta(s)}<div class="sub" style="font-size:11.5px">${fmtDate(s.izdato)} · ${pregledSit(s)!=='odobrena'?pregledBadge(s):s.status==='placeno'?'plaćeno':sitKasni(s)?'kasni':'na čekanju'}${rz?' · <b style="color:var(--amber)">'+rz+' preko ugovora</b>':''}</div></span><span class="v num" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${canFinance()&&s.iznos!=null?fmtEur(s.iznos):''}${izvozLinkovi(s)}</span></div>`; }).join('')||'<div class="sub">Još nema situacija.</div>'}
         ${smemNa(id)?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="formSituacija('${id}')">＋ Nova situacija</button>`:''}
       </div>`}
       <div class="dr-sec">

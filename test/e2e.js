@@ -3125,6 +3125,11 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const uP = await a.run("izvozSituacije('t58-s1','lat')"); if (!uP || !uP.length) throw new Error('rukovodilac gradilista (bez finansija) ne moze da izveze');
     a.run("detaljSituacije('t58-s1')"); const m = a.g.document.getElementById('modal').innerHTML;
     if (!m.includes("izvozSituacije('t58-s1','lat')") || !m.includes("izvozSituacije('t58-s1','cir')")) throw new Error('nema dugmadi izvoza u detalju');
+    a.run(`closeModal(); openSite(${JSON.stringify(g.id)})`); const dr = a.g.document.getElementById('drawer').innerHTML;
+    if (!dr.includes("izvozSituacije('t58-s1','lat')") || !dr.includes("izvozSituacije('t58-s1','cir')")) throw new Error('fioka: nema ⬇ lat/ćir uz situaciju');
+    a.run("closeDrawer(); setRole('all'); current='pay'; render();"); const pv = a.g.document.getElementById('view').innerHTML;
+    if (!pv.includes("izvozSituacije('t58-s1','lat')") || !pv.includes("izvozSituacije('t58-s1','cir')")) throw new Error('Naplata: nema ⬇ lat/ćir uz situaciju');
+    if (radnik) { a.run(`setRole('radnik:${radnik.id}|izv'); openSite(${JSON.stringify(g.id)})`); if (a.g.document.getElementById('drawer').innerHTML.includes('izvozSituacije(')) throw new Error('radnik ima ⬇ u fioci'); a.run('closeDrawer()'); }
     a.run("closeModal(); setRole('all')");
   });
 

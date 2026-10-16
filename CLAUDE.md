@@ -166,7 +166,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   strani Predmer (`formPredmerImport`, `pm_fajl2`, pre nalepljenog). Fixture `test/fixtures/predmer-sablon.xlsx`;
   T47 uz pravi predmer OŠ (87 pozicija, 20.935.367 RSD) kad postoji lokalno.
 - **Izvoz situacije u investitorskom šablonu, latinica/ćirilica** (2026-10-16, migracija 29, zahtev klijenta): dugmad
-  „⬇ Excel (latinica / ćirilica)" u `detaljSituacije` → `izvozSituacije(sitId, 'lat'|'cir')` (`smemIzvozSituacije` = vidi
+  „⬇ Excel (latinica / ćirilica)" u `detaljSituacije` + „⬇ lat · ćir" (`izvozLinkovi(s)`) uz svaku situaciju u fioci
+  gradilišta i u tabu Naplata (zahtev 2026-10-16: nije se nalazilo) → `izvozSituacije(sitId, 'lat'|'cir')` (`smemIzvozSituacije` = vidi
   gradilište I cene: uprava ili rukovodilac gradilišta Izvođenja — ODLUKA 2026-10-16: dokument za investitora mora imati
   iznose, pa ih rukovodilac bez finansija ovde dobija iz jediničnih cena koje već vidi (`vidimCene`); `situacije_v.iznos`
   i UI ostaju kao pre). Šablon = isti kao ulazna PPS/okončana: list po vrsti radova, sekcija („4.0 ДЕМОНТАЖНИ РАДОВИ") +
