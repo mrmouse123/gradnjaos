@@ -3100,6 +3100,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!uk || Math.abs(uk[5] - ugov) > 0.01 || Math.abs(uk[14] - (1 * c0 + 2 * pm[1].cena)) > 0.01) throw new Error('UKUPNO lista: ' + txt(uk || []) + ' ocekivano ugov ' + ugov);
     const R = red1.filter(r => r.list === 'REKAPITULACIJA'); const rb = R.find(r => r[1] === 'UKUPNO BEZ PDV-a'), svi = pm.reduce((s2, p) => s2 + p.kol * p.cena, 0);
     if (!rb || Math.abs(rb[2] - svi) > 0.01 || !R.some(r => r[0] === 'I' && r[1] === 'ELEKTROINSTALACIJE') || !R.some(r => r[0] === 'II' && r[1] === 'TEHNIČKA ZAŠTITA')) throw new Error('rekapitulacija: ' + R.map(txt).join(' / '));
+    // stilovi i formule (2026-10-18): styles.xml sa Century Gothic i bojama sablona, spojene celije, sirine, zamrzavanje, stampa, formule sa kesiranom vrednoscu
+    const z1 = await a.run('zipCitaj(__u1.buffer)'); const st = await z1.citaj('xl/styles.xml'), sh1 = await z1.citaj('xl/worksheets/sheet1.xml'), wbx = await z1.citaj('xl/workbook.xml'), ct = await z1.citaj('[Content_Types].xml');
+    if (!st || !st.includes('Century Gothic') || !st.includes('FFFFFF00') || !st.includes('FF92D050') || !st.includes('FFD9D9D9') || !st.includes('#,##0.00') || !/<border><left style="thin"/.test(st)) throw new Error('styles.xml: ' + String(st).slice(0, 300));
+    if (!ct.includes('styles+xml') || !/<Relationship Id="rId\d+" Type="[^"]*\/styles" Target="styles.xml"\/>/.test(await z1.citaj('xl/_rels/workbook.xml.rels'))) throw new Error('styles.xml nije registrovan');
+    if (!/<mergeCells count="\d+"><mergeCell ref="A4:O4"\/><mergeCell ref="D5:F5"\/>/.test(sh1) || !/<cols><col min="1" max="1" width="6.6"/.test(sh1) || !/<pane ySplit="6" topLeftCell="A7"/.test(sh1) || !/<pageSetup paperSize="9" orientation="landscape" fitToWidth="1"/.test(sh1)) throw new Error('sheet1: merge/cols/pane/pageSetup: ' + sh1.slice(0, 600));
+    if (!/<c r="F\d+" s="\d+"><f>D(\d+)\*E\1<\/f><v>[\d.]+<\/v><\/c>/.test(sh1) || !/<f>SUM\(F\d+:F\d+\)<\/f>/.test(sh1) || !/<f>J\d+\+M\d+<\/f>/.test(sh1) || !/<f>F\d+-I\d+<\/f>/.test(sh1)) throw new Error('formule: ' + (sh1.match(/<f>[^<]*<\/f>/g) || []).slice(0, 8).join(' '));
+    if (!/_xlnm\.Print_Area/.test(wbx) || !wbx.includes('<calcPr fullCalcOnLoad="1"/>')) throw new Error('workbook: print area / calcPr');
+    const shR = await z1.citaj('xl/worksheets/sheet' + listovi.length + '.xml'); if (!/<f>'ELEKTROINSTALACIJE'!F\d+<\/f>/.test(shR)) throw new Error('rekapitulacija bez referenci na listove: ' + (shR.match(/<f>[^<]*<\/f>/g) || []).slice(0, 4).join(' '));
+    // izvozPredmer (bez stilova) i dalje radi i cita se nazad
+    const up = a.run(`izvozPredmer(${JSON.stringify(g.id)})`); a.g.__up = up; const rp = await a.run('citajXlsx(__up.buffer, true)'); if (!rp.some(r => r[1] === 'UKUPNO bez PDV')) throw new Error('izvozPredmer posle stilova');
     // cirilica: naslovi i original stavke (ZIP je STORED pa se tekst vidi direktno)
     const u1c = await a.run("izvozSituacije('t58-s1','cir')"); const s1c = Buffer.from(u1c).toString('utf8');
     for (const x of ['ПРИВРЕМЕНА СИТУАЦИЈА бр. PS-1/26', 'УГОВОРЕНО', 'КУМУЛАТИВНО ИЗВЕДЕНО', 'ИЗВЕДЕНО У I ПРИВРЕМЕНОЈ СИТУАЦИЈИ', 'ДЕМОНТАЖНИ РАДОВИ', 'Демонтажа у објектима', 'УКУПНО БЕЗ ПДВ-а', 'ЕЛЕКТРОИНСТАЛАЦИЈЕ']) if (!s1c.includes(x)) throw new Error('cirilica nema: ' + x);
@@ -3111,6 +3121,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const L3 = red3.filter(r => r.list === 'ELEKTROINSTALACIJE'), z3 = L3.find(r => r.includes('UGOVORENO'));
     if (!z3.includes('IZVEDENO U I PRIVREMENOJ SITUACIJI') || !z3.includes('IZVEDENO U II PRIVREMENOJ SITUACIJI') || !z3.includes('IZVEDENO U OKONČANOJ SITUACIJI') || z3.includes('IZVEDENO U III PRIVREMENOJ SITUACIJI')) throw new Error('okoncana grupe: ' + txt(z3));
     const s30 = L3.find(r => String(r[1]) === a.run('unesc(predmerZa(' + JSON.stringify(g.id) + ')[0].poz)'));
+    const zip3 = await a.run('zipCitaj(__u3.buffer)'); const sh3 = await zip3.citaj('xl/worksheets/sheet1.xml');
+    if (!/<f>M\d+\+P\d+\+S\d+<\/f>/.test(sh3) || !/<f>M\d+\+P\d+<\/f>/.test(sh3)) throw new Error('okoncana: kumulativ/prethodne formule: ' + (sh3.match(/<f>[^<]*<\/f>/g) || []).slice(0, 10).join(' '));
     // kolone: 3 + [ugov 3][kum 3][preth 3][I 3][II 3][okon 3]
     if (s30[6] !== 4 || s30[9] !== 3 || s30[12] !== 1 || s30[15] !== 2 || s30[18] !== 1) throw new Error('okoncana kolicine: ' + txt(s30));
     const R3 = red3.filter(r => r.list === 'REKAPITULACIJA'), rz = R3.find(r => r[2] === 'Ugovoreno');
@@ -3719,9 +3731,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (r1.length !== 3 || r1[1][1] !== 'Beton & čelik <C25> "x"' || r1[1][4] !== 12.5 || r1[1][2] !== 'm³' || r1[2][1] !== 'poslednji' || r1[2][4] !== 0) throw new Error('roundtrip prvi list: ' + JSON.stringify(r1));
     const r2 = await a.run('citajXlsx(__xb, true)');
     if (r2.length !== 4 || r2[3][0] !== 'a' || r2[3][1] !== 1) throw new Error('svi listovi: ' + JSON.stringify(r2));
-    // ZIP: EOCD na kraju, broj stavki = 4 + 2 lista
+    // ZIP: EOCD na kraju, broj stavki = 5 (Content_Types, .rels, workbook, rels, styles) + 2 lista
     const dv = new DataView(bytes.buffer); const e = bytes.length - 22;
-    if (dv.getUint32(e, true) !== 0x06054b50 || dv.getUint16(e + 10, true) !== 6) throw new Error('ZIP EOCD / broj stavki');
+    if (dv.getUint32(e, true) !== 0x06054b50 || dv.getUint16(e + 10, true) !== 7) throw new Error('ZIP EOCD / broj stavki: ' + dv.getUint16(e + 10, true));
     // izvozPredmer: zaglavlje sablona + ukupno za upravu; rukovodilac bez cena
     const gid = a.run("DATA.predmer[0].gr");
     a.run(`ROLE='all'; __ex=izvozPredmer(${JSON.stringify(gid)});`);

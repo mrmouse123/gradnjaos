@@ -102,8 +102,13 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   `Razno — <naziv>` (esc, prazne preskače). Samo pri kreiranju. T40.
 - **Kontrolna tabla (2026-10-09):** rokovi, dnevnik i „najrizičniji projekat" imaju
   `onclick="openSite"` (red tabele ga je već imao). T41.
-- **XLSX pisač bez biblioteke** (2026-10-11): `napraviXlsx([{ime, redovi}])` → Uint8Array (OOXML minimum: Content_Types,
-  rels, workbook, sheet-ovi; broj → `<v>`, ostalo inlineStr sa `xmlEsc`; ZIP STORED + `crc32`), `preuzmiXlsx(ime, listovi)`
+- **XLSX pisač bez biblioteke** (2026-10-11; stilovi 2026-10-18): `napraviXlsx([{ime, redovi, kolone, spoji, zamrzni, stampa, visine}])` →
+  Uint8Array (OOXML: Content_Types, rels, workbook (+`definedNames` print area, `calcPr fullCalcOnLoad`), `styles.xml`,
+  sheet-ovi; ZIP STORED + `crc32`). Ćelija = primitiv ILI `{v, f, s}`: `f` = formula bez `=` uz `v` kao KEŠIRANU vrednost
+  (`citajXlsx`/testovi je čitaju iz `<v>`, Excel preračuna), `s` = `{b, fill:'RRGGBB', h, va, wrap, fmt:'num'|'din'|'dincir'|'txt',
+  bd:false}` internira se u `cellXfs` (font Century Gothic 11 za ceo dokument, tanka ivica podrazumevano za stilizovanu ćeliju;
+  `XLSX_FMT`). Broj → `<v>`, tekst → inlineStr (`xmlEsc`), tekst+formula → `t="str"`. `xlsxImeLista` = ista sanitizacija imena
+  lista za `<sheet name>` i za reference u formulama. `preuzmiXlsx(ime, listovi)`
   pravi `<a download>` sa `data:…;base64` (nema Blob/URL u stubu; test dekodira base64 i čita nazad kroz `citajXlsx`).
   `izvozPredmer` (uprava) daje .xlsx u šablonu situacije (br. poz | opis | JM | ugovoreno kol/cena/ukupno | izvedeno
   kol/vrednost | preostalo + red UKUPNO). Tekst iz DATA ide kroz `unesc` PRE `xmlEsc` (inače dupli escape). T48.
@@ -175,7 +180,14 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   KUMULATIVNO · PRETHODNE · (okončana: svaka ranija situacija I/II/…) · OVA, REKAPITULACIJA po listu + list
   REKAPITULACIJA (+ red „Preostalo"). Kumulativ je serverov (`stavka.kumulativ`), prethodne = kumulativ − ova; pozicije
   bez stavke 0; stavke bez `predmer_id` na list „VAN PREDMERA". Naslovi su DVA literalna skupa (`SIT_H.cir/lat`), ne
-  transliteracija. **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
+  transliteracija. **Izgled = investitorov fajl (2026-10-18):** Century Gothic 11, tanke ivice, naslov i sekcije siva D9D9D9,
+  KUMULATIVNO žuta FFFF00, ranije situacije narandžasta FFC000, OVA zelena 92D050 (i ćelije stavki u toj trojci), spojene
+  ćelije zaglavlja (naslov + svaka grupa), širine 6.6/58/8.4 + 10.7/18.7/18.3 po trojci, zamrznuto 6 redova, landscape +
+  fit to width + print area, format `#,##0.00` / `#,##0.00 din.` (ćir. `дин.`). FORMULE sa keširanom vrednošću: ukupno
+  `=Kol*Cena`, kumulativ `=Prethodne+Ova` (okončana: zbir svih ranijih + ova), prethodne (okončana) = zbir ranijih, cene
+  kumulativa/prethodnih/ove `=E<red>`, UKUPNO sekcije `SUM` nad redovima sekcije, rekapitulacija lista referencira UKUPNO
+  sekcija, list REKAPITULACIJA referencira `'<list>'!<UKUPNO>`, „Preostalo" `=F−I`. Visine redova se ne pišu (Excel sam
+  prelama wrap tekst). **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
   (`citajXlsx` sada daje `red.list` iz workbook.xml+rels i `red.izvorno` = ćelije pre `cir2lat`; `upariPredmerSablon`:
   naslov velikim slovima = sekcija, osim ako ODMAH iza njega ide stavka bez šifre; mešovita slova = nadpoz; stavka sa
   sopstvenom šifrom briše nadpoz; `escIzvor` pri upisu). Nije finansijska kolona (grant + `predmer_v` NA KRAJU — view ne
