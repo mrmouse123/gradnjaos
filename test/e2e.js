@@ -993,7 +993,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const tabs = r => { a.run(`setRole(${JSON.stringify(r)})`); return a.run('tabs().map(t=>t.id)'); };
     const svi = tabs('all');
     for (const t of ['clients', 'emps', 'resursi', 'subs', 'pay', 'nalozi']) if (!svi.includes(t)) throw new Error('direktor nema ' + t);
-    const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi.filter(t => t !== 'asistent')) || !svi.includes('asistent')) throw new Error('admin nema iste tabove kao direktor (bez Asistenta, koji je samo direktor): ' + adm);
+    const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi)) throw new Error('admin nema iste tabove kao direktor: ' + adm);
     const r1 = tabs('z1:fin'), r2 = tabs('z1');
     const ocekR = ['dash', 'sites', 'time', 'tasks', 'diary', 'magacin', 'nabavka'];
     if (r1.includes('pay') || JSON.stringify([...r1].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error('rukovodilac 1 (sa finansijama) ne sme da ima tab Naplata (samo uprava, 2026-10-14): ' + r1);
@@ -3031,14 +3031,17 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
-  await acheck('tab Asistent samo direktor (admin/rukovodilac ne; viewAsistent vraca na dash); alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
+  await acheck('plutajuce dugme + panel samo direktor (nema taba; admin/rukovodilac bez dugmeta, aiOtvori ne otvara); panel: 4 brojke danas + 5 cipova + unos; alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
     const a = await boot();
     a.run("setRole('all')");
-    if (!a.run("tabs().some(t=>t.id==='asistent')")) throw new Error('direktor nema tab Asistent');
-    for (const r of ['admin', 'dirpro', 'z1|izv', 'radnik:z10|pro']) { a.run(`setRole(${JSON.stringify(r)})`); if (a.run("tabs().some(t=>t.id==='asistent')")) throw new Error(r + ' ima tab Asistent'); a.run("current='asistent'; render();"); if (a.run('current') !== 'dash') throw new Error(r + ': viewAsistent nije vratio na dash'); }
-    a.run("setRole('all'); current='asistent'; render();");
-    const v = a.g.document.getElementById('view').innerHTML;
-    if (!v.includes('id="aiUnos"') || (v.match(/data-p="/g) || []).length !== 5 || !v.includes('aiPitajIzPolja()')) throw new Error('viewAsistent bez polja/cipova');
+    if (a.run("tabs().some(t=>t.id==='asistent')")) throw new Error('asistent je tab (treba plutajuce dugme)');
+    a.run('render()'); if (!a.g.document.getElementById('aiDugme').classList.contains('vidi') || !/Asistent/.test(a.g.document.getElementById('aiDugme').innerHTML)) throw new Error('direktor nema dugme asistenta');
+    for (const r of ['admin', 'dirpro', 'z1|izv', 'radnik:z10|pro']) { a.run(`setRole(${JSON.stringify(r)}); aiOtvori();`); if (a.g.document.getElementById('aiDugme').classList.contains('vidi') || a.g.document.getElementById('aiPanel').classList.contains('on') || a.run('AI_OTVOREN')) throw new Error(r + ' vidi dugme/panel asistenta'); }
+    a.run("setRole('all'); aiOtvori();");
+    const v = a.g.document.getElementById('aiPanel').innerHTML;
+    if (!a.g.document.getElementById('aiPanel').classList.contains('on') || !v.includes('id="aiUnos"') || (v.match(/data-p="/g) || []).length !== 9 || !v.includes('aiPitajIzPolja()') || !v.includes('situacija čeka pregled') || !v.includes('aiZatvori()')) throw new Error('panel bez polja/cipova/brojki');
+    a.run('aiZatvori()'); if (a.g.document.getElementById('aiPanel').classList.contains('on') || a.g.document.getElementById('aiPanel').innerHTML !== '') throw new Error('panel se nije zatvorio');
+    const br = a.run('aiBroj()'); if (typeof br !== 'number' || br !== a.run("DATA.situacije.filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])&&pregledSit(x)==='na_pregledu').length + computeAlerts().filter(x=>x.sev==='red').length")) throw new Error('aiBroj');
     const gl = await a.run("aiIzvrsiAlat('gradilista',{})");
     if (!Array.isArray(gl) || gl.length !== a.run('visibleSites().length') || !gl.every(g => 'zdravlje_0_100' in g && 'naplaceno' in g && 'dana_do_roka' in g && 'situacije' in g)) throw new Error('alat gradilista: ' + JSON.stringify(gl[0]).slice(0, 200));
     if ((await a.run("aiIzvrsiAlat('gradilista',{modul:'projektovanje'})")).some(g => g.modul !== 'projektovanje')) throw new Error('filter modula');
@@ -3067,7 +3070,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1') throw new Error('telo 2: ' + JSON.stringify(m2.map(x => x.role)));
     const rez = JSON.parse(m2[2].content[0].content); if (!Array.isArray(rez) || rez.length !== a.run('visibleSites().length')) throw new Error('tool_result nije rezultat alata gradilista');
     if (a.run('AI_RAZGOVOR.length') !== 2 || a.run('AI_GRESKA') !== '' || a.run('AI_ZAUZET')) throw new Error('stanje razgovora: ' + a.run('JSON.stringify(AI_RAZGOVOR)'));
-    a.run("current='asistent'; render();"); const v = a.g.document.getElementById('view').innerHTML;
+    if (!a.run('AI_OTVOREN') || !a.g.document.getElementById('aiPanel').classList.contains('on')) throw new Error('pitanje nije otvorilo panel'); const v = a.g.document.getElementById('aiPanel').innerHTML;
     if (!v.includes('<b>Kasne</b>') || !v.includes("openSite('g1')") || v.includes('<script>') || !v.includes('&lt;script&gt;') || v.includes('nepostoji') || !v.includes('class="ai-li"')) throw new Error('render odgovora: ' + v.slice(v.indexOf('ai-msg bot'), v.indexOf('ai-msg bot') + 400));
     const lg = a.g.__mock._log.filter(l => l.op === 'log'); const zadnji = a.g.__mock._db.log_koriscenja.slice(-1)[0];
     if (!zadnji || zadnji.dogadjaj !== 'ai_pitanje' || !zadnji.detalj || JSON.stringify(zadnji.detalj.alati) !== '["gradilista"]' || 'tekst' in zadnji.detalj) throw new Error('log ai_pitanje: ' + JSON.stringify(zadnji));
@@ -3086,7 +3089,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     e.run("setRole('all')"); const sid = e.run("(()=>{ const s=DATA.situacije.find(x=>!jePro(grById[x.gr])); s.pregled='na_pregledu'; return s.id; })()");
     e.run(`detaljSituacije(${JSON.stringify(sid)})`); if (!e.g.document.getElementById('modal').innerHTML.includes(`aiPregledSituacije('${sid}')`)) throw new Error('nema dugmeta Pregledaj sa asistentom');
     await e.run(`aiPregledSituacije(${JSON.stringify(sid)})`);
-    if (e.run('current') !== 'asistent' || !/Pregledaj situaciju/.test(e.run('AI_RAZGOVOR[0].tekst')) || e.run('AI_RAZGOVOR[1].tekst') !== 'Preporuka: odobri.') throw new Error('aiPregledSituacije: ' + e.run('JSON.stringify(AI_RAZGOVOR)'));
+    if (!e.run('AI_OTVOREN') || !e.g.document.getElementById('aiPanel').innerHTML.includes('Preporuka: odobri.') || !/Pregledaj situaciju/.test(e.run('AI_RAZGOVOR[0].tekst')) || e.run('AI_RAZGOVOR[1].tekst') !== 'Preporuka: odobri.') throw new Error('aiPregledSituacije: ' + e.run('JSON.stringify(AI_RAZGOVOR)'));
     e.run("setRole('z1|izv')"); e.run(`detaljSituacije(${JSON.stringify(sid)})`); if (e.g.document.getElementById('modal').innerHTML.includes('aiPregledSituacije(')) throw new Error('rukovodilac ima dugme asistenta');
   });
 

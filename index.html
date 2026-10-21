@@ -537,17 +537,34 @@
     .card{box-shadow:none; break-inside:avoid}
   }
 
-/* AI asistent (2026-10-21) */
-.ai-poruke{display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto;padding:4px 2px}
-.ai-msg{padding:10px 14px;border-radius:12px;max-width:85%;line-height:1.45;font-size:13.5px}
+/* AI asistent (2026-10-21): plutajuce dugme gore desno + panel sa desne strane, na svakom tabu (samo direktor) */
+.ai-dugme{position:fixed;top:14px;right:18px;z-index:34;display:none;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--ink);color:var(--paper);font:inherit;font-weight:700;font-size:13px;box-shadow:var(--shadow-lg);cursor:pointer}
+.ai-dugme.vidi{display:inline-flex}
+.ai-dugme svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.ai-dugme .tag{background:var(--amber);color:#1a1a1a;border-radius:999px;padding:1px 7px;font-size:11px}
+.ai-panel{position:fixed;top:0;right:0;height:100vh;height:100dvh;width:480px;max-width:94vw;background:var(--surface);border-left:1px solid var(--line);box-shadow:var(--shadow-lg);transform:translateX(100%);transition:.24s cubic-bezier(.4,0,.2,1);z-index:46;display:flex;flex-direction:column}
+.ai-panel.on{transform:translateX(0)}
+.ai-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.ai-head svg{width:20px;height:20px;stroke:var(--amber);fill:none;stroke-width:2}
+.ai-head h3{margin:0;font-size:15px}
+.ai-head .sub{flex:1;font-size:11.5px}
+.ai-danas{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ai-danas button{text-align:left;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--paper);cursor:pointer;font:inherit;color:inherit}
+.ai-danas button:hover{border-color:var(--blue)}
+.ai-danas b{display:block;font-size:20px;line-height:1.1}
+.ai-danas b.crveno{color:var(--red)}
+.ai-danas small{color:var(--muted);font-size:11px;line-height:1.2;display:block;margin-top:2px}
+.ai-poruke{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+.ai-msg{padding:10px 14px;border-radius:12px;max-width:92%;line-height:1.45;font-size:13.5px}
 .ai-msg.ja{align-self:flex-end;background:var(--ink);color:var(--paper)}
 .ai-msg.bot{align-self:flex-start;background:var(--line)}
 .ai-msg a{color:var(--blue);font-weight:600}
 .ai-li{padding-left:6px}
-.ai-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.ai-chips{display:flex;flex-wrap:wrap;gap:6px;padding:6px 16px 8px}
 .ai-chips .btn{font-size:12px;padding:5px 10px;min-height:0}
-.ai-unos{display:flex;gap:8px;align-items:flex-end}
-.ai-unos textarea{flex:1;min-width:0;resize:vertical}
+.ai-unos{display:flex;gap:8px;align-items:flex-end;padding:10px 16px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.ai-unos textarea{flex:1;min-width:0;resize:none}
+@media(max-width:900px){.ai-panel{width:100%;max-width:100%} .ai-dugme{top:auto;bottom:calc(84px + env(safe-area-inset-bottom));right:14px} .ai-danas{grid-template-columns:repeat(2,1fr)}}
 </style>
 
 <div class="app">
@@ -599,6 +616,8 @@
 <!-- ===== Drawer ===== -->
 <div class="scrim" id="scrim" onclick="closeDrawer()"></div>
 <aside class="drawer" id="drawer"></aside>
+<button class="ai-dugme" id="aiDugme" onclick="aiOtvori()" title="AI asistent direktora"></button>
+<aside class="ai-panel" id="aiPanel" aria-label="Asistent"></aside>
 
 <!-- ===== Modal ===== -->
 <div class="rpt" id="rpt" onclick="if(event.target===this)closeIzvestaj()"></div>
@@ -1452,8 +1471,7 @@ function tabs(){
     {id:'subs', naziv:(modulEfektivni()==='projektovanje'?'Spoljni saradnici':'Podizvođači'), ic:'brief', cnt:(DATA.podizvodjaci||[]).filter(x=>x.status!=='zavrsen'&&(upravaSve()||(x.grs||[]).some(i=>ids.has(i)))).length},
     {id:'nabavka', naziv:'Trebovanje', ic:'cart', cnt:(DATA.narudzbe||[]).filter(n=>n.status==='poslato'&&(upravaSve()||ids.has(n.gr))).length},
     {id:'nalozi', naziv:'Admin kokpit', ic:'client', dirOnly:true, punaUprava:true},
-    {id:'asistent', naziv:'Asistent', ic:'ai', dirOnly:true, samoDirektor:true},
-  ].filter(t=>(!t.dirOnly || isDirector()) && (!t.punaUprava || jePunaUprava()) && (!t.samoDirektor || jeSuper()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
+  ].filter(t=>(!t.dirOnly || isDirector()) && (!t.punaUprava || jePunaUprava()) && (!t.finOnly || canFinance()) && tabDozvoljen(t.id));
 }
 function renderNav(){
   const t=tabs();
@@ -1486,12 +1504,13 @@ function render(){
   /* Alat stoji otvoren danima; bez ovoga bi sutradan upisivao jucerasnji datum. */
   const _n=new Date(); _n.setHours(0,0,0,0); if(_n.getTime()!==TODAY.getTime()) TODAY.setTime(_n.getTime());
   const v = document.getElementById('view');
-  v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin, nalozi:viewNalozi, asistent:viewAsistent}[current])();
+  v.innerHTML = ({dash:viewDash, sites:viewSites, clients:viewClients, emps:viewEmps, time:viewTime, tasks:viewTasks, diary:viewDiary, pay:viewPay, empPage:viewEmpPage, nabavka:viewNabavka, subs:viewSubs, predmer:viewPredmer, resursi:viewResursi, magacin:viewMagacin, nalozi:viewNalozi}[current])();
   animateUI();
   if(current==='time') skrolujNaDanas();
   if(current==='sites') bindSitesSearch();
   if(current==='clients') bindClientSearch();
   if(current==='emps') bindEmpSearch();
+  renderAi();   // plutajuce dugme + panel asistenta (samo direktor)
 }
 
 function head(title, sub){
@@ -3664,6 +3683,9 @@ function savePredmerImport(grId){
 }
 /* ============================================================
    AI ASISTENT (2026-10-21, zahtev klijenta; nivo 1: jutarnji brif, pitanja nad podacima, pregled situacije) — SAMO direktor.
+   UI: plutajuce dugme gore desno (#aiDugme, broj = situacije na pregledu + crvena upozorenja) otvara panel #aiPanel sa desne
+   strane na SVAKOM tabu (nije tab u meniju — zahtev 2026-10-21); renderAi() se zove iz render(). Panel: 4 brojke „danas"
+   (klik = pitanje), razgovor, cipovi, unos.
    Arhitektura: Edge Function `ai-asistent` cuva API kljuc i proverava ulogu (JWT → profili.uloga='direktor'), prosledjuje
    poruke Claude-u (Messages API, tool use) i vraca odgovor; NE cita poslovne podatke. Alati (AI_ALATI) se izvrsavaju U
    KLIJENTU nad DATA direktora — iste formule kao u aplikaciji (zdravlje, computeAlerts, realizacijaSituacija, potroseno,
@@ -3764,28 +3786,45 @@ async function aiGreskaTekst(error){
   try{ if(error&&error.context&&typeof error.context.json==='function'){ const j=await error.context.json(); if(j&&j.error) return String(j.error); } }catch(e){}
   return m||'Nepoznata greška.';
 }
-function viewAsistent(){
-  if(!jeSuper()){ current='dash'; return viewDash(); }
-  const h=head('Asistent','Pitaj o projektima, situacijama, troškovima i rokovima — odgovara samo iz podataka koje vidiš kao direktor, ništa ne menja.');
+let AI_OTVOREN=false;
+/* Broj na dugmetu: situacije koje cekaju pregled + crvena upozorenja — „sta me ceka" na jedan pogled. */
+function aiBroj(){ const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); return sits.filter(x=>pregledSit(x)==='na_pregledu').length+computeAlerts().filter(a=>a.sev==='red').length; }
+function renderAi(){
+  const d=document.getElementById('aiDugme'), p=document.getElementById('aiPanel'); if(!d||!p) return;
+  const vidi=jeSuper(); d.classList.toggle('vidi', vidi);
+  if(!vidi){ AI_OTVOREN=false; p.classList.remove('on'); p.innerHTML=''; return; }
+  const n=aiBroj(); d.innerHTML=icon('ai')+' Asistent'+(n?`<span class="tag num">${n}</span>`:'');
+  p.classList.toggle('on', AI_OTVOREN); p.innerHTML=AI_OTVOREN?aiPanelHtml():'';
+  if(AI_OTVOREN) aiSkrol();
+}
+function aiOtvori(){ if(!jeSuper()) return; AI_OTVOREN=!AI_OTVOREN; renderAi(); if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&e.focus) e.focus(); } }
+function aiZatvori(){ AI_OTVOREN=false; renderAi(); }
+function aiPanelHtml(){
+  const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])), al=computeAlerts();
+  const naPregledu=sits.filter(x=>pregledSit(x)==='na_pregledu').length, crvena=al.filter(a=>a.sev==='red').length;
+  const rokovi=visibleSites().filter(g=>g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))<=30).length;
+  const danas=[[naPregledu,'situacija čeka pregled','Pregledaj situacije koje čekaju moj pregled i za svaku preporuči: odobriti ili vratiti, i zašto.', naPregledu>0],
+    [crvena,'crvenih upozorenja','Koja su crvena upozorenja i šta prvo da rešim?', crvena>0],
+    [rokovi,'rokova u 30 dana','Koji projekti imaju rok u narednih 30 dana i kako stoje sa napretkom?', false],
+    [al.length,'upozorenja ukupno','Šta se promenilo i šta me čeka danas?', false]];
   const poruke=AI_RAZGOVOR.map(m=>`<div class="ai-msg ${m.ko}">${m.ko==='ja'?esc(m.tekst):aiHtml(m.tekst)}</div>`).join('');
-  return h+`<div class="card"><div class="card-b">
-    <div id="aiPoruke" class="ai-poruke">${poruke||'<div class="sub">Nema razgovora. Izaberi pitanje ispod ili napiši svoje.</div>'}${AI_ZAUZET?'<div class="ai-msg bot sub">Razmišljam…</div>':''}${AI_GRESKA?`<div class="banner">${AI_GRESKA}</div>`:''}</div>
-    <div class="ai-chips">${AI_PITANJA.map(t=>`<button class="btn ghost" data-p="${esc(t)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}>${esc(t)}</button>`).join('')}${AI_RAZGOVOR.length?`<button class="btn ghost" onclick="aiOcisti()">↺ Novi razgovor</button>`:''}</div>
-    <div class="ai-unos"><textarea id="aiUnos" rows="2" placeholder="Napiši pitanje… (Enter šalje, Shift+Enter novi red)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiPitajIzPolja();}"></textarea><button class="btn" onclick="aiPitajIzPolja()" ${AI_ZAUZET?'disabled':''}>Pošalji</button></div>
-    <div class="sub" style="margin-top:8px">Razgovor se ne čuva posle zatvaranja. Pitanja se beleže u log korišćenja (bez sadržaja).</div>
-  </div></div>`;
+  return `<div class="ai-head">${icon('ai')}<h3>Asistent</h3><span class="sub">odgovara iz tvojih podataka · ništa ne menja</span><button class="x" style="position:static" onclick="aiZatvori()" title="Zatvori">${icon('x')}</button></div>
+  <div class="ai-danas">${danas.map(([n,l,q,cr])=>`<button data-p="${esc(q)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}><b class="num${cr?' crveno':''}">${n}</b><small>${l}</small></button>`).join('')}</div>
+  <div id="aiPoruke" class="ai-poruke">${poruke||'<div class="sub">Klikni na broj iznad ili postavi pitanje. Primeri: „Koliko je naplaćeno na Dušanu Radoviću?", „Ko radi na čemu ove nedelje?", „Zašto Liman Park ima nisko zdravlje?"</div>'}${AI_ZAUZET?'<div class="ai-msg bot sub">Razmišljam…</div>':''}${AI_GRESKA?`<div class="banner">${AI_GRESKA}</div>`:''}</div>
+  <div class="ai-chips">${AI_PITANJA.map(t=>`<button class="btn ghost" data-p="${esc(t)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}>${esc(t)}</button>`).join('')}${AI_RAZGOVOR.length?`<button class="btn ghost" onclick="aiOcisti()">↺ Novi razgovor</button>`:''}</div>
+  <div class="ai-unos"><textarea id="aiUnos" rows="2" placeholder="Napiši pitanje… (Enter šalje, Shift+Enter novi red)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiPitajIzPolja();}"></textarea><button class="btn" onclick="aiPitajIzPolja()" ${AI_ZAUZET?'disabled':''}>Pošalji</button></div>`;
 }
 function aiPitajIzPolja(){ const e=document.getElementById('aiUnos'); const t=e?String(e.value||''):''; if(e) e.value=''; aiPitaj(t); }
-function aiOcisti(){ AI_RAZGOVOR=[]; AI_PORUKE=[]; AI_GRESKA=''; if(current==='asistent') render(); }
+function aiOcisti(){ AI_RAZGOVOR=[]; AI_PORUKE=[]; AI_GRESKA=''; renderAi(); }
 function aiSkrol(){ try{ const p=document.getElementById('aiPoruke'); if(p&&p.scrollHeight!=null) p.scrollTop=p.scrollHeight; }catch(e){} }
 function aiPregledSituacije(sitId){
   const sit=(DATA.situacije||[]).find(x=>x.id===sitId); if(!sit||!jeSuper()) return;
-  const g=grById[sit.gr]; current='asistent'; renderNav(); render();
+  const g=grById[sit.gr]; AI_OTVOREN=true; renderAi();
   return aiPitaj('Pregledaj situaciju '+unesc(sit.br)+(g?' na gradilištu '+unesc(g.naziv):'')+' (id situacije: '+sit.id+') i preporuči da li da je odobrim ili vratim rukovodiocu.');
 }
 async function aiPitaj(tekst){
   tekst=String(tekst||'').trim(); if(!tekst||AI_ZAUZET||!jeSuper()) return;
-  AI_GRESKA=''; AI_RAZGOVOR.push({ko:'ja', tekst}); AI_PORUKE.push({role:'user', content:tekst}); AI_ZAUZET=true; if(current==='asistent') render(); aiSkrol();
+  AI_GRESKA=''; AI_RAZGOVOR.push({ko:'ja', tekst}); AI_PORUKE.push({role:'user', content:tekst}); AI_ZAUZET=true; AI_OTVOREN=true; renderAi();
   const alati=[]; let odgovor='';
   try{
     if(!supa) throw new Error('Asistent radi samo kad je aplikacija povezana sa bazom (Supabase) i kad je Edge Function „ai-asistent" postavljena sa API ključem.');
@@ -3805,7 +3844,7 @@ async function aiPitaj(tekst){
   }catch(e){ AI_GRESKA=esc(String(e&&e.message||e)); }
   if(odgovor) AI_RAZGOVOR.push({ko:'bot', tekst:odgovor}); else if(!AI_GRESKA) AI_RAZGOVOR.push({ko:'bot', tekst:'Nemam odgovor na to pitanje.'});
   AI_ZAUZET=false; beleziLog('ai_pitanje',{znakova:tekst.length, alati, odgovor:odgovor.length});
-  if(current==='asistent') render(); aiSkrol();
+  renderAi();
 }
 function izvozPredmer(grId){
   if(!isDirector()) return;

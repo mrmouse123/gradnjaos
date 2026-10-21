@@ -261,8 +261,10 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   UI: `formSituacija(gr)` (smemNa; predmer + „＋ iz šifarnika", `SIT_DODATNE` mapa, NE skriveni input),
   `detaljSituacije`, fioka „Situacije", Naplata, `computeAlerts` fin-alert „preko ugovorene količine"
   (= uprava „dobija razliku"). `predmer.izv` se iz situacije NE menja (pravilo 5). T43.
-- **AI asistent direktora** (2026-10-21, zahtev klijenta; nivo 1): tab „Asistent" (`samoDirektor:true` → `jeSuper()`;
-  `viewAsistent` vraća ostale na dash). ARHITEKTURA: Edge Function `supabase/functions/ai-asistent/` je tanki posrednik ka
+- **AI asistent direktora** (2026-10-21, zahtev klijenta; nivo 1): NIJE tab — plutajuće dugme gore desno (`#aiDugme`,
+  `.ai-dugme.vidi` samo `jeSuper()`, broj = situacije na pregledu + crvena upozorenja, `aiBroj`) otvara panel `#aiPanel`
+  sa desne strane na svakom tabu (`renderAi()` iz `render()`; na ≤900 px dugme je dole desno iznad bnav-a). Panel: 4 brojke
+  „danas" (klik = pitanje), razgovor, čipovi, unos; `aiOtvori/aiZatvori`, `AI_OTVOREN`. ARHITEKTURA: Edge Function `supabase/functions/ai-asistent/` je tanki posrednik ka
   Anthropic Messages API-ju — čuva `ANTHROPIC_API_KEY` (secret, NIKAD u repou/klijentu), proverava JWT → `profili.uloga='direktor'`
   (403 inače; `verify_jwt` nije dovoljan jer je anon ključ validan JWT), prosleđuje samo `system/messages/tools/max_tokens`
   (model iz `AI_MODEL`, podrazumevano `claude-sonnet-5-5`), 503 bez ključa. NE čita poslovne podatke. ALATI (`AI_ALATI`:
