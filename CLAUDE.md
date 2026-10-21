@@ -346,7 +346,7 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 - [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
       Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
-- [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 20 USD/mes), radi uživo 2026-10-22
+- [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 30 USD/mes), radi uživo 2026-10-22
 - [ ] Test-nalozi direktora modula: `dirpro@gradnjaos.test` / `dirizv@gradnjaos.test` — Jovan pravi u dashboardu (Add user), pa profil
 - [x] GitHub publish + Pages — 2026-09-24, https://mrmouse123.github.io/gradnjaos/
 - [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
