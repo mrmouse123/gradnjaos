@@ -5545,7 +5545,25 @@ function renderNalog(){
     +'<div class="acc-btns"><button onclick="promeniLozinku()">Lozinka</button><button onclick="odjava()">Odjavi se</button></div>';
 }
 
+/* Validacija id-jeva pri ucitavanju (2026-10-22, nalaz pregleda): id-jevi i strani kljucevi se interpoliraju u onclick="…('${id}')"
+   na 100+ mesta, pa red sa id-jem koji sadrzi navodnik/zagradu (ubacen kroz REST mimo aplikacije) = stored XSS kod direktora.
+   Pravilo: id i FK polja smeju samo [A-Za-z0-9_.:|-] (do 80 znakova); red koji to krsi se IZBACUJE iz DATA (i iz join nizova),
+   broji se i prijavljuje u konzoli — nikad ne „popravlja" tiho (to bi napravilo novi id i duplirao red pri cuvanju). */
+const ID_POLJA=['id','gr','zad','sit','predmer_id','autor','zaduzen','klijent','rukovodilac','zaposleni_id','gradiliste_id','podizvodjac_id','saradnik_id','user_id','autor_uid'];
+const ID_POLJA_TABELE={rad_na_zadatku:['osoba','zadatak']};   // `osoba` je u clijenti/podizvodjaci IME kontakta (slobodan tekst), id je samo u sesiji tajmera
+const idOk=v=>v==null||v===''||/^[A-Za-z0-9_.:|-]{1,80}$/.test(String(v));
+function ocistiIdeve(d){
+  let n=0;
+  for(const t of Object.keys(d)){ const l=d[t]; if(!Array.isArray(l)) continue;
+    const polja=ID_POLJA.concat(ID_POLJA_TABELE[t]||[]);
+    d[t]=l.filter(r=>{ if(!r||typeof r!=='object') return false; const ok=polja.every(k=>idOk(r[k])); if(!ok){ n++; return false; }
+      for(const k of ['grs','bivsi']) if(Array.isArray(r[k])){ const c=r[k].filter(idOk); if(c.length!==r[k].length){ n+=r[k].length-c.length; r[k]=c; } }   // losa VEZA se izbacuje, osoba ostaje
+      return true; }); }
+  if(n) console.warn('GradnjaOS: izbačeno '+n+' redova sa neispravnim id-jem (dozvoljeno: slova, cifre, _ . : | -).');
+  return n;
+}
 function normalizeData(){
+  ocistiIdeve(DATA);
   (DATA.zaposleni||[]).forEach(z=>{ if(!Array.isArray(z.grs)) z.grs = z.gr?[z.gr]:[]; delete z.gr; if(!Array.isArray(z.bivsi)) z.bivsi=[]; });
   (DATA.gradilista||[]).forEach(g=>{ if(!g.modul) g.modul='izvodjenje'; if(g.modul==='izvodjenje'&&!g.tip) g.tip='visokogradnja'; });
   if(!DATA.situacije) DATA.situacije=[];

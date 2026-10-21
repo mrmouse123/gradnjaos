@@ -1,3 +1,20 @@
+# Pregled arhitekture — preostala dva nalaza (2026-10-22) — GOTOVO
+
+## Plan
+- [x] 1. Validacija id-jeva pri ucitavanju: `ocistiIdeve(DATA)` na pocetku `normalizeData` (id/FK polja + grs/bivsi),
+      red sa neispravnim id-jem se izbacuje i broji (console.warn), nikad se ne "popravlja". T60.
+- [x] 2. CLAUDE.md: datirane beleske po funkciji (221 linija) preseljene u `docs/beleske-funkcija.md`; u CLAUDE.md
+      ostaje kompaktna lista "Invarijante po temi" sa pokazivacem + sekcija "Gde sta pise". 661 → 440 linija.
+- [x] 3. e2e 958/0, provera id-jeva na zivoj bazi, commit/push, Pages.
+
+## Review
+- `osoba` je u `clijenti`/`podizvodjaci` IME kontakta (slobodan tekst), a id samo u `rad_na_zadatku` — prvi nacrt sa
+  globalnom listom polja izbacio je svih 10 demo klijenata/podizvodjaca (19 testova palo). Resenje: `ID_POLJA_TABELE`
+  po tabeli. Lekcija: isto ime polja ne znaci isti tip podatka — proveriti DEMO pre pravila nad poljem.
+- Odluka: los red se IZBACUJE, ne sanira. Saniranje bi napravilo novi id → diff bi ga poslao kao insert i duplirao red.
+- Ovo je odbrana u dubinu: id-jeve pisu samo autentifikovani korisnici kroz app (esc nije primenjen na id jer ih app
+  generise), pa je realan vektor samo REST poziv mimo app-a sa validnim JWT-om. Posle validacije ni to ne prolazi.
+
 # 2026-10-21: AI asistent direktora (nivo 1)
 - [x] Edge Function `ai-asistent` (kapija: JWT → direktor; prosleđuje Claude-u; bez ključa 503) — deploy kroz MCP
 - [x] Klijent: tab Asistent (samo direktor), 6 alata nad DATA, petlja tool_use (cap 6), markdown-lite + linkovi, čipovi, dugme u detalju situacije, log ai_pitanje

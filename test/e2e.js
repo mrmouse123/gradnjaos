@@ -3029,6 +3029,25 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T60 (2026-10-22): validacija id-jeva pri ucitavanju — red sa navodnikom/zagradom u id-u ili FK polju se izbacuje (stored XSS kroz onclick) ---- */
+  section('T60 validacija id-jeva');
+  await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {
+    const zao = "x') onclick=\"alert(1)\" data-x='";
+    const seed0 = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } } });
+    const seed = JSON.parse(JSON.stringify(seed0.g.__mock._db));
+    const nG = seed.gradilista.length, nS = seed.situacije.length, nD = seed.dnevnik.length, nZ = seed.zaposleni.length;
+    seed.gradilista.push({ ...seed.gradilista[0], id: zao, naziv: 'Zlo gradiliste' });
+    seed.situacije.push({ ...seed.situacije[0], id: 's-zlo', gr: zao });
+    seed.dnevnik.push({ ...seed.dnevnik[0], id: 'd-zlo', autor: "z1'); alert(1); ('" });
+    seed.zaposleni_gradiliste.push({ zaposleni_id: 'z1', gradiliste_id: zao, aktivan: true });
+    const a = await boot({ supabase: true, seed, session: { user: { id: 'u-dir', email: 'direktor@test' } } });
+    if (a.run('DATA.gradilista.length') !== nG || a.run('DATA.situacije.length') !== nS || a.run('DATA.dnevnik.length') !== nD || a.run('DATA.zaposleni.length') !== nZ) throw new Error('redovi nisu izbaceni / ispravni su izbaceni: ' + [a.run('DATA.gradilista.length'), nG, a.run('DATA.situacije.length'), nS, a.run('DATA.dnevnik.length'), nD].join(','));
+    if (a.run("DATA.gradilista.some(g=>g.naziv==='Zlo gradiliste')") || a.run("DATA.situacije.some(s=>s.id==='s-zlo')") || a.run("DATA.dnevnik.some(d=>d.id==='d-zlo')") || a.run("DATA.zaposleni.some(z=>(z.grs||[]).some(x=>!/^[A-Za-z0-9_.:|-]{1,80}$/.test(x)))")) throw new Error('zao red/veza je ostala u DATA');
+    for (const v of ['dash', 'sites', 'diary', 'pay']) { a.run(`setRole('all'); current=${JSON.stringify(v)}; render();`); if (a.g.document.getElementById('view').innerHTML.includes("onclick=\"alert(1)")) throw new Error('injekcija u ' + v); }
+    if (!a.run("['g1','pm1791218425024-x0','mg-sf-a-001','u-dir','direkcija','4.4.1D','a|b:c'].every(idOk)") || a.run("['', null].some(x=>!idOk(x))") || a.run(`idOk(${JSON.stringify(zao)})`) || a.run("idOk('a'.repeat(81))")) throw new Error('idOk pravilo');
+    const b = await boot(); const pre = b.run('DATA.dnevnik.length'); b.run("DATA.dnevnik.push({id:'d-x', datum:todayStr(), gr:'g1', autor:\"z1')\", tekst:'x'}); normalizeData();"); if (b.run('DATA.dnevnik.length') !== pre) throw new Error('normalizeData ne cisti id-jeve');
+  });
+
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
   await acheck('plutajuce dugme + panel samo direktor (nema taba; admin/rukovodilac bez dugmeta, aiOtvori ne otvara); panel: 4 brojke danas + 5 cipova + unos; alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
