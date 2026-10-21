@@ -1,7 +1,7 @@
 -- ============================================================
 -- GradnjaOS — šema baze za Supabase (SVEŽA baza)
 -- Pokreni ceo fajl u: Supabase konzola -> SQL Editor -> New query
--- Postojeća baza: NE ovo, nego migracija-01..29.sql redom.
+-- Postojeća baza: NE ovo, nego migracija-01..30.sql redom.
 -- Stanje: posle migracije 11 (Auth + RLS + hardening finansija, 2026-09-23)
 -- ============================================================
 
@@ -2153,3 +2153,12 @@ begin
   end if;
   return new;
 end $$;
+
+-- ============================================================
+-- Migracija 30 (2026-10-22), nalaz pregleda: `profili` SELECT je bio `user_id = auth.uid() or je_direktor()`, a je_direktor()
+--   od migracije 27 obuhvata i direktore modula — oni su tako kroz PostgREST čitali sve profile (uloge, moduli, zastavice)
+--   iako im je migracija 28 ukinula Admin kokpit. Sada: svoj red ILI puna uprava (direktor/admin). nalozi_pregled je
+--   definer, klijent čita samo svoj red — ništa se ne menja za legitimne tokove. Idempotentna.
+-- ============================================================
+drop policy if exists p_sel on profili;
+create policy p_sel on profili for select to authenticated using (user_id = auth.uid() or je_puna_uprava());

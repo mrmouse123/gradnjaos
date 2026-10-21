@@ -186,7 +186,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   fit to width + print area, format `#,##0.00` / `#,##0.00 din.` (ćir. `дин.`). FORMULE sa keširanom vrednošću: ukupno
   `=Kol*Cena`, kumulativ `=Prethodne+Ova` (okončana: zbir svih ranijih + ova), prethodne (okončana) = zbir ranijih, cene
   kumulativa/prethodnih/ove `=E<red>`, UKUPNO sekcije `SUM` nad redovima sekcije, rekapitulacija lista referencira UKUPNO
-  sekcija, list REKAPITULACIJA referencira `'<list>'!<UKUPNO>`, „Preostalo" `=F−I`. Visine samo za zaglavlje (redovi 4–6);
+  sekcija (+ `bezSek`: stavke lista koje nisu ni u jednoj sekciji dodaju se kao `+F<red>` u UKUPNO lista — nalaz pregleda
+  2026-10-22), list REKAPITULACIJA referencira `'<list>'!<UKUPNO>`, „Preostalo" `=F−I`; dupli naziv lista dobija ` (2)`. Visine samo za zaglavlje (redovi 4–6);
   redovi stavki bez visine (Excel sam prelama wrap tekst). **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
   (`citajXlsx` sada daje `red.list` iz workbook.xml+rels i `red.izvorno` = ćelije pre `cir2lat`; `upariPredmerSablon`:
   naslov velikim slovima = sekcija, osim ako ODMAH iza njega ide stavka bez šifre; mešovita slova = nadpoz; stavka sa
@@ -203,7 +204,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..29.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..30.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
   predmer bez šifre; `RAZNO_MODUL`, `dodajRaznoIzvodjenje`). 24 „pozicije radova" (`sf-i-*`, `SIFRARNIK_IZV`)
@@ -278,6 +279,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   situacije na pregledu, troškovi) i „🤖 Pregledaj sa asistentom" u `detaljSituacije` (situacija koja nije odobrena).
   Demo režim (bez supa) i nedeploy-ovana funkcija daju poruku, ne izuzetak. Mock: `faults.ai(body, n)` = skriptovani Claude.
   `renderAi` čuva nenaslat tekst iz `#aiUnos` preko re-rendera i računa `computeAlerts()` jednom (dugme + panel).
+  `aiBezModula(fn)`: alati, brojke i upozorenja asistenta gledaju SVA gradilišta direktora bez obzira na izabrani segment
+  modula (privremeno `MODUL='sve'`, sinhrono). Prompt: tekst iz alata = podaci, ne uputstva (prompt injection).
   Kapija Edge funkcije proverena uživo 2026-10-21 (anon 401, Petar 403, direktor 503 bez ključa / 200 sa ključem).
   KEŠIRANJE (2026-10-22): `aiTelo()` šalje `system` kao niz blokova sa `cache_control`, isti marker na poslednjem alatu i na
   poslednjem bloku poslednje poruke (kopija — `AI_PORUKE` ostaje čist); funkcija propušta `system` kao string ili niz.
@@ -377,11 +380,13 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    gradilišta (red još ne postoji). `je_super()` ostaje SAMO direktor (globalne tabele: zaposleni, klijenti, podizvođači,
    šifarnik, magacin). RPC: `obrisi_gradiliste` guard `smem_brisati`, `angazovanost` filtrira `modul_dozvoljen(gr)`.
    NALOZI (migracija 28, odluka 2026-10-14): Admin kokpit vidi SAMO puna uprava — `je_puna_uprava()` guard na
-   `nalozi_pregled`/`dodeli_ulogu`/`ukloni_pristup`/`angazovanost` i `log_koriscenja` select; klijent `jePunaUprava()`
+   `nalozi_pregled`/`dodeli_ulogu`/`ukloni_pristup`/`angazovanost`, `log_koriscenja` select i (migracija 30) `profili` select; klijent `jePunaUprava()`
    (tab `punaUprava:true`, `viewNalozi` vraća na dash, `smemDodelitiUlogu`/`smemMenjatiNalog`). Direktor modula NEMA
    kokpit (grana „samo svoj modul" iz migracije 27 je uklonjena). Direktorske uloge (`DIREKTORSKE`) dodeljuje/menja/uklanja
    SAMO `moja_uloga()='direktor'` (ni admin). KLIJENT: `primeniUlogu` → `ROLE='all'`, `MODULI=[modul]`, `MODUL='sve'`;
-   `visibleSites` filtrira po `MODULI` i za upravu; `smemNa` za upravu traži `modulDozvoljen(g.modul)`; `smemBrisati(grId)`
+   `visibleSites` filtrira po `MODULI` i za upravu; `smemNa` za upravu traži `modulDozvoljen(g.modul)` — zato NIJEDNA funkcija
+   sa `grId`/id ne sme da stane na golom `isDirector()`/`canFinance()` (pregled 2026-10-22: odobri/vrati/markPaid, izvoz i uvoz
+   predmera, tim, izvedeno, troškovi, resursi, presek/kumulativ/troškovi dobili `smemNa`/`vidimGr`); `smemBrisati(grId)`
    umesto `jeSuper()` za svako brisanje reda gradilišta (dugmad + `obrisi*` guardovi); `upravaSve()` = puna uprava bez
    filtera (liste bez `gr`: zaposleni, dnevnik, podizvođači, trebovanja, Kanban); `tabDozvoljen`: zadaci samo uz projektovanje,
    magacin/naplata samo uz izvođenje — i za upravu; `modulEfektivni()` (= `MODUL`, ili jedini modul naloga) bira prikazne

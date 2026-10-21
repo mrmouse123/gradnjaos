@@ -2320,9 +2320,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const drugi = app.run(`DATA.zaposleni.find(z=>(z.grs||[]).length && !(z.grs||[]).includes(${JSON.stringify(moje)}))`);
     if (!drugi) return;
     const tudjeNaziv = app.run(`grById[${JSON.stringify(drugi.grs[0])}].naziv`);
-    app.run(`ROLE=${JSON.stringify(r)}; formTim(${JSON.stringify(moje)});`);
+    app.run(`setRole(${JSON.stringify(r)}); formTim(${JSON.stringify(moje)});`);   // smemNa trazi i ULOGA (pregled 2026-10-22), ne samo ROLE
     const htmlR = app.g.document.getElementById('modal').innerHTML;
-    app.run(`ROLE='all'; formTim(${JSON.stringify(moje)});`);
+    app.run(`setRole('all'); formTim(${JSON.stringify(moje)});`);
     const htmlD = app.g.document.getElementById('modal').innerHTML;
     if (!htmlR.includes('na drugom gradilištu')) throw new Error('rukovodilac: nema oznake');
     if (htmlR.includes(tudjeNaziv)) throw new Error('rukovodilac vidi ime tudjeg gradilista: ' + tudjeNaziv);
@@ -3045,6 +3045,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const gl = await a.run("aiIzvrsiAlat('gradilista',{})");
     if (!Array.isArray(gl) || gl.length !== a.run('visibleSites().length') || !gl.every(g => 'zdravlje_0_100' in g && 'naplaceno' in g && 'dana_do_roka' in g && 'situacije' in g)) throw new Error('alat gradilista: ' + JSON.stringify(gl[0]).slice(0, 200));
     if ((await a.run("aiIzvrsiAlat('gradilista',{modul:'projektovanje'})")).some(g => g.modul !== 'projektovanje')) throw new Error('filter modula');
+    a.run("MODUL='projektovanje'"); const glP = await a.run("aiIzvrsiAlat('gradilista',{})"); const upP = await a.run("aiIzvrsiAlat('upozorenja',{})");
+    if (glP.length !== gl.length || a.run('MODUL') !== 'projektovanje' || upP.length < gl.length - gl.length || !upP.some(u => !a.run(`jePro(grById[${JSON.stringify(u.gradiliste_id)}])`))) throw new Error('alati zavise od segmenta modula: ' + glP.length + '/' + gl.length);
+    a.run("MODUL='sve'");
     const gd = await a.run("aiIzvrsiAlat('gradiliste_detalj',{id:'g1'})");
     if (!gd.predmer || !Array.isArray(gd.situacije_lista) || !gd.troskovi || !Array.isArray(gd.zadaci_lista) || !Array.isArray(gd.dnevnik_poslednji) || !Array.isArray(gd.upozorenja) || /&amp;|&lt;/.test(JSON.stringify(gd))) throw new Error('alat gradiliste_detalj: ' + JSON.stringify(gd).slice(0, 300));
     if (!(await a.run("aiIzvrsiAlat('gradiliste_detalj',{id:'nema-takvog'})")).greska || !(await a.run("aiIzvrsiAlat('situacija_detalj',{id:'x'})")).greska || !(await a.run("aiIzvrsiAlat('dnevnik',{gr:'x'})")).greska || !(await a.run("aiIzvrsiAlat('nepoznat',{})")).greska) throw new Error('nepoznat id/alat nije greska');
@@ -3180,6 +3183,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!/<c r="F\d+" s="\d+"><f>D(\d+)\*E\1<\/f><v>[\d.]+<\/v><\/c>/.test(sh1) || !/<f>SUM\(F\d+:F\d+\)<\/f>/.test(sh1) || !/<f>J\d+\+M\d+<\/f>/.test(sh1) || !/<f>F\d+-I\d+<\/f>/.test(sh1)) throw new Error('formule: ' + (sh1.match(/<f>[^<]*<\/f>/g) || []).slice(0, 8).join(' '));
     if (!/_xlnm\.Print_Area/.test(wbx) || !wbx.includes('<calcPr fullCalcOnLoad="1"/>')) throw new Error('workbook: print area / calcPr');
     const shR = await z1.citaj('xl/worksheets/sheet' + listovi.length + '.xml'); if (!/<f>'ELEKTROINSTALACIJE'!F\d+<\/f>/.test(shR)) throw new Error('rekapitulacija bez referenci na listove: ' + (shR.match(/<f>[^<]*<\/f>/g) || []).slice(0, 4).join(' '));
+    // stavka lista VAN svake sekcije (izvor bez sekcije ispred prve sekcije) ulazi u UKUPNO lista kao +F<red> (nalaz pregleda 2026-10-22)
+    a.run(`(()=>{ const l=predmerZa(${JSON.stringify(g.id)}); l[1].izvor={list:'ЕЛЕКТРОИНСТАЛАЦИЈЕ',sekcija:null,nadpoz:null,cir:null}; })()`);   // druga stavka lista ostaje bez sekcije (iza UKUPNO 4.0)
+    const ub = await a.run("izvozSituacije('t58-s1','lat')"); a.g.__ub = ub; const zb = await a.run('zipCitaj(__ub.buffer)'); const shb = await zb.citaj('xl/worksheets/sheet1.xml');
+    const fUk = (shb.match(/<f>SUM\(F\d+:F\d+\)\+F(\d+)<\/f>/) || []); if (!fUk[1]) throw new Error('UKUPNO lista bez stavke van sekcije: ' + (shb.match(/<f>SUM\(F[^<]*<\/f>/g) || []).join(' '));
+    const redB = await a.run('citajXlsx(__ub.buffer, true)'); const Lb = redB.filter(r => r.list === 'ELEKTROINSTALACIJE'); const ukb = Lb.filter(r => r[1] === 'UKUPNO').pop();
+    if (Math.abs(ukb[5] - ugov) > 0.01) throw new Error('kesirani UKUPNO lista posle premestanja: ' + ukb[5] + ' != ' + ugov);
+    a.run(`(()=>{ const l=predmerZa(${JSON.stringify(g.id)}); l[1].izvor={list:'ЕЛЕКТРОИНСТАЛАЦИЈЕ',sekcija:'4.2 РАЗВОДНИ ОРМАНИ',nadpoz:null,cir:null}; })()`);
     // pro situacija (skrivena, Projektovanje nema naplatu) se ne izvozi ni direktnim pozivom; stavka bez predmer_id → list VAN PREDMERA
     const proSit = a.run("(DATA.situacije.find(x=>jePro(grById[x.gr]))||{}).id"); if (proSit && (a.run(`izvozSituacije(${JSON.stringify(proSit)},'lat')`) !== null || a.run(`smemIzvozSituacije(DATA.situacije.find(x=>x.id===${JSON.stringify(proSit)}))`))) throw new Error('pro situacija se izvozi');
     a.run(`DATA.situacija_stavke.push({id:'t58-van', sit:'t58-s1', gr:${JSON.stringify(g.id)}, predmer_id:null, sifra:'X1', poz:'Dodatni rad van predmera', jm:'kom', kol:3, kol_ugovoreno:0, kumulativ:3, razlika:3})`);
@@ -3269,6 +3279,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!pv.includes('obrisiSituaciju') ) throw new Error('dirizv: Naplata bez dugmeta brisanja na svojim situacijama');
     a.run('formSite()'); m = a.g.document.getElementById('modal').innerHTML;
     if (m.includes('value="projektovanje"') || !m.includes('value="izvodjenje"') || !/id="mereFillBox" style="display:block"/.test(m)) throw new Error('formSite dirizv nudi projektovanje'); a.run('closeModal()');
+    // stari guardovi sa golim isDirector()/canFinance() (pregled 2026-10-22): direktor projektovanja ne dira Izvodjenje
+    a.run("setRole('dirpro')"); const sitIzv = a.run("DATA.situacije.find(x=>!jePro(grById[x.gr])&&pregledSit(x)!=='odobrena')||DATA.situacije.find(x=>!jePro(grById[x.gr]))");
+    a.run(`(()=>{ const s=DATA.situacije.find(x=>x.id===${JSON.stringify(sitIzv.id)}); s.pregled='na_pregledu'; })()`);
+    a.run(`odobriSituaciju(${JSON.stringify(sitIzv.id)})`); if (a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sitIzv.id)}).pregled`) !== 'na_pregledu') throw new Error('dirpro odobrio situaciju Izvodjenja');
+    a.run(`(()=>{ const s=DATA.situacije.find(x=>x.id===${JSON.stringify(sitIzv.id)}); s.pregled='odobrena'; s.status='ceka'; })()`); a.run(`markPaid(${JSON.stringify(sitIzv.id)})`); if (a.run(`DATA.situacije.find(x=>x.id===${JSON.stringify(sitIzv.id)}).status`) === 'placeno') throw new Error('dirpro oznacio placeno na Izvodjenju');
+    for (const f of ["formTim('g1')", "formPredmerImport('g1')", "openTroskovi('g1')", "openPresek('g1')", "formTrosak('g1')"]) { a.run("document.getElementById('modal').innerHTML=''; document.getElementById('rpt').innerHTML=''; " + f); if (a.g.document.getElementById('modal').innerHTML.length > 0 || a.g.document.getElementById('rpt').innerHTML.length > 0) throw new Error('dirpro otvorio ' + f); }
+    if (a.run("smemIzvedeno('g1')") || !a.run("smemIzvedeno('g8')") || a.run("izvozPredmer('g1')") !== undefined) throw new Error('dirpro: izvedeno/izvozPredmer na Izvodjenju');
     a.run("setRole('all')"); if (!a.run('upravaSve()') || a.run('MODULI.length') !== 2 || !a.run('jeSuper()') || a.run('jeDirektorModula()')) throw new Error('direktor: sve');
     a.run("setRole('admin')"); if (a.run('jeSuper()') || !a.run("smemNa('g1')") || a.run("smemBrisati('g1')")) throw new Error('admin: ne brise, vodi sve');
   });
@@ -3327,6 +3344,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (const u of ul) if (!mig.includes(`'${u}'`) || !sch.includes(`'${u}'`)) throw new Error('migracija 27 / schema.sql nema ulogu ' + u);
     if (!sch.includes('profili_moduli_uloga_check') || !sch.includes('smem_brisati')) throw new Error('schema.sql nema migraciju 27');
     if (!sch.includes("create policy p_sel on log_koriscenja for select to authenticated using (je_puna_uprava());") || !/if not je_puna_uprava\(\) then raise exception 'Samo direktor i admin vide naloge\.'/.test(sch)) throw new Error('schema.sql nema migraciju 28');
+    if (!sch.includes("create policy p_sel on profili for select to authenticated using (user_id = auth.uid() or je_puna_uprava());")) throw new Error('schema.sql nema migraciju 30 (profili select)');
   });
 
   /* ---- T56 (2026-10-14): Projektovanje — sveska = faza + cek-lista (bez JM/kolicine), bez situacija/naplate ---- */
