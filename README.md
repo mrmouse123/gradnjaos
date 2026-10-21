@@ -38,6 +38,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | **brisanje** (redovi, gradilišta) | **da** | ne | **da, samo redove i gradilišta svog modula** (zaposlene, klijente, podizvođače i šifarnik briše samo direktor) | ne | ne | samo svoje unose/dokumenta |
 
 Rukovodilac 1 i 2 su ista uloga (`rukovodilac`) sa zastavicom „vidi finansije" u Admin kokpitu. Spoljni saradnik je vezan za podizvođača/saradnika, radnik za zaposlenog.
+Direktor ima tab **Asistent** (AI): jutarnji brif, pitanja nad podacima („koji projekti kasne", „koliko je naplaćeno") i pregled situacije pre odobravanja. Odgovara samo iz podataka koje direktor vidi i ništa ne menja; API ključ je u Supabase Edge Function `ai-asistent`, ne u aplikaciji.
 Situaciju (privremenu i okončanu) rukovodilac Izvođenja ili uprava preuzima iz detalja situacije kao Excel u investitorskom šablonu, na latinici ili ćirilici (od 2026-10-16).
 Direktor projektovanja i direktor izvođenja (od 2026-10-14) su uprava ograničena na jedan modul: modul im je u imenu uloge, a direktorske uloge (sve tri) dodeljuje i uklanja samo direktor.
 

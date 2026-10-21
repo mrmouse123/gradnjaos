@@ -261,6 +261,21 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   UI: `formSituacija(gr)` (smemNa; predmer + „＋ iz šifarnika", `SIT_DODATNE` mapa, NE skriveni input),
   `detaljSituacije`, fioka „Situacije", Naplata, `computeAlerts` fin-alert „preko ugovorene količine"
   (= uprava „dobija razliku"). `predmer.izv` se iz situacije NE menja (pravilo 5). T43.
+- **AI asistent direktora** (2026-10-21, zahtev klijenta; nivo 1): tab „Asistent" (`samoDirektor:true` → `jeSuper()`;
+  `viewAsistent` vraća ostale na dash). ARHITEKTURA: Edge Function `supabase/functions/ai-asistent/` je tanki posrednik ka
+  Anthropic Messages API-ju — čuva `ANTHROPIC_API_KEY` (secret, NIKAD u repou/klijentu), proverava JWT → `profili.uloga='direktor'`
+  (403 inače; `verify_jwt` nije dovoljan jer je anon ključ validan JWT), prosleđuje samo `system/messages/tools/max_tokens`
+  (model iz `AI_MODEL`, podrazumevano `claude-sonnet-5-5`), 503 bez ključa. NE čita poslovne podatke. ALATI (`AI_ALATI`:
+  gradilista, gradiliste_detalj, situacija_detalj, upozorenja, dnevnik, angazovanost) se izvršavaju U KLIJENTU
+  (`aiIzvrsiAlat`) nad DATA direktora — iste formule (`zdravlje`, `computeAlerts`, `realizacijaSituacija`, `potroseno`,
+  `naplSum`), id iz modela je spoljni unos → `vidimGr`/`grById` guard, `{greska}` umesto izuzetka, `unesc` pre slanja, cap
+  redova. Petlja `aiPitaj`: invoke → `stop_reason==='tool_use'` → alat → `tool_result` → ponovo, najviše `AI_MAX_KRUGOVA`.
+  Model NIKAD ne upisuje (nivo 2 bi išao kroz postojeće funkcije + potvrdu). Tekst modela je NEPOVERLJIV: `esc` pa
+  markdown-lite (`aiHtml`: **bold**, liste, `[[gr:ID]]`/`[[sit:ID]]` → link samo ako ID postoji). Razgovor samo u memoriji
+  sesije (`AI_RAZGOVOR`/`AI_PORUKE`); log `ai_pitanje` (znakova, alati — bez sadržaja). Ulazi: čipovi (brif, kašnjenja, naplata,
+  situacije na pregledu, troškovi) i „🤖 Pregledaj sa asistentom" u `detaljSituacije` (situacija koja nije odobrena).
+  Demo režim (bez supa) i nedeploy-ovana funkcija daju poruku, ne izuzetak. Mock: `faults.ai(body, n)` = skriptovani Claude.
+  ODLUKE: asistent vidi sve što vidi direktor (uključujući finansije); samo `direktor`, ne admin. T59.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -503,6 +518,7 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 - [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
       Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
+- [ ] AI asistent: funkcija `ai-asistent` je deploy-ovana 2026-10-21; čeka `ANTHROPIC_API_KEY` (Supabase → Edge Functions → Secrets)
 - [x] GitHub publish + Pages — 2026-09-24, https://mrmouse123.github.io/gradnjaos/
 - [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
 

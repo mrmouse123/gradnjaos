@@ -993,7 +993,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const tabs = r => { a.run(`setRole(${JSON.stringify(r)})`); return a.run('tabs().map(t=>t.id)'); };
     const svi = tabs('all');
     for (const t of ['clients', 'emps', 'resursi', 'subs', 'pay', 'nalozi']) if (!svi.includes(t)) throw new Error('direktor nema ' + t);
-    const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi)) throw new Error('admin nema iste tabove kao direktor: ' + adm);
+    const adm = tabs('admin'); if (JSON.stringify(adm) !== JSON.stringify(svi.filter(t => t !== 'asistent')) || !svi.includes('asistent')) throw new Error('admin nema iste tabove kao direktor (bez Asistenta, koji je samo direktor): ' + adm);
     const r1 = tabs('z1:fin'), r2 = tabs('z1');
     const ocekR = ['dash', 'sites', 'time', 'tasks', 'diary', 'magacin', 'nabavka'];
     if (r1.includes('pay') || JSON.stringify([...r1].sort()) !== JSON.stringify([...ocekR].sort())) throw new Error('rukovodilac 1 (sa finansijama) ne sme da ima tab Naplata (samo uprava, 2026-10-14): ' + r1);
@@ -3029,6 +3029,67 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
+  section('T59 AI asistent');
+  await acheck('tab Asistent samo direktor (admin/rukovodilac ne; viewAsistent vraca na dash); alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
+    const a = await boot();
+    a.run("setRole('all')");
+    if (!a.run("tabs().some(t=>t.id==='asistent')")) throw new Error('direktor nema tab Asistent');
+    for (const r of ['admin', 'dirpro', 'z1|izv', 'radnik:z10|pro']) { a.run(`setRole(${JSON.stringify(r)})`); if (a.run("tabs().some(t=>t.id==='asistent')")) throw new Error(r + ' ima tab Asistent'); a.run("current='asistent'; render();"); if (a.run('current') !== 'dash') throw new Error(r + ': viewAsistent nije vratio na dash'); }
+    a.run("setRole('all'); current='asistent'; render();");
+    const v = a.g.document.getElementById('view').innerHTML;
+    if (!v.includes('id="aiUnos"') || (v.match(/data-p="/g) || []).length !== 5 || !v.includes('aiPitajIzPolja()')) throw new Error('viewAsistent bez polja/cipova');
+    const gl = await a.run("aiIzvrsiAlat('gradilista',{})");
+    if (!Array.isArray(gl) || gl.length !== a.run('visibleSites().length') || !gl.every(g => 'zdravlje_0_100' in g && 'naplaceno' in g && 'dana_do_roka' in g && 'situacije' in g)) throw new Error('alat gradilista: ' + JSON.stringify(gl[0]).slice(0, 200));
+    if ((await a.run("aiIzvrsiAlat('gradilista',{modul:'projektovanje'})")).some(g => g.modul !== 'projektovanje')) throw new Error('filter modula');
+    const gd = await a.run("aiIzvrsiAlat('gradiliste_detalj',{id:'g1'})");
+    if (!gd.predmer || !Array.isArray(gd.situacije_lista) || !gd.troskovi || !Array.isArray(gd.zadaci_lista) || !Array.isArray(gd.dnevnik_poslednji) || !Array.isArray(gd.upozorenja) || /&amp;|&lt;/.test(JSON.stringify(gd))) throw new Error('alat gradiliste_detalj: ' + JSON.stringify(gd).slice(0, 300));
+    if (!(await a.run("aiIzvrsiAlat('gradiliste_detalj',{id:'nema-takvog'})")).greska || !(await a.run("aiIzvrsiAlat('situacija_detalj',{id:'x'})")).greska || !(await a.run("aiIzvrsiAlat('dnevnik',{gr:'x'})")).greska || !(await a.run("aiIzvrsiAlat('nepoznat',{})")).greska) throw new Error('nepoznat id/alat nije greska');
+    const sid = a.run("DATA.situacije.find(s=>stavkeZa(s.id).length&&!jePro(grById[s.gr])).id");
+    const sd = await a.run(`aiIzvrsiAlat('situacija_detalj',{id:${JSON.stringify(sid)}})`);
+    if (!sd.stavke || !sd.stavke.length || !('kumulativ' in sd.stavke[0]) || !('razlika_preko_ugovora' in sd.stavke[0]) || !('jed_cena' in sd.stavke[0]) || !sd.gradiliste || !Array.isArray(sd.prethodne_situacije) || !Array.isArray(sd.istorija_pregleda)) throw new Error('alat situacija_detalj: ' + JSON.stringify(sd).slice(0, 300));
+    const up = await a.run("aiIzvrsiAlat('upozorenja',{})"); if (!Array.isArray(up) || up.length !== a.run('computeAlerts().length') || (up.length && !('tekst' in up[0]))) throw new Error('alat upozorenja');
+    const dn = await a.run("aiIzvrsiAlat('dnevnik',{gr:'g1'})"); if (!Array.isArray(dn) || dn.some(d => d.gradiliste_id !== 'g1') || dn.length !== a.run("DATA.dnevnik.filter(d=>d.gr==='g1').length")) throw new Error('alat dnevnik');
+    const an = await a.run("aiIzvrsiAlat('angazovanost',{})"); if (!an.od || !Array.isArray(an.redovi)) throw new Error('alat angazovanost (demo)');
+    if (!a.run('aiSistem()').includes('direktor') || !a.run('aiSistem()').includes(a.run('todayStr()'))) throw new Error('sistemski prompt');
+    a.run("setRole('z1|izv')"); await a.run("aiPitaj('test')"); if (a.run('AI_RAZGOVOR.length') !== 0) throw new Error('rukovodilac je pokrenuo asistenta');
+    a.run("setRole('all')"); await a.run("aiPitaj('test')"); if (!/Supabase/.test(a.run('AI_GRESKA'))) throw new Error('demo rezim bez poruke: ' + a.run('AI_GRESKA'));
+  });
+  await acheck('petlja: tool_use → alat u klijentu → tool_result → odgovor; sistem/alati u telu; tekst modela se esc-uje, **bold**/liste/linkovi [[gr]]/[[sit]] (nepostojeci id se brise); log ai_pitanje; cap krugova; funkcija nije deploy-ovana / bez kljuca → poruka bez izuzetka; dugme u detalju situacije', async () => {
+    const tela = [];
+    const ai = (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));   // snimak: AI_PORUKE je ziv niz
+      if (n === 1) return { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Gledam gradilišta.' }, { type: 'tool_use', id: 'tu1', name: 'gradilista', input: {} }] }, error: null };
+      return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: '**Kasne**: 1 projekat.\n- Liman Park [[gr:g1]] kasni\n<script>alert(1)</script> nema [[sit:nepostoji]] kraj' }] }, error: null }; };
+    const a = await boot({ supabase: true, seed: {}, faults: { ai } });
+    a.run("setRole('all')"); await a.run("aiPitaj('Koji projekti kasne?')");
+    if (tela.length !== 2) throw new Error('broj poziva funkcije: ' + tela.length);
+    if (!tela[0].system.includes('GradnjaOS') || tela[0].tools.length !== 6 || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1: ' + JSON.stringify(Object.keys(tela[0])));
+    const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1') throw new Error('telo 2: ' + JSON.stringify(m2.map(x => x.role)));
+    const rez = JSON.parse(m2[2].content[0].content); if (!Array.isArray(rez) || rez.length !== a.run('visibleSites().length')) throw new Error('tool_result nije rezultat alata gradilista');
+    if (a.run('AI_RAZGOVOR.length') !== 2 || a.run('AI_GRESKA') !== '' || a.run('AI_ZAUZET')) throw new Error('stanje razgovora: ' + a.run('JSON.stringify(AI_RAZGOVOR)'));
+    a.run("current='asistent'; render();"); const v = a.g.document.getElementById('view').innerHTML;
+    if (!v.includes('<b>Kasne</b>') || !v.includes("openSite('g1')") || v.includes('<script>') || !v.includes('&lt;script&gt;') || v.includes('nepostoji') || !v.includes('class="ai-li"')) throw new Error('render odgovora: ' + v.slice(v.indexOf('ai-msg bot'), v.indexOf('ai-msg bot') + 400));
+    const lg = a.g.__mock._log.filter(l => l.op === 'log'); const zadnji = a.g.__mock._db.log_koriscenja.slice(-1)[0];
+    if (!zadnji || zadnji.dogadjaj !== 'ai_pitanje' || !zadnji.detalj || JSON.stringify(zadnji.detalj.alati) !== '["gradilista"]' || 'tekst' in zadnji.detalj) throw new Error('log ai_pitanje: ' + JSON.stringify(zadnji));
+    // cap krugova
+    const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'upozorenja', input: {} }] }, error: null }) } });
+    b.run("setRole('all')"); await b.run("aiPitaj('petlja')");
+    if (b.g.__mock._log.filter(l => l.op === 'functions.invoke').length !== 6 || !/Prekinuto/.test(b.run('(AI_RAZGOVOR[1]||{}).tekst||""'))) throw new Error('cap krugova: ' + b.g.__mock._log.filter(l => l.op === 'functions.invoke').length + ' poziva; greska=' + b.run('AI_GRESKA') + ' razgovor=' + b.run('JSON.stringify(AI_RAZGOVOR)'));
+    // nije deploy-ovana
+    const c = await boot({ supabase: true, seed: {} }); c.run("setRole('all')"); await c.run("aiPitaj('x')");
+    if (!/nije deploy-ovana|ANTHROPIC_API_KEY/.test(c.run('AI_GRESKA')) || c.run('AI_ZAUZET')) throw new Error('nije deploy-ovana: ' + c.run('AI_GRESKA'));
+    // bez kljuca (funkcija vraca gresku)
+    const d = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: null, error: { message: 'ANTHROPIC_API_KEY nije podešen (Supabase → Edge Functions → Secrets).' } }) } });
+    d.run("setRole('all')"); await d.run("aiPitaj('x')"); if (!/ANTHROPIC_API_KEY/.test(d.run('AI_GRESKA'))) throw new Error('bez kljuca: ' + d.run('AI_GRESKA'));
+    // dugme u detalju situacije na pregledu (direktor, supabase) i aiPregledSituacije
+    const e = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Preporuka: odobri.' }] }, error: null }) } });
+    e.run("setRole('all')"); const sid = e.run("(()=>{ const s=DATA.situacije.find(x=>!jePro(grById[x.gr])); s.pregled='na_pregledu'; return s.id; })()");
+    e.run(`detaljSituacije(${JSON.stringify(sid)})`); if (!e.g.document.getElementById('modal').innerHTML.includes(`aiPregledSituacije('${sid}')`)) throw new Error('nema dugmeta Pregledaj sa asistentom');
+    await e.run(`aiPregledSituacije(${JSON.stringify(sid)})`);
+    if (e.run('current') !== 'asistent' || !/Pregledaj situaciju/.test(e.run('AI_RAZGOVOR[0].tekst')) || e.run('AI_RAZGOVOR[1].tekst') !== 'Preporuka: odobri.') throw new Error('aiPregledSituacije: ' + e.run('JSON.stringify(AI_RAZGOVOR)'));
+    e.run("setRole('z1|izv')"); e.run(`detaljSituacije(${JSON.stringify(sid)})`); if (e.g.document.getElementById('modal').innerHTML.includes('aiPregledSituacije(')) throw new Error('rukovodilac ima dugme asistenta');
+  });
+
   /* ---- T58 (2026-10-16): izvoz situacije u investitorskom sablonu, latinica/cirilica; predmer.izvor iz uvoza ---- */
   section('T58 izvoz situacije lat/cir');
   await acheck('lat2cir: srpski tekst, digrafi (lj/nj/dž, velika slova), tokeni sa ciframa/qwxy i skracenice ostaju latinicni; round-trip sa cir2lat; rimski', async () => {

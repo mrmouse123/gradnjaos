@@ -1,3 +1,10 @@
+# 2026-10-21: AI asistent direktora (nivo 1)
+- [x] Edge Function `ai-asistent` (kapija: JWT → direktor; prosleđuje Claude-u; bez ključa 503) — deploy kroz MCP
+- [x] Klijent: tab Asistent (samo direktor), 6 alata nad DATA, petlja tool_use (cap 6), markdown-lite + linkovi, čipovi, dugme u detalju situacije, log ai_pitanje
+- [x] Mock faults.ai, T59 (2 provere), e2e
+- [ ] Jovan: ANTHROPIC_API_KEY u Supabase → Edge Functions → Secrets, pa proba uživo
+- [ ] Nivo 2 (akcije uz potvrdu) i nivo 3 (dokumenti, prognoze) — posle probe
+
 # 2026-10-16: izvoz situacije u investitorskom šablonu (lat/ćir), predmer.izvor
 - [x] Migracija 29 (živo + schema.sql): predmer.izvor jsonb {list, sekcija, nadpoz, cir}; predmer_v (na kraju), grant, trigger
 - [x] citajXlsx: imena listova (workbook.xml + rels) + red.izvorno; upariPredmerSablon puni izvor (sekcija/nadpoz heuristika sa pogledom unapred); g-osdr popunjen iz originalnog predmera

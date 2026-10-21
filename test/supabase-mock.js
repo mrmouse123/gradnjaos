@@ -259,7 +259,7 @@ const MODUL_ULOGE = { direktor_projektovanja: 'projektovanje', direktor_izvodjen
 const SVI_MOD = ['projektovanje', 'izvodjenje'];
 function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
   const db = clone(seed);
-  const log = [];
+  const log = []; let aiPozivi = 0;
   const auth = makeAuth(authOpts, log);
   const profil = () => { const s = auth._session(); if (!s) return null; return (db.profili || []).find(p => p.user_id === s.user.id) || null; };
   const ctx = {
@@ -279,6 +279,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
       async invoke(name, opts){
         log.push({ op: 'functions.invoke', name, body: opts && opts.body });
         if (faults.functionsFail) return { data: null, error: { message: faults.functionsFail } };
+        if (name === 'ai-asistent' && typeof faults.ai === 'function') { aiPozivi++; return faults.ai(opts && opts.body, aiPozivi); }   // skriptovani Claude (2026-10-21)
         if (!faults.functionsDeployed) return { data: null, error: { message: `Function not found: ${name}` } };
         return { data: { ok: true, id: 'mock-' + Date.now() }, error: null };
       },
