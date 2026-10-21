@@ -186,8 +186,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   fit to width + print area, format `#,##0.00` / `#,##0.00 din.` (ćir. `дин.`). FORMULE sa keširanom vrednošću: ukupno
   `=Kol*Cena`, kumulativ `=Prethodne+Ova` (okončana: zbir svih ranijih + ova), prethodne (okončana) = zbir ranijih, cene
   kumulativa/prethodnih/ove `=E<red>`, UKUPNO sekcije `SUM` nad redovima sekcije, rekapitulacija lista referencira UKUPNO
-  sekcija, list REKAPITULACIJA referencira `'<list>'!<UKUPNO>`, „Preostalo" `=F−I`. Visine redova se ne pišu (Excel sam
-  prelama wrap tekst). **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
+  sekcija, list REKAPITULACIJA referencira `'<list>'!<UKUPNO>`, „Preostalo" `=F−I`. Visine samo za zaglavlje (redovi 4–6);
+  redovi stavki bez visine (Excel sam prelama wrap tekst). **`predmer.izvor jsonb`** = {list, sekcija, nadpoz, cir} u ORIGINALNOM pismu iz uvezenog fajla
   (`citajXlsx` sada daje `red.list` iz workbook.xml+rels i `red.izvorno` = ćelije pre `cir2lat`; `upariPredmerSablon`:
   naslov velikim slovima = sekcija, osim ako ODMAH iza njega ide stavka bez šifre; mešovita slova = nadpoz; stavka sa
   sopstvenom šifrom briše nadpoz; `escIzvor` pri upisu). Nije finansijska kolona (grant + `predmer_v` NA KRAJU — view ne
@@ -202,7 +202,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   puni `st_k_<pm>` sa kumulativ − dosadašnje stavke. Fixture `test/fixtures/situacija.xlsx`; T46 uz pravu PPS
   (OŠ Dušan Radović) kad postoji lokalno: 67/67 (fajl nema list mašinskih). `.xls` se ne čita (binarni) — poruka.
   Dummy projekat `g-osdr` (87 pozicija iz predmera, cene bez PDV RSD) je na živoj bazi, rukovodilac Petar.
-- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 3 view-a,
+- `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
   helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..29.sql` redom.
 - **Šifarnik = samo Izvođenje** (2026-10-11, migracija 21, odluka klijenta): 81 artikal (ELOM) + usluge
   koje uprava doda ručno + „Razno" u formi (slobodne stavke: naziv, JM, količina, cena, zadužen →
@@ -277,6 +277,8 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   sesije (`AI_RAZGOVOR`/`AI_PORUKE`); log `ai_pitanje` (znakova, alati — bez sadržaja). Ulazi: čipovi (brif, kašnjenja, naplata,
   situacije na pregledu, troškovi) i „🤖 Pregledaj sa asistentom" u `detaljSituacije` (situacija koja nije odobrena).
   Demo režim (bez supa) i nedeploy-ovana funkcija daju poruku, ne izuzetak. Mock: `faults.ai(body, n)` = skriptovani Claude.
+  `renderAi` čuva nenaslat tekst iz `#aiUnos` preko re-rendera i računa `computeAlerts()` jednom (dugme + panel).
+  Kapija Edge funkcije proverena uživo 2026-10-21 (anon 401, Petar 403, direktor 503 bez ključa / 200 sa ključem).
   KEŠIRANJE (2026-10-22): `aiTelo()` šalje `system` kao niz blokova sa `cache_control`, isti marker na poslednjem alatu i na
   poslednjem bloku poslednje poruke (kopija — `AI_PORUKE` ostaje čist); funkcija propušta `system` kao string ili niz.
   Log `ai_pitanje.tokeni` = {ulaz, kes, kesUpis, izlaz} sabrano kroz krugove — tu se vidi da li keš radi.
@@ -385,7 +387,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    magacin/naplata samo uz izvođenje — i za upravu; `modulEfektivni()` (= `MODUL`, ili jedini modul naloga) bira prikazne
    grane koje su ranije gledale samo `MODUL` (naziv Spoljni saradnici/Podizvođači, dugme Šifarnik artikala, kolona „Ugov. vs
    situacije", grupisanje table) — `MODUL` sam ostaje `'sve'` (T42); `formSite` nudi samo dozvoljene module, izmena tuđeg se ne otvara;
-   čekboks modula u Admin kokpitu samo za `MODULI` (puna uprava = oba); „Pogled kao" direktoru modula
+   čekboksi modula u Admin kokpitu su uvek oba (kokpit ima samo puna uprava, migracija 28); „Pogled kao" direktoru modula
    ne nudi admina/drugog direktora/osobe drugog modula (`all` = njegova uloga). Mock: `UPRAVA`/`DIREKTORSKE`/`MODUL_ULOGE`,
    `ctx.isModDir/mojiModuli/modulDozvoljen`, ista pravila u `dodeli_ulogu`/`ukloni_pristup`/`obrisi_gradiliste`/`angazovanost`
    (redove mock i dalje NE filtrira — RLS po modulu dokazana probom na bazi 2026-10-14). T57.
@@ -425,7 +427,8 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
    (cene null) ga dobija iz `zdravlja_mojih()` (`osveziZdravlje` ga upiše i uskladi
    `PUSHED` da ga diff ne šalje nazad). Ručni napredak samo bez predmera (`formUpdate`
    ga tada nudi, inače je samo prikaz). Formula na DVA mesta — menjati oba. T30.
-   Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije).
+   Tako `zdravlje(g)` = ugovoreno × izvedeno (+ rokovi, zadaci, finansije). Penali zdravlja su na TRI mesta: `zdravlje(g)`,
+   server `zdravlje_gradilista` i opis u `aiSistem()` (asistent ih objašnjava direktoru) — menjati sva tri.
    Situacija (migracija 19) je dokument za naplatu: njene količine NE pišu `predmer.izv`. „Izdato"/naplata/realizacija
    = samo ODOBRENE situacije (migracija 25, `pregledSit`).
    **Zadaci postoje SAMO u Projektovanju (odluka 2026-10-11):** `zadatakPro(t)` = `jePro(grById[t.gr])`

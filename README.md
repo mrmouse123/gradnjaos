@@ -33,7 +33,7 @@ U istom tabu se uloga menja (Sačuvaj) ili uklanja (**Ukloni** — nalog ostaje,
 | zadaci (samo Projektovanje) | vidi sve | vidi sve | direktor projektovanja: vidi sve; direktor izvođenja: nema tab | vidi sve zadatke svojih projektantskih gradilišta | isto | radnik projektovanja: vidi i pomera SAMO svoje zadatke, na njima **Počni / Pauziraj / Završi** (vreme po sesiji); radnik izvođenja: nema tab Zadaci (radove nose podizvođači) |
 | dokumenta / fotografije na gradilištu | sve | sve | sve u svom modulu | dodaje; briše svoje | dodaje; briše svoje | dodaje; briše svoje |
 | Admin kokpit (nalozi, uloge, moduli, angažovanost, log) | da | da (ne dira direktorske uloge) | **ne** | ne | ne | ne |
-| šifarnik artikala i usluga (samo Izvođenje; dugme na tabu Gradilišta) | da (i briše) | da | da (i briše) | ne | ne | ne |
+| šifarnik artikala i usluga (samo Izvođenje; dugme na tabu Gradilišta) | da (i briše) | da | da (briše samo direktor) | ne | ne | ne |
 | situacije (privremena / okončana) sa stavkama | pravi, vidi iznose i razlike; odobrava/vraća | isto | isto, u svom modulu | pravi na svojim gradilištima; iznose vidi samo uz finansije | pravi, bez iznosa | ne |
 | **brisanje** (redovi, gradilišta) | **da** | ne | **da, samo redove i gradilišta svog modula** (zaposlene, klijente, podizvođače i šifarnik briše samo direktor) | ne | ne | samo svoje unose/dokumenta |
 

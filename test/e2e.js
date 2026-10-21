@@ -3076,6 +3076,12 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!v.includes('<b>Kasne</b>') || !v.includes("openSite('g1')") || v.includes('<script>') || !v.includes('&lt;script&gt;') || v.includes('nepostoji') || !v.includes('class="ai-li"')) throw new Error('render odgovora: ' + v.slice(v.indexOf('ai-msg bot'), v.indexOf('ai-msg bot') + 400));
     const lg = a.g.__mock._log.filter(l => l.op === 'log'); const zadnji = a.g.__mock._db.log_koriscenja.slice(-1)[0];
     if (!zadnji || zadnji.dogadjaj !== 'ai_pitanje' || !zadnji.detalj || JSON.stringify(zadnji.detalj.alati) !== '["gradilista"]' || 'tekst' in zadnji.detalj || !zadnji.detalj.tokeni || zadnji.detalj.tokeni.ulaz !== 0) throw new Error('log ai_pitanje: ' + JSON.stringify(zadnji));
+    // draft u polju prezivljava render() iz drugog razloga; alat koji baci izuzetak → {greska} u tool_result, ne pad petlje
+    a.g.document.getElementById('aiUnos').value = 'nenaslato pitanje'; a.run('render()');
+    if (a.g.document.getElementById('aiUnos').value !== 'nenaslato pitanje' || !a.run('AI_OTVOREN')) throw new Error('render() obrisao draft / zatvorio panel');
+    const telaX = []; const x = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { telaX.push(JSON.parse(JSON.stringify(body))); return n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tx', name: 'gradiliste_detalj', input: { id: { ne: 'string' } } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null }; } } });
+    x.run("setRole('all'); grById=new Proxy(grById,{get:(o,k)=>{ if(typeof k==='string'&&k==='[object Object]') throw new Error('bum'); return o[k]; }});"); await x.run("aiPitaj('x')");
+    const tr = JSON.parse(telaX[1].messages[2].content[0].content); if (!tr.greska || x.run('AI_GRESKA') !== '' || x.run('AI_RAZGOVOR[1].tekst') !== 'ok') throw new Error('izuzetak alata nije pretvoren u greska: ' + JSON.stringify(tr) + ' ' + x.run('AI_GRESKA'));
     // cap krugova
     const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'upozorenja', input: {} }] }, error: null }) } });
     b.run("setRole('all')"); await b.run("aiPitaj('petlja')");
@@ -3174,6 +3180,12 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!/<c r="F\d+" s="\d+"><f>D(\d+)\*E\1<\/f><v>[\d.]+<\/v><\/c>/.test(sh1) || !/<f>SUM\(F\d+:F\d+\)<\/f>/.test(sh1) || !/<f>J\d+\+M\d+<\/f>/.test(sh1) || !/<f>F\d+-I\d+<\/f>/.test(sh1)) throw new Error('formule: ' + (sh1.match(/<f>[^<]*<\/f>/g) || []).slice(0, 8).join(' '));
     if (!/_xlnm\.Print_Area/.test(wbx) || !wbx.includes('<calcPr fullCalcOnLoad="1"/>')) throw new Error('workbook: print area / calcPr');
     const shR = await z1.citaj('xl/worksheets/sheet' + listovi.length + '.xml'); if (!/<f>'ELEKTROINSTALACIJE'!F\d+<\/f>/.test(shR)) throw new Error('rekapitulacija bez referenci na listove: ' + (shR.match(/<f>[^<]*<\/f>/g) || []).slice(0, 4).join(' '));
+    // pro situacija (skrivena, Projektovanje nema naplatu) se ne izvozi ni direktnim pozivom; stavka bez predmer_id → list VAN PREDMERA
+    const proSit = a.run("(DATA.situacije.find(x=>jePro(grById[x.gr]))||{}).id"); if (proSit && (a.run(`izvozSituacije(${JSON.stringify(proSit)},'lat')`) !== null || a.run(`smemIzvozSituacije(DATA.situacije.find(x=>x.id===${JSON.stringify(proSit)}))`))) throw new Error('pro situacija se izvozi');
+    a.run(`DATA.situacija_stavke.push({id:'t58-van', sit:'t58-s1', gr:${JSON.stringify(g.id)}, predmer_id:null, sifra:'X1', poz:'Dodatni rad van predmera', jm:'kom', kol:3, kol_ugovoreno:0, kumulativ:3, razlika:3})`);
+    const uv = await a.run("izvozSituacije('t58-s1','lat')"); a.g.__uv = uv; const rv = await a.run('citajXlsx(__uv.buffer, true)');
+    if (!rv.some(r => r.list === 'VAN PREDMERA' && r[1] === 'Dodatni rad van predmera' && r[3] === 3)) throw new Error('nema lista VAN PREDMERA sa stavkom');
+    a.run("DATA.situacija_stavke=DATA.situacija_stavke.filter(x=>x.id!=='t58-van')");
     // izvozPredmer (bez stilova) i dalje radi i cita se nazad
     const up = a.run(`izvozPredmer(${JSON.stringify(g.id)})`); a.g.__up = up; const rp = await a.run('citajXlsx(__up.buffer, true)'); if (!rp.some(r => r[1] === 'UKUPNO bez PDV')) throw new Error('izvozPredmer posle stilova');
     // cirilica: naslovi i original stavke (ZIP je STORED pa se tekst vidi direktno)

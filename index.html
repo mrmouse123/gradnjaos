@@ -1526,7 +1526,7 @@ function head(title, sub){
 }
 
 /* ---------- ZDRAVLJE PROJEKTA (0-100) ---------- */
-function zdravlje(g){
+function zdravlje(g){   // FORMULA NA TRI MESTA: ovde, server zdravlje_gradilista (migracija 24/26) i opis u aiSistem() za asistenta — menjati sva tri
   if(ZDR_SRV && Object.prototype.hasOwnProperty.call(ZDR_SRV, g.id) && ZDR_SRV[g.id]!=null) return ZDR_SRV[g.id];   // rukovodilac: server (nema finansijske redove)
   /* Pravi rukovodilacki nalog ima finansije kao NULL — lokalna formula bi tiho dala
      pogresan (do 25 nizi) skor. Bez servera: null → "—", nikad izmisljen broj.
@@ -2651,8 +2651,7 @@ function viewNalozi(){
   const sOpt=(DATA.podizvodjaci||[]).map(p=>`<option value="${p.id}">${p.naziv}</option>`).join('');
   /* direktorske uloge dodeljuje samo direktor (server to sprovodi; UI ne nudi) */
   const ulOpt=(sel)=>ULOGE.filter(([v])=>v===sel||smemDodelitiUlogu(v)).map(([v,l])=>`<option value="${v}" ${sel===v?'selected':''}>${l}</option>`).join('');
-  const modChk=(idp,idi,nm)=>(MODULI.includes('projektovanje')?`<label class="chk" style="margin:0"><input type="checkbox" id="${idp}" ${nm.includes('projektovanje')?'checked':''}> projektovanje</label>`:'')
-                            +(MODULI.includes('izvodjenje')?`<label class="chk" style="margin:0"><input type="checkbox" id="${idi}" ${nm.includes('izvodjenje')?'checked':''}> izvođenje</label>`:'');
+  const modChk=(idp,idi,nm)=>`<label class="chk" style="margin:0"><input type="checkbox" id="${idp}" ${nm.includes('projektovanje')?'checked':''}> projektovanje</label><label class="chk" style="margin:0"><input type="checkbox" id="${idi}" ${nm.includes('izvodjenje')?'checked':''}> izvođenje</label>`;
   const mojEmail=(SESIJA&&SESIJA.user&&SESIJA.user.email||'').toLowerCase();
   const redovi=(NALOZI||[]).map(n=>{
     const moj=(n.email||'').toLowerCase()===mojEmail, zakljucan=!smemMenjatiNalog(n);
@@ -3267,7 +3266,7 @@ function lat2cir(s){
     let out='';
     for(let i=0;i<tok.length;i++){
       const two=tok.slice(i,i+2), lo2=two.toLowerCase(), d={lj:'љ',nj:'њ','dž':'џ'}[lo2];
-      if(d){ const c0=two[0], c1=two[1]; out+= c0===c0.toUpperCase()&&c0!==c0.toLowerCase() ? d.toUpperCase() : d; i++; if(c1!==c1.toLowerCase()&&c0===c0.toLowerCase()){ /* lJ — nema smisla, ostavi */ } continue; }
+      if(d){ const c0=two[0]; out+= c0===c0.toUpperCase()&&c0!==c0.toLowerCase() ? d.toUpperCase() : d; i++; continue; }
       const ch=tok[i], m=LAT_CIR[ch.toLowerCase()];
       if(m===undefined){ out+=ch; continue; }
       out+= ch===ch.toLowerCase() ? m : m.toUpperCase();
@@ -3297,14 +3296,14 @@ const SIT_H={
        objekat:'Objekat', investitor:'Investitor', datum:'Datum', vanPred:'VAN PREDMERA', predmer:'PREDMER', ugovoreno:'Ugovoreno',
        kumul:'Kumulativno izvedeno', poPriv:n=>'Izvedeno po '+n+' Privremenoj situaciji', poOkon:'Izvedeno po okončanoj situaciji', razlika:'Preostalo (ugovoreno − kumulativno)'},
 };
-function smemIzvozSituacije(s){ return !!s && vidimGr(s.gr) && (canFinance()||vidimCene(s.gr)); }
+function smemIzvozSituacije(s){ return !!s && vidimGr(s.gr) && imaNaplatu(grById[s.gr]) && (canFinance()||vidimCene(s.gr)); }   // pro situacije (skrivene) se ne izvoze
 function izvozLinkovi(s){   // „⬇ lat · ćir" uz svaku situaciju (fioka, Naplata) — ista funkcija kao dugmad u detalju
   if(!smemIzvozSituacije(s)) return '';
   const st='padding:2px 7px;font-size:11px;min-height:0';
   return `<span style="white-space:nowrap" title="Preuzmi situaciju kao Excel (investitorski šablon)"><button class="btn ghost" style="${st}" onclick="event.stopPropagation();izvozSituacije('${s.id}','lat')">⬇ lat</button> <button class="btn ghost" style="${st}" onclick="event.stopPropagation();izvozSituacije('${s.id}','cir')">⬇ ćir</button></span>`;
 }
 function izvozSituacije(id, pismo){
-  const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!vidimGr(s.gr)) return null;
+  const s=(DATA.situacije||[]).find(x=>x.id===id); if(!s||!vidimGr(s.gr)||!imaNaplatu(grById[s.gr])) return null;
   if(!smemIzvozSituacije(s)){ alert('Izvoz situacije traži jedinične cene — dostupan je upravi i rukovodiocu gradilišta.'); return null; }
   const cir=pismo==='cir', H=SIT_H[cir?'cir':'lat'], g=grById[s.gr], okon=s.vrsta==='okoncana';
   const T=t=>{ const u=unesc(String(t??'')); return cir ? (/[\u0400-\u04FF]/.test(u)?u:lat2cir(u)) : cir2lat(u); };
@@ -3798,25 +3797,26 @@ async function aiGreskaTekst(error){
 }
 let AI_OTVOREN=false;
 /* Broj na dugmetu: situacije koje cekaju pregled + crvena upozorenja — „sta me ceka" na jedan pogled. */
-function aiBroj(){ const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); return sits.filter(x=>pregledSit(x)==='na_pregledu').length+computeAlerts().filter(a=>a.sev==='red').length; }
+function aiBroj(al){ const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); return sits.filter(x=>pregledSit(x)==='na_pregledu').length+(al||computeAlerts()).filter(a=>a.sev==='red').length; }
 function renderAi(){
   const d=document.getElementById('aiDugme'), p=document.getElementById('aiPanel'); if(!d||!p) return;
   const vidi=jeSuper(); d.classList.toggle('vidi', vidi);
   if(!vidi){ AI_OTVOREN=false; p.classList.remove('on'); p.innerHTML=''; return; }
-  const n=aiBroj(); d.innerHTML=icon('ai')+' Asistent'+(n?`<span class="tag num">${n}</span>`:'');
-  p.classList.toggle('on', AI_OTVOREN); p.innerHTML=AI_OTVOREN?aiPanelHtml():'';
-  if(AI_OTVOREN) aiSkrol();
+  const al=computeAlerts(), n=aiBroj(al); d.innerHTML=icon('ai')+' Asistent'+(n?`<span class="tag num">${n}</span>`:'');
+  const staroPolje=document.getElementById('aiUnos'), draft=staroPolje?String(staroPolje.value||''):'';   // render() iz drugog razloga (ponoc, cuvanje) ne sme da obrise nenaslat tekst
+  p.classList.toggle('on', AI_OTVOREN); p.innerHTML=AI_OTVOREN?aiPanelHtml(al):'';
+  if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&draft) e.value=draft; aiSkrol(); }
 }
 function aiOtvori(){ if(!jeSuper()) return; AI_OTVOREN=!AI_OTVOREN; renderAi(); if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&e.focus) e.focus(); } }
 function aiZatvori(){ AI_OTVOREN=false; renderAi(); }
-function aiPanelHtml(){
-  const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])), al=computeAlerts();
+function aiPanelHtml(al){
+  const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); al=al||computeAlerts();
   const naPregledu=sits.filter(x=>pregledSit(x)==='na_pregledu').length, crvena=al.filter(a=>a.sev==='red').length;
   const rokovi=visibleSites().filter(g=>g.status!=='zavrseno'&&daysBetween(TODAY,dParse(g.rok))<=30).length;
   const danas=[[naPregledu,'situacija čeka pregled','Pregledaj situacije koje čekaju moj pregled i za svaku preporuči: odobriti ili vratiti, i zašto.', naPregledu>0],
     [crvena,'crvenih upozorenja','Koja su crvena upozorenja i šta prvo da rešim?', crvena>0],
     [rokovi,'rokova u 30 dana','Koji projekti imaju rok u narednih 30 dana i kako stoje sa napretkom?', false],
-    [al.length,'upozorenja ukupno','Šta se promenilo i šta me čeka danas?', false]];
+    [al.length,'upozorenja ukupno','Prođi kroz sva trenutna upozorenja po gradilištu i reci koja mogu da sačekaju.', false]];
   const poruke=AI_RAZGOVOR.map(m=>`<div class="ai-msg ${m.ko}">${m.ko==='ja'?esc(m.tekst):aiHtml(m.tekst)}</div>`).join('');
   return `<div class="ai-head">${icon('ai')}<h3>Asistent</h3><span class="sub">odgovara iz tvojih podataka · ništa ne menja</span><button class="x" style="position:static" onclick="aiZatvori()" title="Zatvori">${icon('x')}</button></div>
   <div class="ai-danas">${danas.map(([n,l,q,cr])=>`<button data-p="${esc(q)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}><b class="num${cr?' crveno':''}">${n}</b><small>${l}</small></button>`).join('')}</div>
