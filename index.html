@@ -3773,6 +3773,16 @@ PRAVILA:
 - Jutarnji brif: upozorenja + situacije na pregledu/vraćene + rokovi u narednih 30 dana + poslednji dnevnik, grupisano po hitnosti, najviše 8 stavki.
 - Markdown samo: **podebljano** i liste sa „- ".`;
 }
+/* Telo zahteva sa KEŠIRANJEM (2026-10-22): alati + uputstva su fiksan prefiks (cache_control na poslednjem alatu i na
+   sistemskom bloku), a poslednja poruka razgovora nosi treći marker — tako se u svakom krugu petlje i svakom sledećem
+   pitanju plaća samo novi deo (keš 5 min). AI_PORUKE se ne menja (markeri idu na kopiju). */
+function aiTelo(){
+  const KES={type:'ephemeral'};
+  const tools=AI_ALATI.map((t,i)=>i===AI_ALATI.length-1?{...t, cache_control:KES}:t);
+  const messages=AI_PORUKE.map(m=>({role:m.role, content:typeof m.content==='string'?[{type:'text', text:m.content}]:m.content.map(b=>({...b}))}));
+  const zadnja=messages[messages.length-1]; if(zadnja&&zadnja.content.length){ const b=zadnja.content[zadnja.content.length-1]; zadnja.content[zadnja.content.length-1]={...b, cache_control:KES}; }
+  return {system:[{type:'text', text:aiSistem(), cache_control:KES}], messages, tools, max_tokens:1500};
+}
 function aiHtml(t){
   let h=esc(String(t||''));
   h=h.replace(/\[\[gr:([A-Za-z0-9_-]+)\]\]/g,(m,id)=>grById[id]?`<a href="#" onclick="event.preventDefault();openSite('${id}')">${grById[id].naziv}</a>`:'')
@@ -3825,14 +3835,15 @@ function aiPregledSituacije(sitId){
 async function aiPitaj(tekst){
   tekst=String(tekst||'').trim(); if(!tekst||AI_ZAUZET||!jeSuper()) return;
   AI_GRESKA=''; AI_RAZGOVOR.push({ko:'ja', tekst}); AI_PORUKE.push({role:'user', content:tekst}); AI_ZAUZET=true; AI_OTVOREN=true; renderAi();
-  const alati=[]; let odgovor='';
+  const alati=[], tok={ulaz:0, kes:0, kesUpis:0, izlaz:0}; let odgovor='';
   try{
     if(!supa) throw new Error('Asistent radi samo kad je aplikacija povezana sa bazom (Supabase) i kad je Edge Function „ai-asistent" postavljena sa API ključem.');
     for(let krug=0; krug<AI_MAX_KRUGOVA; krug++){
-      const {data,error}=await supa.functions.invoke('ai-asistent',{body:{system:aiSistem(), messages:AI_PORUKE, tools:AI_ALATI, max_tokens:1500}});
+      const {data,error}=await supa.functions.invoke('ai-asistent',{body:aiTelo()});
       if(error) throw new Error(await aiGreskaTekst(error));
       if(!data||!Array.isArray(data.content)) throw new Error(data&&data.error?String(data.error.message||data.error):'Neočekivan odgovor asistenta.');
       AI_PORUKE.push({role:'assistant', content:data.content});
+      if(data.usage){ tok.ulaz+=+data.usage.input_tokens||0; tok.kes+=+data.usage.cache_read_input_tokens||0; tok.kesUpis+=+data.usage.cache_creation_input_tokens||0; tok.izlaz+=+data.usage.output_tokens||0; }
       const tekstovi=data.content.filter(b=>b.type==='text'&&b.text).map(b=>b.text); if(tekstovi.length) odgovor+=(odgovor?'\n':'')+tekstovi.join('\n');
       const pozivi=data.content.filter(b=>b.type==='tool_use');
       if(data.stop_reason!=='tool_use'||!pozivi.length) break;
@@ -3843,7 +3854,7 @@ async function aiPitaj(tekst){
     }
   }catch(e){ AI_GRESKA=esc(String(e&&e.message||e)); }
   if(odgovor) AI_RAZGOVOR.push({ko:'bot', tekst:odgovor}); else if(!AI_GRESKA) AI_RAZGOVOR.push({ko:'bot', tekst:'Nemam odgovor na to pitanje.'});
-  AI_ZAUZET=false; beleziLog('ai_pitanje',{znakova:tekst.length, alati, odgovor:odgovor.length});
+  AI_ZAUZET=false; beleziLog('ai_pitanje',{znakova:tekst.length, alati, odgovor:odgovor.length, tokeni:tok});   // tokeni: ulaz/kes/kesUpis/izlaz — kontrola troska i kesa u logu
   renderAi();
 }
 function izvozPredmer(grId){

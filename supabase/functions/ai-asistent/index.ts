@@ -44,14 +44,15 @@ Deno.serve(async (req: Request) => {
 
   const raw = await req.text();
   if (raw.length > MAX_BODY) return json({ error: 'Razgovor je predugačak — započni novi.' }, 413);
-  let body: { system?: string; messages?: unknown[]; tools?: unknown[]; max_tokens?: number };
+  let body: { system?: string | unknown[]; messages?: unknown[]; tools?: unknown[]; max_tokens?: number };
   try { body = JSON.parse(raw); } catch { return json({ error: 'Telo zahteva mora biti JSON.' }, 400); }
   if (!Array.isArray(body.messages) || !body.messages.length) return json({ error: 'Nema poruka.' }, 400);
 
   const payload = {
     model: Deno.env.get('AI_MODEL') || 'claude-sonnet-5-5',
     max_tokens: Math.min(Math.max(+(body.max_tokens || 1500), 256), 4000),
-    system: typeof body.system === 'string' ? body.system.slice(0, 20_000) : undefined,
+    // system: string ILI niz blokova (klijent šalje [{type:'text', text, cache_control}] radi keširanja prefiksa)
+    system: typeof body.system === 'string' ? body.system.slice(0, 20_000) : (Array.isArray(body.system) ? body.system.slice(0, 4) : undefined),
     messages: body.messages,
     tools: Array.isArray(body.tools) ? body.tools : undefined,
   };

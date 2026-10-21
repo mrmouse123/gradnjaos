@@ -3066,14 +3066,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot({ supabase: true, seed: {}, faults: { ai } });
     a.run("setRole('all')"); await a.run("aiPitaj('Koji projekti kasne?')");
     if (tela.length !== 2) throw new Error('broj poziva funkcije: ' + tela.length);
-    if (!tela[0].system.includes('GradnjaOS') || tela[0].tools.length !== 6 || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1: ' + JSON.stringify(Object.keys(tela[0])));
-    const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1') throw new Error('telo 2: ' + JSON.stringify(m2.map(x => x.role)));
+    const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length !== 6 || !tela[0].tools[5].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
+    if (!tela[0].messages[0].content[0].cache_control || tela[0].messages[0].content[0].text !== 'Koji projekti kasne?') throw new Error('poslednja poruka bez cache_control: ' + JSON.stringify(tela[0].messages[0]));
+    const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1' || !m2[2].content[0].cache_control || m2[1].content[0].cache_control) throw new Error('telo 2: ' + JSON.stringify(m2).slice(0, 300));
+    if (a.run('typeof AI_PORUKE[0].content') !== 'string' || a.run('JSON.stringify(AI_PORUKE).includes("cache_control")')) throw new Error('markeri kesa su upisani u AI_PORUKE (treba samo u kopiju)');
     const rez = JSON.parse(m2[2].content[0].content); if (!Array.isArray(rez) || rez.length !== a.run('visibleSites().length')) throw new Error('tool_result nije rezultat alata gradilista');
     if (a.run('AI_RAZGOVOR.length') !== 2 || a.run('AI_GRESKA') !== '' || a.run('AI_ZAUZET')) throw new Error('stanje razgovora: ' + a.run('JSON.stringify(AI_RAZGOVOR)'));
     if (!a.run('AI_OTVOREN') || !a.g.document.getElementById('aiPanel').classList.contains('on')) throw new Error('pitanje nije otvorilo panel'); const v = a.g.document.getElementById('aiPanel').innerHTML;
     if (!v.includes('<b>Kasne</b>') || !v.includes("openSite('g1')") || v.includes('<script>') || !v.includes('&lt;script&gt;') || v.includes('nepostoji') || !v.includes('class="ai-li"')) throw new Error('render odgovora: ' + v.slice(v.indexOf('ai-msg bot'), v.indexOf('ai-msg bot') + 400));
     const lg = a.g.__mock._log.filter(l => l.op === 'log'); const zadnji = a.g.__mock._db.log_koriscenja.slice(-1)[0];
-    if (!zadnji || zadnji.dogadjaj !== 'ai_pitanje' || !zadnji.detalj || JSON.stringify(zadnji.detalj.alati) !== '["gradilista"]' || 'tekst' in zadnji.detalj) throw new Error('log ai_pitanje: ' + JSON.stringify(zadnji));
+    if (!zadnji || zadnji.dogadjaj !== 'ai_pitanje' || !zadnji.detalj || JSON.stringify(zadnji.detalj.alati) !== '["gradilista"]' || 'tekst' in zadnji.detalj || !zadnji.detalj.tokeni || zadnji.detalj.tokeni.ulaz !== 0) throw new Error('log ai_pitanje: ' + JSON.stringify(zadnji));
     // cap krugova
     const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'upozorenja', input: {} }] }, error: null }) } });
     b.run("setRole('all')"); await b.run("aiPitaj('petlja')");

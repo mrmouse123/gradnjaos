@@ -277,6 +277,9 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   sesije (`AI_RAZGOVOR`/`AI_PORUKE`); log `ai_pitanje` (znakova, alati — bez sadržaja). Ulazi: čipovi (brif, kašnjenja, naplata,
   situacije na pregledu, troškovi) i „🤖 Pregledaj sa asistentom" u `detaljSituacije` (situacija koja nije odobrena).
   Demo režim (bez supa) i nedeploy-ovana funkcija daju poruku, ne izuzetak. Mock: `faults.ai(body, n)` = skriptovani Claude.
+  KEŠIRANJE (2026-10-22): `aiTelo()` šalje `system` kao niz blokova sa `cache_control`, isti marker na poslednjem alatu i na
+  poslednjem bloku poslednje poruke (kopija — `AI_PORUKE` ostaje čist); funkcija propušta `system` kao string ili niz.
+  Log `ai_pitanje.tokeni` = {ulaz, kes, kesUpis, izlaz} sabrano kroz krugove — tu se vidi da li keš radi.
   ODLUKE: asistent vidi sve što vidi direktor (uključujući finansije); samo `direktor`, ne admin. T59.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
