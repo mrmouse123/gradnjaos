@@ -3114,6 +3114,11 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const botd = d.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botd.length !== 1 || !/odbio/.test(botd[0])) throw new Error('refusal: ' + JSON.stringify(botd));
     if (d.run('AI_PORUKE.filter(m=>m.role==="assistant").length') !== 0) throw new Error('prazan assistant sadrzaj je usao u istoriju');
+    // nastavak koji API odbije → iskrena poruka, bez banera greske
+    const f = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null } : { data: null, error: new Error('Model nije odgovorio (400): thinking') } } });
+    await f.run("aiPitaj('x')");
+    const botf = f.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
+    if (botf.length !== 1 || !/prekinut/.test(botf[0]) || f.run('AI_GRESKA')) throw new Error('pad nastavka: ' + JSON.stringify([botf, f.run('AI_GRESKA')]));
   });
   await acheck('plutajuce dugme + panel samo direktor (nema taba; admin/rukovodilac bez dugmeta, aiOtvori ne otvara); panel: 4 brojke danas + 5 cipova + unos; alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
     const a = await boot();

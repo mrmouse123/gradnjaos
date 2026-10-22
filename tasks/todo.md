@@ -1,3 +1,24 @@
+# Asistent: prazan odgovor posle vise alata (2026-10-22) — GOTOVO
+
+## Nalaz
+- Screenshot: "Nemam odgovor na to pitanje." Log ai_pitanje: odgovor 0 uz izlaz 1600-1900 tokena. Proba kroz funkciju:
+  Sonnet 5.5 vraca `thinking` blok pre teksta (adaptivno razmisljanje), a ono trosi ISTI max_tokens (1500) — posle 3-5
+  alata model stane pre prve recenice (stop_reason max_tokens, bez text bloka).
+
+## Uradjeno
+- [x] max_tokens 6000 + output_config.effort 'medium'; funkcija v5 propusta effort (low|medium|high), clamp 256..8000.
+- [x] Petlja: max_tokens bez teksta → jedan sazet nastavak (append-only, thinking blok ostaje u istoriji); sa tekstom →
+      sufiks "skracen"; refusal → poruka; prazan content ne ide u istoriju; pad nastavka → iskrena poruka, ne baner.
+- [x] Poruka bez teksta je iskrena (ne "Nemam odgovor"). T59 nastavak. e2e 960/0, proba uzivo (alat → tekst), Pages.
+
+## Review
+- Istorija razgovora je append-only i MORA ostati: nove naloge Anthropic odbija (400) ako se stari potezi menjaju
+  (preserved thinking) — zato nema skracivanja starih tool_result-a; kad razgovor predje 300 KB → 413 → "Novi razgovor".
+- Nastavak posle max_tokens (assistant poruka samo sa thinking blokom + user "odgovori sazeto") je proveren samo na
+  mock-u; ako ga API odbije, korisnik dobija poruku o prekidu. Konacna potvrda: Jovan ponovo pita u app-u, pa log.
+- Bash heredoc je ponovo progutao backslash u '
+' (lekcija 38 ostaje): patch skripte pisati Write alatom.
+
 # Auto-pauza zaboravljenog tajmera (2026-10-22) — GOTOVO
 
 ## Plan

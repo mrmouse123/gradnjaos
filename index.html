@@ -3861,7 +3861,7 @@ async function aiPitaj(tekst){
     if(!supa) throw new Error('Asistent radi samo kad je aplikacija povezana sa bazom (Supabase) i kad je Edge Function „ai-asistent" postavljena sa API ključem.');
     for(let krug=0; krug<AI_MAX_KRUGOVA; krug++){
       const {data,error}=await supa.functions.invoke('ai-asistent',{body:aiTelo()});
-      if(error) throw new Error(await aiGreskaTekst(error));
+      if(error){ if(nastavljeno){ odgovor+=(odgovor?'\n':'')+'(Odgovor je prekinut — pokušaj ponovo ili postavi uže pitanje.)'; break; } throw new Error(await aiGreskaTekst(error)); }   // nastavak posle max_tokens je neproveren put ka API-ju: ako padne, iskrena poruka umesto banera
       if(!data||!Array.isArray(data.content)) throw new Error(data&&data.error?String(data.error.message||data.error):'Neočekivan odgovor asistenta.');
       if(data.content.length) AI_PORUKE.push({role:'assistant', content:data.content});   // istorija je append-only (thinking blokovi se vracaju nepromenjeni); prazan sadrzaj bi bio nevalidna poruka
       if(data.usage){ tok.ulaz+=+data.usage.input_tokens||0; tok.kes+=+data.usage.cache_read_input_tokens||0; tok.kesUpis+=+data.usage.cache_creation_input_tokens||0; tok.izlaz+=+data.usage.output_tokens||0; }
