@@ -3740,7 +3740,7 @@ function savePredmerImport(grId){
    postaju linkovi samo ako ID postoji u DATA. Petlja alata ima gornju granicu (AI_MAX_KRUGOVA).
    ============================================================ */
 let AI_RAZGOVOR=[], AI_PORUKE=[], AI_ZAUZET=false, AI_GRESKA='';
-const AI_MAX_KRUGOVA=6, AI_MAX_REDOVA=60;
+const AI_MAX_KRUGOVA=6, AI_MAX_REDOVA=60; let AI_EFFORT='medium';   // nivo napora modela (low|medium|high); meren u zivoj probi 2026-10-23
 const AI_PITANJA=['Šta se promenilo i šta me čeka danas?','Koji projekti kasne i zašto?','Koliko je naplaćeno po projektu u odnosu na ugovoreno?','Pregledaj situacije koje čekaju moj pregled','Gde troškovi idu ispred napretka?'];
 const ai_u=v=>unesc(String(v??''));
 const ai_okr=v=>Math.round((+v||0)*100)/100;
@@ -3761,7 +3761,7 @@ const AI_ALATI=[
   {name:'upozorenja', description:'Sva trenutna upozorenja sistema: rokovi, troškovi ispred napretka, naplata zaostaje, situacije na pregledu ili vraćene, istek resursa, zadaci koji kasne.', input_schema:{type:'object', properties:{}, required:[]}},
   {name:'dnevnik', description:'Unosi dnevnika radova, najnoviji prvo. Opciono po gradilištu (gr = id) i periodu (od, do — ISO datumi YYYY-MM-DD).', input_schema:{type:'object', properties:{gr:{type:'string'}, od:{type:'string'}, do:{type:'string'}}, required:[]}},
   {name:'angazovanost', description:'Sati rada po osobi i gradilištu iz tajmera zadataka (Projektovanje) u periodu (od, do — ISO datumi; podrazumevano poslednjih 30 dana).', input_schema:{type:'object', properties:{od:{type:'string'}, do:{type:'string'}}, required:[]}},
-  {name:'predlozi_akciju', description:'Predloži direktoru konkretnu akciju kao DUGME ispod odgovora. Ništa se ne izvršava dok direktor ne klikne i ne potvrdi. Tipovi: odobri_situaciju i vrati_situaciju (sit = id situacije koja je na pregledu; za vraćanje je komentar za rukovodioca obavezan), novi_zadatak (gr = id gradilišta Projektovanja, naziv, opis, rok YYYY-MM-DD, zaduzen = ime osobe iz tima), pozovi_rukovodioca (gr = id gradilišta). Pozivaj ga TEK POŠTO si u tekstu dao pun odgovor na pitanje (brojke, gradilišta, razlozi) — dugme je dodatak odgovoru, nikad zamena za njega; u tekstu ga samo kratko pomeni („dugme ispod“).', input_schema:{type:'object', properties:{tip:{type:'string', enum:['odobri_situaciju','vrati_situaciju','novi_zadatak','pozovi_rukovodioca']}, sit:{type:'string'}, gr:{type:'string'}, komentar:{type:'string'}, naziv:{type:'string'}, opis:{type:'string'}, rok:{type:'string'}, zaduzen:{type:'string'}}, required:['tip']}},
+  {name:'predlozi_akciju', description:'Predloži direktoru konkretnu akciju kao DUGME ispod odgovora. Ništa se ne izvršava dok direktor ne klikne i ne potvrdi. Tipovi: odobri_situaciju i vrati_situaciju (sit = id situacije koja je na pregledu; za vraćanje je komentar za rukovodioca obavezan), novi_zadatak (gr = id gradilišta Projektovanja, naziv, opis, rok YYYY-MM-DD, zaduzen = ime osobe iz tima), pozovi_rukovodioca (gr = id gradilišta). odobri/vrati predlaži uvek kad pregledaš situaciju; novi_zadatak i pozovi_rukovodioca SAMO kad direktor to izričito traži (npr. „pozovi ga“, „napravi zadatak“) — ne na svako pitanje. Pozivaj ga TEK POŠTO si u tekstu dao pun odgovor na pitanje (brojke, gradilišta, razlozi) — dugme je dodatak odgovoru, nikad zamena za njega; u tekstu ga samo kratko pomeni („dugme ispod“).', input_schema:{type:'object', properties:{tip:{type:'string', enum:['odobri_situaciju','vrati_situaciju','novi_zadatak','pozovi_rukovodioca']}, sit:{type:'string'}, gr:{type:'string'}, komentar:{type:'string'}, naziv:{type:'string'}, opis:{type:'string'}, rok:{type:'string'}, zaduzen:{type:'string'}}, required:['tip']}},
 ];
 /* NIVO 2 (2026-10-22): asistent PREDLAŽE akciju, direktor je izvršava klikom + potvrdom. Alat ništa ne upisuje: validira ulaz
    (id-jevi iz modela su spoljni unos → vidimGr/smemNa, stanje pregleda, jePro), upisuje predlog u AI_PREDLOZI (dedupe tip+id)
@@ -3776,7 +3776,7 @@ function aiPredloziAkciju(inp){
     if(pregledSit(sit)!=='na_pregledu') return {greska:'Situacija nije na pregledu (stanje: '+pregledSit(sit)+').'};
     const kom=String(inp.komentar||'').trim().slice(0,600);
     if(tip==='vrati_situaciju'&&!kom) return {greska:'Za vraćanje je obavezan komentar za rukovodioca.'};
-    Object.assign(A,{sit:sit.id, gr:sit.gr, komentar:esc(kom), labela:(tip==='odobri_situaciju'?'✔ Odobri ':'↩ Vrati ')+sit.br});
+    Object.assign(A,{sit:sit.id, gr:sit.gr, komentar:esc(kom), labela:(tip==='odobri_situaciju'?'✔ Odobri ':'↩ Vrati ')+sit.br+(grById[sit.gr]?' · '+grById[sit.gr].naziv:'')});
   } else if(tip==='novi_zadatak'){
     const g=grById[String(inp.gr||'')]; if(!g||!smemNa(g.id)) return {greska:'Nema gradilišta sa tim id-em.'};
     if(!jePro(g)) return {greska:'Zadaci postoje samo na gradilištima Projektovanja.'};
@@ -3789,7 +3789,7 @@ function aiPredloziAkciju(inp){
     Object.assign(A,{gr:g.id, osoba:r.id, tel:String(r.tel).replace(/[^\d+]/g,''), labela:'📞 Pozovi '+r.ime+' ('+r.tel+')'});
   } else return {greska:'Nepoznat tip akcije: '+tip};
   const k=A.tip+'|'+(A.sit||A.gr); if(!AI_PREDLOZI.some(x=>x.tip+'|'+(x.sit||x.gr)===k)) AI_PREDLOZI.push(A);
-  return {ok:true, poruka:'Prikazano direktoru kao dugme „'+unesc(A.labela)+'“. NIJE izvršeno — direktor klikne i potvrdi. Ne tvrdi da je urađeno.'};
+  return {ok:true, poruka:'Dugme „'+unesc(A.labela)+'“ je prikazano direktoru (NIJE izvršeno — on klikne i potvrdi). Direktor vidi samo tvoj tekst, ne i razmišljanje: ako pun odgovor (podaci, brojke, razlozi) još nije napisan u tekstu, napiši ga sada; dugme pomeni jednom kratkom rečenicom na kraju. Ne tvrdi da je akcija urađena.'};
 }
 function aiAkcija(idx, i){
   const m=AI_RAZGOVOR[idx], a=m&&m.akcije&&m.akcije[i]; if(!a||a.uradjeno||!jeSuper()) return;
@@ -3861,6 +3861,7 @@ function aiSistem(){
   return `Ti si asistent direktora u aplikaciji GradnjaOS (upravljanje gradilištima građevinske firme u Srbiji). Korisnik: ${ai_u(PROFIL&&PROFIL.ime||'direktor')}, uloga: direktor. Danas je ${todayStr()}.
 PRAVILA:
 - Odgovaraš na srpskom, latinicom, kratko i konkretno: prvo odgovor, pa obrazloženje. Iznosi su u RSD bez PDV (npr. 1.250.000 RSD).
+- Direktor vidi SAMO tvoj tekst — tvoje razmišljanje ne vidi. Sve što treba da zna mora biti napisano u tekstu odgovora. Nikad ne piši „odgovor je gore“ ili „kao što sam rekao“.
 - Podatke uzimaš ISKLJUČIVO iz alata (gradilista, gradiliste_detalj, situacija_detalj, upozorenja, dnevnik, angazovanost). Ne izmišljaj brojeve, imena ni datume. Ako podatka nema, reci „nemam podatak".
 - Kad pominješ gradilište ili situaciju, iza naziva stavi oznaku za link: [[gr:ID]] za gradilište, [[sit:ID]] za situaciju (ID iz alata). Primer: „Nova Tesla [[gr:g-dm2]] kasni 12 dana."
 - Ništa ne menjaš u sistemu. UVEK prvo odgovori na pitanje tekstom sa podacima (brojke, gradilišta, razlozi). Tek posle toga, ako preporučuješ odluku o situaciji (odobri / vrati uz komentar) ili konkretan sledeći korak (novi zadatak, poziv rukovodiocu), pozovi alat predlozi_akciju — direktor dobija dugme ispod odgovora i sam potvrđuje. Odgovor koji sadrži samo pominjanje dugmeta je neispravan. Alat ništa ne izvršava: nikad ne tvrdi da je akcija urađena.
@@ -3881,7 +3882,7 @@ function aiTelo(){
   /* max_tokens pokriva I razmisljanje modela (adaptive thinking, Sonnet 5.5) I tekst: sa 1500 je posle 3–5 alata razmisljanje
      pojelo ceo budzet, stop_reason 'max_tokens' bez ijednog text bloka → prazan odgovor (nalaz 2026-10-22, log ai_pitanje).
      effort 'medium' = manje razmisljanja i konsolidovaniji pozivi alata (preporuka za chat sa alatima). */
-  return {system:[{type:'text', text:aiSistem(), cache_control:KES}], messages, tools, max_tokens:6000, output_config:{effort:'medium'}};
+  return {system:[{type:'text', text:aiSistem(), cache_control:KES}], messages, tools, max_tokens:6000, output_config:{effort:AI_EFFORT}};
 }
 function aiHtml(t){
   let h=esc(String(t||''));
@@ -3997,7 +3998,13 @@ async function aiPitaj(tekst){
       const pozivi=data.content.filter(b=>b.type==='tool_use');
       if(data.stop_reason!=='tool_use'||!pozivi.length) break;
       const rezultati=[];
-      for(const p of pozivi){ alati.push(p.name); let r; try{ r=await aiIzvrsiAlat(p.name, p.input||{}); }catch(e){ r={greska:String(e&&e.message||e)}; } rezultati.push({type:'tool_result', tool_use_id:p.id, content:JSON.stringify(r)}); }
+      for(const p of pozivi){ alati.push(p.name); let r;
+        try{ r=await aiIzvrsiAlat(p.name, p.input||{}); }catch(e){ r={greska:String(e&&e.message||e)}; }
+        /* Model analizu potrosi u razmisljanju (koje direktor NE vidi), pozove dugme i posle napise „odgovor je gore“ (nalaz 2026-10-23,
+           ziva proba). Odbijanje alata je bilo gore: model odustane od dugmadi. Zato: predlog se PRIHVATA, a model dobija izricitu
+           poruku da do sada nije napisao nijedan tekst blok i da ceo odgovor mora u tekst. */
+        if(p.name==='predlozi_akciju' && !odgovor && r && r.ok){ r.poruka=(r.poruka||'')+' UPOZORENJE: direktor do sada NIJE dobio nikakav tekst — on vidi samo tvoje tekst blokove, ne razmišljanje. Napiši CEO odgovor na pitanje sada (podaci, brojke, razlozi), ne pozivaj se na ranije rečeno.'; }
+        rezultati.push({type:'tool_result', tool_use_id:p.id, content:JSON.stringify(r)}); }
       AI_PORUKE.push({role:'user', content:rezultati});
       if(krug===AI_MAX_KRUGOVA-1) odgovor+=(odgovor?'\n':'')+'(Prekinuto: previše koraka u jednom pitanju — postavi uže pitanje.)';
     }

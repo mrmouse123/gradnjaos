@@ -3186,7 +3186,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!a.g._calls.open.slice(o0).some(x => /^tel:\+?\d+$/.test(String(x)))) throw new Error('tel: ' + JSON.stringify(a.g._calls.open.slice(o0)));
     // odobri: confirm pa odobriSituaciju
     const sb = sit.id;
-    const b = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, confirmReturns: true, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'b1', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: sb } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null } } });
+    const b = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, confirmReturns: true, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Situacija je u redu.' }, { type: 'tool_use', id: 'b1', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: sb } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null } } });
     b.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sb) + ").pregled='na_pregledu'");
     await b.run("aiPitaj('x')"); const ib = b.run('AI_RAZGOVOR.length-1');
     b.run(`aiAkcija(${ib},0)`);
@@ -3196,6 +3196,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     b.run(`aiAkcija(${ib},0)`);
     if (b.run('DATA.situacije.find(x=>x.id===' + JSON.stringify(sb) + ').pregled') !== 'na_pregledu') throw new Error('admin je izvrsio akciju asistenta');
     if (!tela[0].tools.some(x => x.name === 'predlozi_akciju') || !/predlozi_akciju/.test(tela[0].system[0].text)) throw new Error('alat/prompt');
+    // predlozi_akciju PRE ijednog teksta → predlog se prihvata (dugme), a rezultat nosi upozorenje da direktor jos nema tekst; model u sledecem krugu pise tekst
+    const telaC = [];
+    const c = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, faults: { ai: (body, n) => { telaC.push(JSON.parse(JSON.stringify(body)));
+      if (n === 1) return { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'c1', name: 'predlozi_akciju', input: { tip: 'pozovi_rukovodioca', gr: grIzv } }] }, error: null };
+      return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Evo odgovora sa podacima.' }] }, error: null }; } } });
+    await c.run("aiPitaj('Koji projekti kasne?')");
+    const rc = JSON.parse(telaC[1].messages[2].content[0].content);
+    if (!rc.ok || !/NIJE dobio nikakav tekst/.test(rc.poruka)) throw new Error('upozorenje bez teksta: ' + JSON.stringify(rc));
+    const botc = c.run('AI_RAZGOVOR.filter(m=>m.ko==="bot")');
+    if (botc.length !== 1 || botc[0].tekst !== 'Evo odgovora sa podacima.' || (botc[0].akcije || []).length !== 1) throw new Error('posle upozorenja: ' + JSON.stringify(botc));
   });
   await acheck('T59 nastavak (2026-10-22): max_tokens bez teksta → jedan sazet nastavak (append-only, thinking blok ostaje), max_tokens sa tekstom → oznaka skracen, refusal → poruka; telo nosi max_tokens>=4000 i effort', async () => {
     const tela = [];
