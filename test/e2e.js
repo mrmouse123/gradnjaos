@@ -3105,6 +3105,65 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
+  await acheck('T59 nivo 2 (2026-10-22): predlozi_akciju nista ne upisuje (validira sit/gr, dedupe), dugmad ispod odgovora; klik = postojece funkcije uz prompt/confirm (vrati sa predlogom, odobri, zadatak popunjava formu, pozovi tel:), log ai_akcija, nije-super no-op', async () => {
+    const tela = [];
+    const mk = (sitId, grPro, grIzv) => (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));
+      if (n === 1) return { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Preporuka ispod.' },
+        { type: 'tool_use', id: 'a1', name: 'predlozi_akciju', input: { tip: 'vrati_situaciju', sit: sitId, komentar: 'Stavka 3 <b>preko</b> ugovora' } },
+        { type: 'tool_use', id: 'a2', name: 'predlozi_akciju', input: { tip: 'vrati_situaciju', sit: sitId, komentar: 'duplikat' } },
+        { type: 'tool_use', id: 'a3', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: 'nepostoji' } },
+        { type: 'tool_use', id: 'a4', name: 'predlozi_akciju', input: { tip: 'novi_zadatak', gr: grPro, naziv: 'Proveri <i>temelje</i>', opis: 'Opis', rok: '2027-01-15', zaduzen: 'Sara Ilić' } },
+        { type: 'tool_use', id: 'a5', name: 'predlozi_akciju', input: { tip: 'novi_zadatak', gr: grIzv, naziv: 'x' } },
+        { type: 'tool_use', id: 'a6', name: 'predlozi_akciju', input: { tip: 'pozovi_rukovodioca', gr: grIzv } },
+        { type: 'tool_use', id: 'a7', name: 'predlozi_akciju', input: { tip: 'vrati_situaciju', sit: sitId } } ] }, error: null };
+      return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Gotovo — dugmad su ispod.' }] }, error: null }; };
+    const a0 = await boot();   // DEMO id-jevi su deterministicki — citamo ih pre boota sa mock-om
+    const sit = a0.run("DATA.situacije.find(x=>grById[x.gr]&&!jePro(grById[x.gr]))");
+    const grPro = a0.run("DATA.gradilista.find(g=>jePro(g)).id"), grIzv = sit.gr;
+    const a = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, promptReturns: 'Ispravi stavku 3', faults: { ai: mk(sit.id, grPro, grIzv) } });
+    a.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sit.id) + ").pregled='na_pregledu'");
+    await a.run("aiPitaj('Pregledaj situaciju')");
+    // rezultati alata: a1 ok + NIJE izvrseno, a2 dedupe (ok), a3 greska, a4 ok, a5 greska (nije pro), a6 ok, a7 greska (bez komentara)
+    const rez = tela[1].messages[2].content.map(b => JSON.parse(b.content));
+    if (!/NIJE izvr/.test(rez[0].poruka) || !rez[2].greska || !rez[3].ok || !rez[4].greska || !rez[5].ok || !rez[6].greska) throw new Error('rezultati alata: ' + JSON.stringify(rez));
+    if (a.run('DATA.situacije.find(x=>x.id===' + JSON.stringify(sit.id) + ').pregled') !== 'na_pregledu') throw new Error('alat je promenio situaciju');
+    const bot = a.run('AI_RAZGOVOR.filter(m=>m.ko==="bot")');
+    if (bot.length !== 1 || !bot[0].akcije || bot[0].akcije.length !== 3) throw new Error('akcije: ' + JSON.stringify(bot[0] && bot[0].akcije));
+    if (bot[0].akcije[0].komentar !== 'Stavka 3 &lt;b&gt;preko&lt;/b&gt; ugovora') throw new Error('komentar nije esc: ' + bot[0].akcije[0].komentar);
+    a.run('renderAi()');
+    const p = a.g.document.getElementById('aiPanel').innerHTML;
+    if (!p.includes('aiAkcija(1,0)') || !p.includes('↩ Vrati ') || !p.includes('＋ Zadatak: Proveri &lt;i&gt;temelje&lt;/i&gt;') || !p.includes('📞 Pozovi ')) throw new Error('dugmad: ' + p.slice(p.indexOf('ai-akcije'), p.indexOf('ai-akcije') + 400));
+    // klik: vrati sa predlogom → prompt dobija predlog kao podrazumevano, situacija vracena, komentar iz prompta, log ai_akcija, dugme ✓
+    const idx = a.run('AI_RAZGOVOR.length-1');
+    a.run(`aiAkcija(${idx},0)`); await new Promise(r => setImmediate(r));
+    const s2 = a.run('DATA.situacije.find(x=>x.id===' + JSON.stringify(sit.id) + ')');
+    if (s2.pregled !== 'vracena' || s2.komentar !== 'Ispravi stavku 3') throw new Error('vrati: ' + JSON.stringify([s2.pregled, s2.komentar]));
+    if (!a.run(`AI_RAZGOVOR[${idx}].akcije[0].uradjeno`)) throw new Error('dugme nije oznaceno kao uradjeno');
+    if (!(a.g.__mock._db.log_koriscenja || []).some(l => l.dogadjaj === 'ai_akcija' && l.detalj.tip === 'vrati_situaciju')) throw new Error('nema log ai_akcija');
+    a.run(`aiAkcija(${idx},0)`); if (a.g._calls.prompt.length !== 1) throw new Error('uradjena akcija se ponovo izvrsila');
+    // zadatak: forma popunjena (gr, naziv, opis, rok, zaduzen po imenu); nista nije upisano dok se ne klikne Sacuvaj
+    const nZ = a.run('DATA.zadaci.length');
+    a.run(`aiAkcija(${idx},1)`);
+    const v = id => a.g.document.getElementById(id).value;
+    if (v('f_tnaziv') !== 'Proveri <i>temelje</i>' || v('f_tgr') !== grPro || v('f_trok') !== '2027-01-15' || v('f_tzad') !== 'z10' || v('f_topis') !== 'Opis') throw new Error('forma: ' + JSON.stringify([v('f_tnaziv'), v('f_tgr'), v('f_trok'), v('f_tzad')]));
+    if (a.run('DATA.zadaci.length') !== nZ) throw new Error('zadatak upisan bez Sacuvaj');
+    a.run('saveTask()'); if (a.run('DATA.zadaci.length') !== nZ + 1 || !a.run("DATA.zadaci[DATA.zadaci.length-1].naziv.includes('&lt;i&gt;')")) throw new Error('saveTask iz popune');
+    // pozovi: tel: link
+    const o0 = a.g._calls.open.length; a.run(`aiAkcija(${idx},2)`);
+    if (!a.g._calls.open.slice(o0).some(x => /^tel:\+?\d+$/.test(String(x)))) throw new Error('tel: ' + JSON.stringify(a.g._calls.open.slice(o0)));
+    // odobri: confirm pa odobriSituaciju
+    const sb = sit.id;
+    const b = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, confirmReturns: true, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'b1', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: sb } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null } } });
+    b.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sb) + ").pregled='na_pregledu'");
+    await b.run("aiPitaj('x')"); const ib = b.run('AI_RAZGOVOR.length-1');
+    b.run(`aiAkcija(${ib},0)`);
+    if (b.run('DATA.situacije.find(x=>x.id===' + JSON.stringify(sb) + ').pregled') !== 'odobrena' || !b.g._calls.confirm.length) throw new Error('odobri iz asistenta');
+    // nije super: aiAkcija no-op
+    b.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sb) + ").pregled='na_pregledu'; AI_RAZGOVOR[" + ib + "].akcije[0].uradjeno=false; setRole('admin');");
+    b.run(`aiAkcija(${ib},0)`);
+    if (b.run('DATA.situacije.find(x=>x.id===' + JSON.stringify(sb) + ').pregled') !== 'na_pregledu') throw new Error('admin je izvrsio akciju asistenta');
+    if (!tela[0].tools.some(x => x.name === 'predlozi_akciju') || !/predlozi_akciju/.test(tela[0].system[0].text)) throw new Error('alat/prompt');
+  });
   await acheck('T59 nastavak (2026-10-22): max_tokens bez teksta → jedan sazet nastavak (append-only, thinking blok ostaje), max_tokens sa tekstom → oznaka skracen, refusal → poruka; telo nosi max_tokens>=4000 i effort', async () => {
     const tela = [];
     const a = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));
@@ -3178,7 +3237,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot({ supabase: true, seed: {}, faults: { ai } });
     a.run("setRole('all')"); await a.run("aiPitaj('Koji projekti kasne?')");
     if (tela.length !== 2) throw new Error('broj poziva funkcije: ' + tela.length);
-    const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length !== 6 || !tela[0].tools[5].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
+    const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length !== 7 || !tela[0].tools[6].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
     if (!tela[0].messages[0].content[0].cache_control || tela[0].messages[0].content[0].text !== 'Koji projekti kasne?') throw new Error('poslednja poruka bez cache_control: ' + JSON.stringify(tela[0].messages[0]));
     const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1' || !m2[2].content[0].cache_control || m2[1].content[0].cache_control) throw new Error('telo 2: ' + JSON.stringify(m2).slice(0, 300));
     if (a.run('typeof AI_PORUKE[0].content') !== 'string' || a.run('JSON.stringify(AI_PORUKE).includes("cache_control")')) throw new Error('markeri kesa su upisani u AI_PORUKE (treba samo u kopiju)');
