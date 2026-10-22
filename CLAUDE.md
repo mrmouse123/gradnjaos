@@ -350,8 +350,9 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
       Provereno na pravoj bazi kao rukovodilac: iznosi = null, tabela → permission
       denied, UPDATE svog g1 uz pokušaj budzet/rukovodilac → vrednosti netaknute,
       zdravlje 85 == direktorovo; server skor == klijent za svih 9 gradilišta.
-- [ ] Auth podešavanja u dashboardu: isključiti self-signup (Auth → Providers →
-      Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
+- [x] Auth podešavanja u dashboardu — 2026-10-22: self-signup OFF; Site URL + Redirect URL =
+      `https://mrmouse123.github.io/gradnjaos/`. Kad stigne domen (Jovan kupuje na Vercelu), promeniti Site URL i dodati
+      novi Redirect URL; Pages može da ostane uz CNAME.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
 - [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 30 USD/mes), radi uživo 2026-10-22
 - [x] Test-nalozi direktora modula `dirpro@gradnjaos.test` / `dirizv@gradnjaos.test` — 2026-10-22, RLS probe po dizajnu
