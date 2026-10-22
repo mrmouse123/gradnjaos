@@ -226,3 +226,19 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   poslednjem bloku poslednje poruke (kopija — `AI_PORUKE` ostaje čist); funkcija propušta `system` kao string ili niz.
   Log `ai_pitanje.tokeni` = {ulaz, kes, kesUpis, izlaz} sabrano kroz krugove — tu se vidi da li keš radi.
   ODLUKE: asistent vidi sve što vidi direktor (uključujući finansije); samo `direktor`, ne admin. T59.
+
+- **Auto-pauza zaboravljenog tajmera** (2026-10-22, migracija 31 + 31a, zahtev klijenta: „ako radnik projektovanja zaboravi
+  pauzu/kraj, zadatak se sam pauzira u 16:00 — ne bih da imamo zadatke od jako puno sati"): pravilo = granica sesije je
+  16:00 po Beogradu na dan početka; ako je sesija počela u 16:00 ili kasnije, granica je ponoć tog dana (rad posle 16 h se
+  beleži, zaboravljen tajmer ne prelazi u sutra; alternativa „do 16:00 sutra" bi vratila baš inflaciju koju klijent izbegava).
+  SERVER zatvara: `granica_auto_pauze(start)` (immutable SQL), `auto_pauza_tajmera()` (definer; `for update skip locked`,
+  kraj = greatest(start, granica), `napomena += ' [auto-pauza 16:00]'`, log `zadatak_pauza` sa `auto:true, razlog:'16:00'`,
+  user_id iz `profili.zaposleni_id=osoba`, 'uprava' → null), pg_cron job `auto-pauza-tajmera` `*/15 * * * *` (UTC; minuta
+  ne zavise od trenutka pokretanja). `rad_minuta()` trigger: na UPDATE zatvorene sesije `kraj` ostaje stari — inače bi ustajali
+  tab (korisnik sutra klikne Pauziraj) poslao kraj=sad i vratio skinute sate. KLIJENT ne zatvara ništa: `AUTO_PAUZA_SAT=16`,
+  `granicaAutoPauze(start)` (sat uređaja, pravilo 10), `sesijaOtvorena(s)` umesto `!s.kraj` u `mojaOtvorenaSesija`,
+  `otvorenaSesija`, oba `tuda`, `angOtv`; `minSesije` odseca otvorenu sesiju na granici → dugme „▶ Nastavi", angažovanost
+  ne raste, nijedan klijent ne šalje kraj posle granice; ustajali red (kraj null) diff ne dira, zameni ga sledeće učitavanje.
+  Demo režim (bez baze) nema cron — red ostaje bez kraja, prikaz odsečen. Proba na bazi 2026-10-22: 10:00 → 16:00/360 min,
+  17:00 → 00:00/420 min, sveža ostala otvorena, Sarin update kraj=now() na zatvorenoj ignorisan, log red upisan. Server
+  `angazovanost()` RPC otvorenu sesiju i dalje broji do now() (prozor ≤15 min — ostavljeno). T61.

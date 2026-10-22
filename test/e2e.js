@@ -3029,6 +3029,41 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T48 xlsx pisac (bez biblioteke) ---- */
+  /* ---- T61 (2026-10-22): auto-pauza zaboravljenog tajmera — klijent sesiju posle 16:00 (ili ponoci) tretira kao zatvorenu ---- */
+  section('T61 auto-pauza tajmera');
+  await acheck('granicaAutoPauze: 09:00 → 16:00 istog dana; 16:00 i 23:30 → ponoc; 01:00 → 16:00; sesijaOtvorena/minSesije odsecaju, UI nudi Nastavi, pocni/zavrsi rade bez alerta', async () => {
+    const a = await boot();
+    const gr = (h, min) => `(()=>{ const d=new Date(2026,2,10,${h},${min},0,0); const g=granicaAutoPauze(d.toISOString()); return [g.getDate(), g.getHours()].join(':'); })()`;
+    if (a.run(gr(9, 0)) !== '10:16') throw new Error('09:00 → ' + a.run(gr(9, 0)));
+    if (a.run(gr(16, 0)) !== '11:0') throw new Error('16:00 → ' + a.run(gr(16, 0)));
+    if (a.run(gr(23, 30)) !== '11:0') throw new Error('23:30 → ' + a.run(gr(23, 30)));
+    if (a.run(gr(1, 0)) !== '10:16') throw new Error('01:00 → ' + a.run(gr(1, 0)));
+    const pro = a.run("DATA.zadaci.find(t=>grById[t.gr]&&jePro(grById[t.gr])&&t.kol!=='done')");
+    if (!pro) throw new Error('DEMO nema zadatak Projektovanja');
+    a.run("setRole('all'); MODUL='sve'; PODTIP='sve';");
+    // dve zaboravljene sesije pre dva dana: 10:00 (→ 16:00 = 360 min) i 17:00 (→ ponoc = 420 min); obe bez kraja (server ih jos nije zatvorio)
+    a.run(`const d1=new Date(); d1.setDate(d1.getDate()-2); d1.setHours(10,0,0,0); const d2=new Date(d1); d2.setHours(17,0,0,0);
+      DATA.rad_na_zadatku.push({id:'rz-a1',zadatak:${JSON.stringify(pro.id)},gr:${JSON.stringify(pro.gr)},osoba:'uprava',start:d1.toISOString(),kraj:null,minuta:null,napomena:''});
+      DATA.rad_na_zadatku.push({id:'rz-a2',zadatak:${JSON.stringify(pro.id)},gr:${JSON.stringify(pro.gr)},osoba:'uprava',start:d2.toISOString(),kraj:null,minuta:null,napomena:''});
+      DATA.zadaci.find(t=>t.id===${JSON.stringify(pro.id)}).kol='inprogress';`);
+    if (a.run("minSesije(DATA.rad_na_zadatku.find(s=>s.id==='rz-a1'))") !== 360) throw new Error('10:00 sesija: ' + a.run("minSesije(DATA.rad_na_zadatku.find(s=>s.id==='rz-a1'))"));
+    if (a.run("minSesije(DATA.rad_na_zadatku.find(s=>s.id==='rz-a2'))") !== 420) throw new Error('17:00 sesija: ' + a.run("minSesije(DATA.rad_na_zadatku.find(s=>s.id==='rz-a2'))"));
+    if (a.run('mojaOtvorenaSesija()') !== null) throw new Error('ustajala sesija se racuna kao otvorena');
+    const lin = a.run(`tajmerLinija(DATA.zadaci.find(t=>t.id===${JSON.stringify(pro.id)}))`);
+    if (!lin.includes("pocniZadatak('" + pro.id) || lin.includes('pauzirajZadatak') || !lin.includes('Nastavi') || !lin.includes('13 h')) throw new Error('linija tajmera: ' + lin);
+    const n0 = a.g._calls.alert.length;
+    a.run(`pocniZadatak(${JSON.stringify(pro.id)})`);
+    if (a.g._calls.alert.length !== n0) throw new Error('ustajala sesija blokirala start: ' + a.g._calls.alert[n0]);
+    if (a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj).length") !== 3 || !a.run("DATA.rad_na_zadatku.some(s=>s.id!=='rz-a1'&&s.id!=='rz-a2'&&sesijaOtvorena(s))")) throw new Error('nova sesija nije otvorena, ili su stare dirane');
+    if (a.run("DATA.rad_na_zadatku.find(s=>s.id==='rz-a1').kraj") !== null) throw new Error('klijent je sam zatvorio ustajalu sesiju (to radi samo server)');
+    a.run(`zavrsiZadatak(${JSON.stringify(pro.id)})`);
+    if (a.run(`DATA.zadaci.find(t=>t.id===${JSON.stringify(pro.id)}).kol`) !== 'done') throw new Error('zavrsi nije prosao');
+    if (a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj).length") !== 2) throw new Error('zavrsi nije zatvorio novu sesiju');
+    const agg = a.run(`agregirajAngazovanost(DATA.rad_na_zadatku.filter(s=>s.id==='rz-a1'||s.id==='rz-a2'), '2000-01-01', '2100-01-01')`);
+    if (agg.length !== 1 || agg[0].minuta !== 780) throw new Error('angazovanost ne odseca: ' + JSON.stringify(agg));
+    if (!/AUTO_PAUZA_SAT=16/.test(a.src || '') && !a.run('AUTO_PAUZA_SAT===16')) throw new Error('AUTO_PAUZA_SAT');
+  });
+
   /* ---- T60 (2026-10-22): validacija id-jeva pri ucitavanju — red sa navodnikom/zagradom u id-u ili FK polju se izbacuje (stored XSS kroz onclick) ---- */
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {

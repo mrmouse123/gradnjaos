@@ -2061,7 +2061,7 @@ function viewEmpPage(){
     </div>`;
 
   const angSes=(DATA.rad_na_zadatku||[]).filter(s=>s.osoba===z.id && Date.now()-new Date(s.start)<=30*86400000);
-  const angMin=angSes.reduce((a,s)=>a+minSesije(s),0), angOtv=angSes.filter(s=>!s.kraj), angMap={};
+  const angMin=angSes.reduce((a,s)=>a+minSesije(s),0), angOtv=angSes.filter(sesijaOtvorena), angMap={};
   angSes.forEach(s=>{ const x=angMap[s.gr]=angMap[s.gr]||{gr:s.gr, ses:0, min:0}; x.ses++; x.min+=minSesije(s); });
   const angPoGr=Object.values(angMap).sort((a,b)=>b.min-a.min);
   const zRes=(DATA.resursi||[]).filter(r=>r.zaduzen===z.id);   // zaduženi resursi (istice je null-safe: resIstice)
@@ -2282,10 +2282,19 @@ function dropTask(e,col){
 /* ---------- TAJMER ZADATKA (C4) + ANGAZOVANOST (C5) ----------
    Sesije u DATA.rad_na_zadatku; start/kraj su ISO (timestamptz). Minute na serveru racuna trigger iz start/kraj
    (klijentova procena je samo za prikaz do prvog osvezavanja). Uprava belezi kao osoba 'uprava'. */
+/* Auto-pauza zaboravljenog tajmera (2026-10-22, zahtev klijenta): sesija se sama zatvara u 16:00 na dan pocetka
+   (ako je pocela u 16:00 ili kasnije — u ponoc tog dana). ZATVARA je SAMO server (pg_cron svakih 15 min,
+   auto_pauza_tajmera, migracija 31; kraj zatvorene sesije je nepromenljiv). Klijent takvu sesiju samo TRETIRA kao
+   zatvorenu: sesijaOtvorena() umesto !s.kraj svuda, minSesije() odseca na granici — pa dugme postaje „▶ Nastavi“,
+   angazovanost ne raste i nijedan klijent nikad ne salje kraj posle granice. Sat je na DVA mesta (ovde i u SQL
+   funkciji granica_auto_pauze) — menjati oba. Demo rezim (bez baze) nema cron: red ostaje bez kraja, ali se prikazuje odseceno. */
+const AUTO_PAUZA_SAT=16;
+function granicaAutoPauze(start){ const d=new Date(start), g=new Date(d); g.setHours(AUTO_PAUZA_SAT,0,0,0); if(g<=d) g.setHours(24,0,0,0); return g; }   // po satu uredjaja (pravilo 10); server po Beogradu
+function sesijaOtvorena(s){ return !s.kraj && Date.now() < granicaAutoPauze(s.start).getTime(); }
 function radZa(zadatakId){ return (DATA.rad_na_zadatku||[]).filter(s=>s.zadatak===zadatakId); }
-function mojaOtvorenaSesija(){ const o=osobaTajmera(); return (DATA.rad_na_zadatku||[]).find(s=>s.osoba===o && !s.kraj)||null; }   // jedan zadatak u isto vreme (odluka 2026-10-12)
-function otvorenaSesija(zadatakId, osoba){ return (DATA.rad_na_zadatku||[]).find(s=>s.zadatak===zadatakId && s.osoba===osoba && !s.kraj)||null; }
-function minSesije(s){ return s.kraj ? (s.minuta!=null?s.minuta:Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000))) : Math.max(0,Math.floor((Date.now()-new Date(s.start))/60000)); }
+function mojaOtvorenaSesija(){ const o=osobaTajmera(); return (DATA.rad_na_zadatku||[]).find(s=>s.osoba===o && sesijaOtvorena(s))||null; }   // jedan zadatak u isto vreme (odluka 2026-10-12)
+function otvorenaSesija(zadatakId, osoba){ return (DATA.rad_na_zadatku||[]).find(s=>s.zadatak===zadatakId && s.osoba===osoba && sesijaOtvorena(s))||null; }
+function minSesije(s){ if(s.kraj) return s.minuta!=null?s.minuta:Math.max(0,Math.floor((new Date(s.kraj)-new Date(s.start))/60000)); const kraj=Math.min(Date.now(), granicaAutoPauze(s.start).getTime()); return Math.max(0,Math.floor((kraj-new Date(s.start))/60000)); }
 function minutaZadatka(zadatakId){ return radZa(zadatakId).reduce((a,s)=>a+minSesije(s),0); }
 function fmtTrajanje(min){ min=Math.max(0,Math.round(+min||0)); const h=Math.floor(min/60), m=min%60; return h?(h+' h'+(m?' '+m+' min':'')):(m+' min'); }
 function hhmm(iso){ const d=new Date(iso); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
@@ -2322,7 +2331,7 @@ function zavrsiZadatak(id){
   const t=DATA.zadaci.find(x=>x.id===id); if(!mogaTajmer(t)) return;
   const s=otvorenaSesija(id, osobaTajmera());
   if(!s && t.kol!=='inprogress') return;
-  const tuda=radZa(id).find(x=>!x.kraj && x.osoba!==osobaTajmera());
+  const tuda=radZa(id).find(x=>sesijaOtvorena(x) && x.osoba!==osobaTajmera());
   if(tuda){ alert(imeTajmera(tuda.osoba)+' još radi na ovom zadatku — ne može se završiti dok ne stane.'); return; }
   if(s) zatvoriSesiju(s);
   const staroKol=t.kol; t.kol='done'; uskladiSveskuIzZadatka(t, staroKol);
@@ -2343,7 +2352,7 @@ function tajmerLinija(t){
   if(!tajmerZa(t) && !moja) return '';   // Izvodjenje: nista — osim ako imam zaglavljenu (nasledjenu) sesiju, nju moram moci da zaustavim
   const ses=radZa(t.id), tot=minutaZadatka(t.id);
   const moze=mogaTajmer(t) && t.kol!=='done';
-  const tuda=ses.find(s=>!s.kraj && s.osoba!==osobaTajmera());
+  const tuda=ses.find(s=>sesijaOtvorena(s) && s.osoba!==osobaTajmera());
   const B=(fn,txt,ghost)=>`<button class="btn${ghost?' ghost':''}" style="flex:1;min-height:38px;padding:6px 8px" onclick="event.stopPropagation();${fn}('${t.id}')">${txt}</button>`;
   const uToku=t.kol==='inprogress', mojeSesije=ses.some(s=>s.osoba===osobaTajmera());
   const drugaRaw=moja?null:mojaOtvorenaSesija(), drugiZad=drugaRaw?(DATA.zadaci||[]).find(x=>x.id===drugaRaw.zadatak):null;

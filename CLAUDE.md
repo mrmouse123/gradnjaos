@@ -84,6 +84,10 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   - *Projektovanje:* nema situacija ni naplate (`imaNaplatu`), nema šifarnika u UI, nema `nivo` u formi; sveske SU zadaci
     (`zadaci.predmer_id`, `sinhronizujSveske`, tim izveden iz dodela `osigurajUTimu`); ček-lista svezaka + Razno pri kreiranju;
     fioka = „Dokumentacija po osobi"; tajmer samo ovde, play na jednom zadatku, svoja sesija uvek može da se zaustavi.
+    *Auto-pauza tajmera (2026-10-22, migracija 31):* zaboravljena sesija se zatvara u 16:00 Beograd na dan početka (početak
+    ≥16:00 → ponoć). Zatvara SAMO server (pg_cron `*/15`, `auto_pauza_tajmera`, log `zadatak_pauza` auto:true); kraj
+    zatvorene sesije je nepromenljiv (trigger `rad_minuta`). Klijent je samo tretira zatvorenom: `sesijaOtvorena(s)` umesto
+    `!s.kraj`, `minSesije` odseca na `granicaAutoPauze`. Sat na DVA mesta: `AUTO_PAUZA_SAT` i SQL `granica_auto_pauze`. T61.
   - *Izvođenje:* zadataka NEMA (`zadatakPro`), šifarnik = 81 artikal ELOM + Razno; magacin = šifarnik + Razno, red artikla nastaje
     na prvom ulazu (`'mg-'+id`), render NIKAD ne gura virtuelne redove u DATA; trebovanje iz ugovorenog predmera (`NAR_PM` mapa).
   - *Dokumenti:* `dokumenti.data` bez select granta → `dokumenti_v` + `dokument_podaci(id)`; brisanje = server PRVO pa lokalno.
@@ -95,7 +99,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     alati rade U KLIJENTU nad DATA (`aiIzvrsiAlat`, `aiBezModula`), model NIŠTA ne upisuje, tekst modela se `esc`-uje, keširanje
     prompta (`aiTelo`), log `ai_pitanje` bez sadržaja; UI = plutajuće dugme + panel (`renderAi` iz `render()`).
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`). Postojeća baza: `migracija-01..30.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..31.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
