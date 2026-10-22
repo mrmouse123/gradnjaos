@@ -124,11 +124,14 @@ troškovi, naplata). `VALUTA='RSD'` + `fmtEur`/`fmtEurK` (imena ostaju, 200+ poz
 formata; labele polja nose „bez PDV (RSD)". U fajlu ne sme biti znaka „€" (test to čuva). PDV se
 nigde ne računa — ako zatreba, to je nova odluka (stopa, prikaz sa/bez).
 
-## Nalozi (stanje 2026-10-11 — 6 test-profila, odluka klijenta)
+## Nalozi (stanje 2026-10-22 — 8 test-profila, odluka klijenta)
 - direktor: `miske1431@gmail.com` (profili.uloga=direktor, zaposleni_id null)
 - admin: `admin@gradnjaos.test`
-- direktor projektovanja / direktor izvođenja (uloge od 2026-10-14): JOŠ NEMA test-naloga — Jovan pravi nalog u
-  dashboardu (Add user), pa ga direktor u Admin kokpitu veže za ulogu (samo direktor sme; moduli se postavljaju sami).
+- direktor projektovanja: `dirpro@gradnjaos.test` (uloga `direktor_projektovanja`, moduli [projektovanje], zaposleni_id null)
+- direktor izvođenja: `dirizv@gradnjaos.test` (uloga `direktor_izvodjenja`, moduli [izvodjenje], zaposleni_id null).
+  Oba napravljena 2026-10-22: Jovan Add user u dashboardu, profil SQL-om. Probe `set local role`: dirpro vidi 4 pro gradilišta
+  (finansije da), dirizv 12 izv; `je_direktor` true, `je_super`/`je_puna_uprava` false; profili 1 (svoj), log 0,
+  `nalozi_pregled` odbijen. Uloge se kasnije menjaju samo kao direktor (Admin kokpit).
 - rukovodilac PROJEKTOVANJE + finansije: `nikola@gradnjaos.test` → `z17` (Nikola Vuković; vodi g9, trtr, test 1)
 - rukovodilac IZVOĐENJE bez finansija: `petar@gradnjaos.test` → `z1` (Petar Kovačević; vodi g1, Test 2)
 - radnik PROJEKTOVANJE: `sara@gradnjaos.test` → `z10` (Sara Ilić; tim g9 + trtr; 3 zadatka na g9 za tajmer)
@@ -347,7 +350,7 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
       Email → "Allow new users to sign up" OFF); Site URL na Pages adresu.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
 - [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 30 USD/mes), radi uživo 2026-10-22
-- [ ] Test-nalozi direktora modula: `dirpro@gradnjaos.test` / `dirizv@gradnjaos.test` — Jovan pravi u dashboardu (Add user), pa profil
+- [x] Test-nalozi direktora modula `dirpro@gradnjaos.test` / `dirizv@gradnjaos.test` — 2026-10-22, RLS probe po dizajnu
 - [x] GitHub publish + Pages — 2026-09-24, https://mrmouse123.github.io/gradnjaos/
 - [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
 
