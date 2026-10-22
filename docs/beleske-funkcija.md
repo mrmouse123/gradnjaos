@@ -250,6 +250,10 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   nazad u sledeći krug → tekst; thinking+signature sastavljanje pokriveno testom (u probi model nije razmišljao). (3) kartica „Asistent — potrošnja <mesec>" u Admin kokpitu: sopstveni upit nad
   `log_koriscenja` (eq ai_pitanje, gte prvi dan meseca), `aiPotrosnjaIz` → `AI_CENE` (Sonnet 5.5 USD/M: 2/10/0,20/2,50,
   limit 30) → USD + traka; mock dobio `gte`. T59 nivo 2, T59 streaming, T28 potrošnja.
+  **Ispravka prompta (2026-10-23, screenshot):** na „Gde troškovi idu ispred napretka?" model je pozvao gradilista+upozorenja
+  pa predlozi_akciju i u tekstu napisao SAMO „dugme za poziv je ispod" (104 znaka) — opis alata je glasio „u tekstu samo reci
+  da je dugme ispod" i model ga je uzeo doslovno. Sad: alat se zove TEK POSLE punog odgovora, „odgovor koji sadrži samo
+  pominjanje dugmeta je neispravan" (prompt + opis alata).
 
 - **Auto-pauza zaboravljenog tajmera** (2026-10-22, migracija 31 + 31a, zahtev klijenta: „ako radnik projektovanja zaboravi
   pauzu/kraj, zadatak se sam pauzira u 16:00 — ne bih da imamo zadatke od jako puno sati"): pravilo = granica sesije je

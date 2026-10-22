@@ -599,8 +599,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   await acheck('c) minutaZadatka = zatvorene + proteklo otvorene; fmtTrajanje', async () => {
     const a = await boot();
     a.run(`DATA.rad_na_zadatku=[{id:'c1',zadatak:'tc',gr:'g1',osoba:'z1',start:new Date(Date.now()-3*3600000).toISOString(),kraj:new Date(Date.now()-3*3600000+90*60000).toISOString(),minuta:90,napomena:''},{id:'c2',zadatak:'tc',gr:'g1',osoba:'z1',start:new Date(Date.now()-30*60000).toISOString(),kraj:null,minuta:null,napomena:''}]`);
-    const m = a.run("minutaZadatka('tc')");
-    if (Math.abs(m - 120) > 1) throw new Error('minuta = ' + m);
+    const m = a.run("minutaZadatka('tc')"), otv = a.run("minSesije(DATA.rad_na_zadatku.find(s=>s.id==='c2'))");   // otvorena: do sada ILI do granice auto-pauze (ponoc/16:00) ako je test bas tada
+    if (otv < 0 || otv > 30 || Math.abs(m - (90 + otv)) > 1) throw new Error('minuta = ' + m + ' (otvorena ' + otv + ')');
     if (a.run("fmtTrajanje(135)") !== '2 h 15 min' || a.run("fmtTrajanje(45)") !== '45 min') throw new Error('fmtTrajanje');
   });
   await acheck('d) stranica zaposlenog (Angazovanost) i Admin kokpit (red radnika + sajt + resursi)', async () => {
@@ -628,12 +628,12 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     await a.run('doSave()'); await sleep();
     let row = a.g.__mock._db.rad_na_zadatku.find(r => r.zadatak === tid);
     if (!row || row.osoba !== 'uprava' || row.kraj) throw new Error('red nije na serveru: ' + JSON.stringify(row));
-    a.run(`DATA.rad_na_zadatku[0].start=new Date(Date.now()-10*60000).toISOString()`);
+    const pomereno = a.run(`(()=>{ const s=DATA.rad_na_zadatku[0], st=new Date(Date.now()-10*60000); if(granicaAutoPauze(st.toISOString())>Date.now()){ s.start=st.toISOString(); return true; } return false; })()`);   // ne preko granice auto-pauze (test oko ponoci/16:00)
     a.run(`zavrsiZadatak(${q36(tid)})`);
     a.run('DATA.rad_na_zadatku[0].minuta=999');   // klijentova vrednost se ignorise
     await a.run('doSave()'); await sleep();
     row = a.g.__mock._db.rad_na_zadatku.find(r => r.zadatak === tid);
-    if (!row.kraj || ![9, 10].includes(row.minuta)) throw new Error('server minuta = ' + row.minuta);
+    if (!row.kraj || !(pomereno ? [9, 10] : [0, 1]).includes(row.minuta)) throw new Error('server minuta = ' + row.minuta);
     const dog = (a.g.__mock._db.log_koriscenja || []).map(l => l.dogadjaj);
     if (!dog.includes('zadatak_start') || !dog.includes('zadatak_kraj')) throw new Error('log: ' + dog.join(','));
     a.g.__mock._log.length = 0;
