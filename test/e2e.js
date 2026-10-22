@@ -3105,6 +3105,39 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
+  await acheck('T59 streaming (2026-10-22): aiCitajSSE sastavlja text / tool_use (JSON u delovima) / thinking+signature u iste blokove kao non-stream odgovor, javlja tekst u delovima, stop_reason i usage iz message_delta; error dogadjaj baca; u stubu (bez window.fetch) petlja ide kroz invoke', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    if (a.run('AI_STREAM') !== false) throw new Error('stub nema fetch, AI_STREAM mora biti false');
+    const ev = (o) => 'event: ' + o.type + '\ndata: ' + JSON.stringify(o) + '\n\n';
+    const sse = [ev({ type: 'message_start', message: { usage: { input_tokens: 40, cache_read_input_tokens: 30, cache_creation_input_tokens: 5, output_tokens: 1 } } }),
+      ev({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } }),
+      ev({ type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'SIG' } }), ev({ type: 'content_block_stop', index: 0 }),
+      ev({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }),
+      ev({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Gledam ' } }), 'event: ping\ndata: {"type":"ping"}\n\n',
+      ev({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'podatke.' } }), ev({ type: 'content_block_stop', index: 1 }),
+      ev({ type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'tu9', name: 'gradiliste_detalj', input: {} } }),
+      ev({ type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"id": "g' } }),
+      ev({ type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '1"}' } }), ev({ type: 'content_block_stop', index: 2 }),
+      ev({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 57 } }), ev({ type: 'message_stop' })].join('');
+    // deli tok na neobicnim mestima (granica dogadjaja usred UTF-8 i usred "data:")
+    a.g.__sse = sse; a.g.__delovi = [];
+    const r = await a.run(`(async()=>{ const enc=new TextEncoder(); const bytes=enc.encode(__sse); const kom=[bytes.slice(0,37), bytes.slice(37,210), bytes.slice(210)];
+      const st=new ReadableStream({ start(c){ kom.forEach(x=>c.enqueue(x)); c.close(); } });
+      return await aiCitajSSE(st, t=>__delovi.push(t)); })()`);
+    const oc = [['thinking', 'SIG'], ['text', 'Gledam podatke.'], ['tool_use', 'gradiliste_detalj']];
+    if (r.content.length !== 3 || r.content[0].type !== 'thinking' || r.content[0].thinking !== '' || r.content[0].signature !== 'SIG' || r.content[1].text !== 'Gledam podatke.' || r.content[2].id !== 'tu9' || JSON.stringify(r.content[2].input) !== '{"id":"g1"}') throw new Error('blokovi: ' + JSON.stringify(r.content));
+    if (r.stop_reason !== 'tool_use' || r.usage.output_tokens !== 57 || r.usage.input_tokens !== 40 || r.usage.cache_read_input_tokens !== 30) throw new Error('stop/usage: ' + JSON.stringify([r.stop_reason, r.usage]));
+    if (a.g.__delovi.join('|') !== 'Gledam |podatke.') throw new Error('delovi teksta: ' + JSON.stringify(a.g.__delovi));
+    // error dogadjaj → izuzetak
+    a.g.__sse2 = ev({ type: 'message_start', message: { usage: {} } }) + ev({ type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } });
+    let pao = '';
+    try { await a.run(`(async()=>{ const st=new ReadableStream({ start(c){ c.enqueue(new TextEncoder().encode(__sse2)); c.close(); } }); return await aiCitajSSE(st, null); })()`); } catch (e) { pao = e.message; }
+    if (!/Overloaded/.test(pao)) throw new Error('error dogadjaj nije bacio: ' + pao);
+    // panel tokom cekanja ima #aiTok (mesto za tekst koji pristize)
+    a.run("AI_ZAUZET=true; AI_OTVOREN=true; renderAi();");
+    if (!a.g.document.getElementById('aiPanel').innerHTML.includes('id="aiTok"')) throw new Error('nema #aiTok');
+    a.run('AI_ZAUZET=false');
+  });
   await acheck('T59 nivo 2 (2026-10-22): predlozi_akciju nista ne upisuje (validira sit/gr, dedupe), dugmad ispod odgovora; klik = postojece funkcije uz prompt/confirm (vrati sa predlogom, odobri, zadatak popunjava formu, pozovi tel:), log ai_akcija, nije-super no-op', async () => {
     const tela = [];
     const mk = (sitId, grPro, grIzv) => (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));

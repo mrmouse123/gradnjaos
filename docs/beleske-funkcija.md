@@ -235,6 +235,21 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   `refusal` → „(Model je odbio…)"; poruka bez teksta je sad iskrena („Asistent nije vratio tekst…"). Istorija je UVEK
   append-only (nikad ne skraćivati stare tool_result-e — editovanje istorije obara thinking blokove, 400 za nove naloge);
   kad razgovor pređe 300 KB funkcija vraća 413 → „Novi razgovor". T59 nastavak.
+  **Nivo 2 + streaming + potrošnja (2026-10-22, „sredi mi sve tačke"):** (1) alat `predlozi_akciju` (odobri_situaciju /
+  vrati_situaciju sa komentarom / novi_zadatak / pozovi_rukovodioca) — `aiPredloziAkciju` NIŠTA ne upisuje: validira id-jeve
+  (vidimGr/smemNa, `pregledSit==='na_pregledu'`, jePro), esc-uje tekst modela, dedupe tip+id, puni `AI_PREDLOZI`, modelu vraća
+  „prikazano kao dugme, NIJE izvršeno"; posle petlje predlozi idu uz bot poruku (`akcije`), `aiPanelHtml` crta dugmad,
+  `aiAkcija(idx,i)` ponovo proverava guardove pa zove POSTOJEĆE funkcije: `odobriSituaciju` iza `confirm`,
+  `vratiSituaciju(id, predlog)` (predlog = podrazumevani tekst u promptu), `formTask(pre)` (popunjena forma, „Sačuvaj" je
+  potvrda), `tel:` link; odobri/vrati se označe ✓; log `ai_akcija`. Prompt: „nikad ne tvrdi da je akcija urađena".
+  (2) streaming: `AI_STREAM` (samo uz `window.fetch`; stub ide kroz invoke), `aiPozovi(telo, onTekst)` šalje `stream:true`
+  fetch-om sa svežim access tokenom (`supa.auth.getSession`), `aiCitajSSE` sastavlja ISTE blokove kao non-stream odgovor
+  (text, tool_use sa JSON iz `input_json_delta`, thinking sa `signature_delta`) + stop_reason/usage iz `message_delta`; tekst
+  se ispisuje u `#aiTok` kako stiže; greška pre prvog događaja → fallback na invoke, posle → greška (bez duplog poziva).
+  Funkcija (v6) prosleđuje `r.body` kao `text/event-stream`. Proba uživo (proba_sse.py): text/event-stream, tool_use blok iz toka vraćen
+  nazad u sledeći krug → tekst; thinking+signature sastavljanje pokriveno testom (u probi model nije razmišljao). (3) kartica „Asistent — potrošnja <mesec>" u Admin kokpitu: sopstveni upit nad
+  `log_koriscenja` (eq ai_pitanje, gte prvi dan meseca), `aiPotrosnjaIz` → `AI_CENE` (Sonnet 5.5 USD/M: 2/10/0,20/2,50,
+  limit 30) → USD + traka; mock dobio `gte`. T59 nivo 2, T59 streaming, T28 potrošnja.
 
 - **Auto-pauza zaboravljenog tajmera** (2026-10-22, migracija 31 + 31a, zahtev klijenta: „ako radnik projektovanja zaboravi
   pauzu/kraj, zadatak se sam pauzira u 16:00 — ne bih da imamo zadatke od jako puno sati"): pravilo = granica sesije je

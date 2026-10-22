@@ -3890,6 +3890,49 @@ function aiHtml(t){
      .replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>');
   return h.split('\n').map(l=>/^\s*[-•]\s+/.test(l)?'<div class="ai-li">• '+l.replace(/^\s*[-•]\s+/,'')+'</div>':l).join('<br>').replace(/<\/div><br>/g,'</div>');
 }
+/* STREAMING (2026-10-22): u browseru se odgovor cita kao SSE tok (fetch na funkciju sa stream:true) i tekst se ispisuje
+   kako nastaje (#aiTok). aiCitajSSE sastavlja ISTE blokove kao non-stream odgovor (text / tool_use sa JSON ulazom /
+   thinking sa potpisom) — oni idu nazad u AI_PORUKE, a thinking blokovi moraju biti nepromenjeni (preserved thinking).
+   Petlja (aiPitaj) i dalje vidi {data:{content, stop_reason, usage}} i ne zna za tok. Bez window.fetch (test stub) ili
+   kad mreza padne pre prvog dogadjaja → supa.functions.invoke kao do sad; posle prvog dogadjaja greska je greska
+   (bez ponovnog poziva — da se ne plati dva puta). */
+const AI_STREAM=typeof window!=='undefined' && typeof window.fetch==='function' && typeof TextDecoder==='function';
+async function aiCitajSSE(body, onTekst, stanje){
+  const dec=new TextDecoder(), reader=body.getReader(); let buf='', stop=null, usage={}, greska=null; const blokovi=[], json={};
+  const obradi=(ev)=>{ const t=ev&&ev.type; if(stanje) stanje.primljeno=true;
+    if(t==='message_start'){ usage=Object.assign({}, (ev.message&&ev.message.usage)||{}); }
+    else if(t==='content_block_start'){ const b=ev.content_block||{}, i=ev.index;
+      blokovi[i]= b.type==='text'?{type:'text', text:b.text||''} : b.type==='tool_use'?{type:'tool_use', id:b.id, name:b.name, input:{}} : b.type==='thinking'?{type:'thinking', thinking:b.thinking||'', signature:b.signature||''} : Object.assign({}, b);
+      if(b.type==='tool_use') json[i]=''; }
+    else if(t==='content_block_delta'){ const d=ev.delta||{}, b=blokovi[ev.index]; if(!b) return;
+      if(d.type==='text_delta'){ b.text=(b.text||'')+(d.text||''); if(onTekst&&d.text) onTekst(d.text); }
+      else if(d.type==='input_json_delta'){ json[ev.index]=(json[ev.index]||'')+(d.partial_json||''); }
+      else if(d.type==='thinking_delta'){ b.thinking=(b.thinking||'')+(d.thinking||''); }
+      else if(d.type==='signature_delta'){ b.signature=(b.signature||'')+(d.signature||''); } }
+    else if(t==='content_block_stop'){ const b=blokovi[ev.index]; if(b&&b.type==='tool_use'){ const j=(json[ev.index]||'').trim(); try{ b.input=j?JSON.parse(j):{}; }catch(e){ b.input={}; } } }
+    else if(t==='message_delta'){ if(ev.delta&&ev.delta.stop_reason) stop=ev.delta.stop_reason; if(ev.usage) Object.assign(usage, ev.usage); }
+    else if(t==='error'){ greska=(ev.error&&ev.error.message)||'Greška u toku odgovora.'; } };
+  while(true){ const {value,done}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true});
+    let i; while((i=buf.indexOf('\n\n'))>=0){ const raw=buf.slice(0,i); buf=buf.slice(i+2);
+      const data=raw.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trim()).join('\n'); if(!data) continue;
+      let ev; try{ ev=JSON.parse(data); }catch(e){ continue; } obradi(ev); if(greska) break; } if(greska) break; }
+  if(greska) throw new Error(greska);
+  return {content:blokovi.filter(Boolean), stop_reason:stop, usage};
+}
+async function aiPozovi(telo, onTekst){
+  if(AI_STREAM && supa && supa.auth){
+    const stanje={primljeno:false};
+    try{
+      const ses=await supa.auth.getSession(); const tok=ses&&ses.data&&ses.data.session&&ses.data.session.access_token; if(!tok) throw new Error('Prijava nije važeća.');
+      const r=await fetch(SUPABASE_URL+'/functions/v1/ai-asistent',{method:'POST', headers:{'apikey':SUPABASE_ANON_KEY, 'Authorization':'Bearer '+tok, 'Content-Type':'application/json'}, body:JSON.stringify({...telo, stream:true})});
+      if(!r.ok){ let m='Model nije odgovorio (HTTP '+r.status+').'; try{ const j=await r.json(); if(j&&j.error) m=String(j.error); }catch(e){} return {data:null, error:new Error(m)}; }
+      if(!r.body) throw new Error('nema toka');
+      stanje.primljeno=true;
+      return {data: await aiCitajSSE(r.body, onTekst, stanje), error:null};
+    }catch(e){ if(stanje.primljeno) return {data:null, error:e}; console.warn('asistent: tok nije dostupan, non-stream:', e&&e.message||e); }
+  }
+  return supa.functions.invoke('ai-asistent',{body:telo});
+}
 async function aiGreskaTekst(error){
   const m=String(error&&error.message||error||'');
   if(/not found|404/i.test(m)) return 'Asistent još nije postavljen: Edge Function „ai-asistent" nije deploy-ovana. Potrebno: deploy funkcije + ANTHROPIC_API_KEY (Supabase → Edge Functions → Secrets).';
@@ -3921,7 +3964,7 @@ function aiPanelHtml(al){
   const poruke=AI_RAZGOVOR.map((m,idx)=>`<div class="ai-msg ${m.ko}">${m.ko==='ja'?esc(m.tekst):aiHtml(m.tekst)}${m.akcije&&m.akcije.length?`<div class="ai-akcije">${m.akcije.map((a,i)=>`<button class="btn${a.uradjeno?' ghost':''}" ${a.uradjeno||AI_ZAUZET?'disabled':''} onclick="aiAkcija(${idx},${i})">${a.uradjeno?'✓ ':''}${a.labela}</button>`).join('')}</div>`:''}</div>`).join('');
   return `<div class="ai-head">${icon('ai')}<h3>Asistent</h3><span class="sub">odgovara iz tvojih podataka · ništa ne menja</span><button class="x" style="position:static" onclick="aiZatvori()" title="Zatvori">${icon('x')}</button></div>
   <div class="ai-danas">${danas.map(([n,l,q,cr])=>`<button data-p="${esc(q)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}><b class="num${cr?' crveno':''}">${n}</b><small>${l}</small></button>`).join('')}</div>
-  <div id="aiPoruke" class="ai-poruke">${poruke||'<div class="sub">Klikni na broj iznad ili postavi pitanje. Primeri: „Koliko je naplaćeno na Dušanu Radoviću?", „Ko radi na čemu ove nedelje?", „Zašto Liman Park ima nisko zdravlje?"</div>'}${AI_ZAUZET?'<div class="ai-msg bot sub">Razmišljam…</div>':''}${AI_GRESKA?`<div class="banner">${AI_GRESKA}</div>`:''}</div>
+  <div id="aiPoruke" class="ai-poruke">${poruke||'<div class="sub">Klikni na broj iznad ili postavi pitanje. Primeri: „Koliko je naplaćeno na Dušanu Radoviću?", „Ko radi na čemu ove nedelje?", „Zašto Liman Park ima nisko zdravlje?"</div>'}${AI_ZAUZET?'<div class="ai-msg bot sub" id="aiTok">Razmišljam…</div>':''}${AI_GRESKA?`<div class="banner">${AI_GRESKA}</div>`:''}</div>
   <div class="ai-chips">${AI_PITANJA.map(t=>`<button class="btn ghost" data-p="${esc(t)}" onclick="aiPitaj(this.dataset.p)" ${AI_ZAUZET?'disabled':''}>${esc(t)}</button>`).join('')}${AI_RAZGOVOR.length?`<button class="btn ghost" onclick="aiOcisti()">↺ Novi razgovor</button>`:''}</div>
   <div class="ai-unos"><textarea id="aiUnos" rows="2" placeholder="Napiši pitanje… (Enter šalje, Shift+Enter novi red)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiPitajIzPolja();}"></textarea><button class="btn" onclick="aiPitajIzPolja()" ${AI_ZAUZET?'disabled':''}>Pošalji</button></div>`;
 }
@@ -3940,7 +3983,8 @@ async function aiPitaj(tekst){
   try{
     if(!supa) throw new Error('Asistent radi samo kad je aplikacija povezana sa bazom (Supabase) i kad je Edge Function „ai-asistent" postavljena sa API ključem.');
     for(let krug=0; krug<AI_MAX_KRUGOVA; krug++){
-      const {data,error}=await supa.functions.invoke('ai-asistent',{body:aiTelo()});
+      let AI_TOK=''; const naTekst=t=>{ AI_TOK+=t; const e=document.getElementById('aiTok'); if(e){ e.classList.remove('sub'); e.innerHTML=aiHtml((odgovor?odgovor+'\n':'')+AI_TOK); aiSkrol(); } };
+      const {data,error}=await aiPozovi(aiTelo(), naTekst);
       if(error){ if(nastavljeno){ odgovor+=(odgovor?'\n':'')+'(Odgovor je prekinut — pokušaj ponovo ili postavi uže pitanje.)'; break; } throw new Error(await aiGreskaTekst(error)); }   // nastavak posle max_tokens je neproveren put ka API-ju: ako padne, iskrena poruka umesto banera
       if(!data||!Array.isArray(data.content)) throw new Error(data&&data.error?String(data.error.message||data.error):'Neočekivan odgovor asistenta.');
       if(data.content.length) AI_PORUKE.push({role:'assistant', content:data.content});   // istorija je append-only (thinking blokovi se vracaju nepromenjeni); prazan sadrzaj bi bio nevalidna poruka

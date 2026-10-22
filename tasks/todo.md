@@ -1,3 +1,19 @@
+# Asistent paket: nivo 2 + streaming + potrosnja (2026-10-22) — GOTOVO
+
+## Plan (redosled po advisoru: najmanje i najbezbednije prvo)
+- [x] 6. Kartica potrosnje u Admin kokpitu (sopstveni upit, AI_CENE, USD uz limit 30). T28.
+- [x] 3. Nivo 2: predlozi_akciju → dugmad → postojece funkcije uz potvrdu; log ai_akcija. T59 nivo 2.
+- [x] 4. Streaming: funkcija prosledjuje SSE, aiCitajSSE sastavlja iste blokove, #aiTok. T59 streaming; proba uzivo.
+- [ ] 5. Mejl trebovanja: ceka Resend nalog + domen (Jovan) → deploy posalji-trebovanje + RESEND_API_KEY.
+- [x] 7. docs/pilot-plan.md — cek-lista za pilot sa klijentom.
+
+## Review
+- Seed loga u mock-u mora imati id (mock kljuca redove po id-u) — prvi nacrt T28 potrosnje je izgubio red.
+- a.g.__mock.faults ne postoji — faults idu kroz boot({faults}); DEMO id-jevi su deterministicki pa se citaju iz prethodnog boota.
+- Sonnet 5.5 u toku salje thinking blok samo sa signature_delta (tekst prazan): sastavljac mora da sacuva prazan `thinking`
+  + `signature`, inace API odbija istoriju u sledecem krugu.
+- Bash heredoc opet progutao unicode u Python stringu — docs skripte iskljucivo Write alatom (lekcija 38).
+
 # Asistent: prazan odgovor posle vise alata (2026-10-22) — GOTOVO
 
 ## Nalaz

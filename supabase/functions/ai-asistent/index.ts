@@ -6,7 +6,8 @@
 //     verify_jwt na gateway-u nije dovoljan — anon ključ je takođe validan JWT.
 //   - NE čita poslovne podatke: alate (gradilišta, situacije, dnevnik…) izvršava KLIJENT nad podacima
 //     koje direktor ionako vidi (iste formule zdravlja/upozorenja kao u aplikaciji).
-//   - Prosleđuje samo dozvoljena polja (system, messages, tools, max_tokens, output_config.effort) i vraća odgovor modela.
+//   - Prosleđuje samo dozvoljena polja (system, messages, tools, max_tokens, output_config.effort, stream) i vraća odgovor modela
+//     (stream=true → SSE tok se prosleđuje kakav jeste; klijent ga sastavlja u iste blokove kao non-stream odgovor).
 //
 // Deploy:  supabase functions deploy ai-asistent   (ili kroz Supabase MCP)
 // Secret:  supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   (Dashboard → Edge Functions → Secrets)
@@ -44,7 +45,7 @@ Deno.serve(async (req: Request) => {
 
   const raw = await req.text();
   if (raw.length > MAX_BODY) return json({ error: 'Razgovor je predugačak — započni novi.' }, 413);
-  let body: { system?: string | unknown[]; messages?: unknown[]; tools?: unknown[]; max_tokens?: number; output_config?: { effort?: string } };
+  let body: { system?: string | unknown[]; messages?: unknown[]; tools?: unknown[]; max_tokens?: number; output_config?: { effort?: string }; stream?: boolean };
   try { body = JSON.parse(raw); } catch { return json({ error: 'Telo zahteva mora biti JSON.' }, 400); }
   if (!Array.isArray(body.messages) || !body.messages.length) return json({ error: 'Nema poruka.' }, 400);
 
@@ -58,12 +59,17 @@ Deno.serve(async (req: Request) => {
     system: typeof body.system === 'string' ? body.system.slice(0, 20_000) : (Array.isArray(body.system) ? body.system.slice(0, 4) : undefined),
     messages: body.messages,
     tools: Array.isArray(body.tools) ? body.tools : undefined,
+    // stream: klijent cita SSE i sastavlja iste blokove kao non-stream odgovor (aiCitajSSE); funkcija samo prosledjuje tok
+    ...(body.stream === true ? { stream: true } : {}),
   };
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  if (r.ok && body.stream === true && r.body) {
+    return new Response(r.body, { status: 200, headers: { ...CORS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
+  }
   const text = await r.text();
   if (!r.ok) {
     let msg = text.slice(0, 500);

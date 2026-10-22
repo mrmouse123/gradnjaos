@@ -98,6 +98,10 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   - *AI asistent (samo direktor):* Edge Function `ai-asistent` je tanki posrednik (ključ u secretu, kapija `profili.uloga='direktor'`),
     alati rade U KLIJENTU nad DATA (`aiIzvrsiAlat`, `aiBezModula`), model NIŠTA ne upisuje, tekst modela se `esc`-uje, keširanje
     prompta (`aiTelo`), log `ai_pitanje` bez sadržaja; UI = plutajuće dugme + panel (`renderAi` iz `render()`).
+    *Nivo 2 (2026-10-22):* model i dalje NIŠTA ne upisuje — `predlozi_akciju` samo pravi dugme, `aiAkcija` zove postojeće
+    funkcije uz confirm/prompt/formu i ponavlja guardove u trenutku klika. *Streaming:* `aiCitajSSE` mora da da ISTE blokove
+    kao non-stream odgovor (thinking + signature nepromenjeni → istorija append-only); petlja ne zna za tok. *Potrošnja:*
+    `AI_CENE` je jedino mesto cena/limita.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
   helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..31.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
