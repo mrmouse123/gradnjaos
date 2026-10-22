@@ -226,6 +226,15 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   poslednjem bloku poslednje poruke (kopija — `AI_PORUKE` ostaje čist); funkcija propušta `system` kao string ili niz.
   Log `ai_pitanje.tokeni` = {ulaz, kes, kesUpis, izlaz} sabrano kroz krugove — tu se vidi da li keš radi.
   ODLUKE: asistent vidi sve što vidi direktor (uključujući finansije); samo `direktor`, ne admin. T59.
+  **Prazan odgovor (2026-10-22, nalaz iz screenshota + log):** Sonnet 5.5 ima adaptivno razmišljanje koje troši ISTI
+  `max_tokens` kao tekst; sa 1500 je posle 3–5 alata razmišljanje pojelo budžet → `stop_reason:'max_tokens'`, sadržaj samo
+  `thinking` blok, 0 znakova teksta, UI „Nemam odgovor". Log to otkriva: `odgovor:0` uz `izlaz` 1600–1900. Popravka:
+  `max_tokens:6000` + `output_config:{effort:'medium'}` (funkcija propušta effort low|medium|high, clamp 256..8000);
+  petlja: max_tokens BEZ teksta → jednom doda user poruku „odgovori sažeto" i nastavi (append-only — thinking blokovi se
+  vraćaju nepromenjeni, prazan `content` se ne gura u istoriju), max_tokens SA tekstom → sufiks „(Odgovor je skraćen…)",
+  `refusal` → „(Model je odbio…)"; poruka bez teksta je sad iskrena („Asistent nije vratio tekst…"). Istorija je UVEK
+  append-only (nikad ne skraćivati stare tool_result-e — editovanje istorije obara thinking blokove, 400 za nove naloge);
+  kad razgovor pređe 300 KB funkcija vraća 413 → „Novi razgovor". T59 nastavak.
 
 - **Auto-pauza zaboravljenog tajmera** (2026-10-22, migracija 31 + 31a, zahtev klijenta: „ako radnik projektovanja zaboravi
   pauzu/kraj, zadatak se sam pauzira u 16:00 — ne bih da imamo zadatke od jako puno sati"): pravilo = granica sesije je

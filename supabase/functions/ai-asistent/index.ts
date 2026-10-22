@@ -6,7 +6,7 @@
 //     verify_jwt na gateway-u nije dovoljan — anon ključ je takođe validan JWT.
 //   - NE čita poslovne podatke: alate (gradilišta, situacije, dnevnik…) izvršava KLIJENT nad podacima
 //     koje direktor ionako vidi (iste formule zdravlja/upozorenja kao u aplikaciji).
-//   - Prosleđuje samo dozvoljena polja (system, messages, tools, max_tokens) i vraća odgovor modela.
+//   - Prosleđuje samo dozvoljena polja (system, messages, tools, max_tokens, output_config.effort) i vraća odgovor modela.
 //
 // Deploy:  supabase functions deploy ai-asistent   (ili kroz Supabase MCP)
 // Secret:  supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   (Dashboard → Edge Functions → Secrets)
@@ -44,13 +44,16 @@ Deno.serve(async (req: Request) => {
 
   const raw = await req.text();
   if (raw.length > MAX_BODY) return json({ error: 'Razgovor je predugačak — započni novi.' }, 413);
-  let body: { system?: string | unknown[]; messages?: unknown[]; tools?: unknown[]; max_tokens?: number };
+  let body: { system?: string | unknown[]; messages?: unknown[]; tools?: unknown[]; max_tokens?: number; output_config?: { effort?: string } };
   try { body = JSON.parse(raw); } catch { return json({ error: 'Telo zahteva mora biti JSON.' }, 400); }
   if (!Array.isArray(body.messages) || !body.messages.length) return json({ error: 'Nema poruka.' }, 400);
 
+  // effort (low|medium|high) - Sonnet 5.5 razmislja pre odgovora i to trosi max_tokens; klijent salje 'medium' + 6000
+  const effort = body.output_config && ['low', 'medium', 'high'].includes(String(body.output_config.effort)) ? String(body.output_config.effort) : undefined;
   const payload = {
     model: Deno.env.get('AI_MODEL') || 'claude-sonnet-5-5',
-    max_tokens: Math.min(Math.max(+(body.max_tokens || 1500), 256), 4000),
+    max_tokens: Math.min(Math.max(+(body.max_tokens || 4000), 256), 8000),
+    ...(effort ? { output_config: { effort } } : {}),
     // system: string ILI niz blokova (klijent šalje [{type:'text', text, cache_control}] radi keširanja prefiksa)
     system: typeof body.system === 'string' ? body.system.slice(0, 20_000) : (Array.isArray(body.system) ? body.system.slice(0, 4) : undefined),
     messages: body.messages,

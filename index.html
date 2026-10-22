@@ -3798,7 +3798,10 @@ function aiTelo(){
   const tools=AI_ALATI.map((t,i)=>i===AI_ALATI.length-1?{...t, cache_control:KES}:t);
   const messages=AI_PORUKE.map(m=>({role:m.role, content:typeof m.content==='string'?[{type:'text', text:m.content}]:m.content.map(b=>({...b}))}));
   const zadnja=messages[messages.length-1]; if(zadnja&&zadnja.content.length){ const b=zadnja.content[zadnja.content.length-1]; zadnja.content[zadnja.content.length-1]={...b, cache_control:KES}; }
-  return {system:[{type:'text', text:aiSistem(), cache_control:KES}], messages, tools, max_tokens:1500};
+  /* max_tokens pokriva I razmisljanje modela (adaptive thinking, Sonnet 5.5) I tekst: sa 1500 je posle 3–5 alata razmisljanje
+     pojelo ceo budzet, stop_reason 'max_tokens' bez ijednog text bloka → prazan odgovor (nalaz 2026-10-22, log ai_pitanje).
+     effort 'medium' = manje razmisljanja i konsolidovaniji pozivi alata (preporuka za chat sa alatima). */
+  return {system:[{type:'text', text:aiSistem(), cache_control:KES}], messages, tools, max_tokens:6000, output_config:{effort:'medium'}};
 }
 function aiHtml(t){
   let h=esc(String(t||''));
@@ -3853,16 +3856,20 @@ function aiPregledSituacije(sitId){
 async function aiPitaj(tekst){
   tekst=String(tekst||'').trim(); if(!tekst||AI_ZAUZET||!jeSuper()) return;
   AI_GRESKA=''; AI_RAZGOVOR.push({ko:'ja', tekst}); AI_PORUKE.push({role:'user', content:tekst}); AI_ZAUZET=true; AI_OTVOREN=true; renderAi();
-  const alati=[], tok={ulaz:0, kes:0, kesUpis:0, izlaz:0}; let odgovor='';
+  const alati=[], tok={ulaz:0, kes:0, kesUpis:0, izlaz:0}; let odgovor='', nastavljeno=false;
   try{
     if(!supa) throw new Error('Asistent radi samo kad je aplikacija povezana sa bazom (Supabase) i kad je Edge Function „ai-asistent" postavljena sa API ključem.');
     for(let krug=0; krug<AI_MAX_KRUGOVA; krug++){
       const {data,error}=await supa.functions.invoke('ai-asistent',{body:aiTelo()});
       if(error) throw new Error(await aiGreskaTekst(error));
       if(!data||!Array.isArray(data.content)) throw new Error(data&&data.error?String(data.error.message||data.error):'Neočekivan odgovor asistenta.');
-      AI_PORUKE.push({role:'assistant', content:data.content});
+      if(data.content.length) AI_PORUKE.push({role:'assistant', content:data.content});   // istorija je append-only (thinking blokovi se vracaju nepromenjeni); prazan sadrzaj bi bio nevalidna poruka
       if(data.usage){ tok.ulaz+=+data.usage.input_tokens||0; tok.kes+=+data.usage.cache_read_input_tokens||0; tok.kesUpis+=+data.usage.cache_creation_input_tokens||0; tok.izlaz+=+data.usage.output_tokens||0; }
       const tekstovi=data.content.filter(b=>b.type==='text'&&b.text).map(b=>b.text); if(tekstovi.length) odgovor+=(odgovor?'\n':'')+tekstovi.join('\n');
+      if(data.stop_reason==='refusal'){ odgovor+=(odgovor?'\n':'')+'(Model je odbio da odgovori na ovo pitanje.)'; break; }
+      if(data.stop_reason==='max_tokens'){   // budzet potrosen: bez teksta → jednom zatrazi sazet nastavak (append-only), sa tekstom → oznaci da je skracen
+        if(!tekstovi.length && !nastavljeno && data.content.length){ nastavljeno=true; AI_PORUKE.push({role:'user', content:'Odgovor je prekinut jer je bio predugačak. Odgovori sažeto, u najviše 10 rečenica ili stavki, bez novih poziva alata osim ako su neophodni.'}); continue; }
+        odgovor+=(odgovor?'\n':'')+'(Odgovor je skraćen — za detalje postavi uže pitanje.)'; break; }
       const pozivi=data.content.filter(b=>b.type==='tool_use');
       if(data.stop_reason!=='tool_use'||!pozivi.length) break;
       const rezultati=[];
@@ -3871,7 +3878,7 @@ async function aiPitaj(tekst){
       if(krug===AI_MAX_KRUGOVA-1) odgovor+=(odgovor?'\n':'')+'(Prekinuto: previše koraka u jednom pitanju — postavi uže pitanje.)';
     }
   }catch(e){ AI_GRESKA=esc(String(e&&e.message||e)); }
-  if(odgovor) AI_RAZGOVOR.push({ko:'bot', tekst:odgovor}); else if(!AI_GRESKA) AI_RAZGOVOR.push({ko:'bot', tekst:'Nemam odgovor na to pitanje.'});
+  if(odgovor) AI_RAZGOVOR.push({ko:'bot', tekst:odgovor}); else if(!AI_GRESKA) AI_RAZGOVOR.push({ko:'bot', tekst:'Asistent nije vratio tekst (odgovor prekinut). Pokušaj ponovo ili postavi uže pitanje; ako se ponavlja, klikni „Novi razgovor".'});
   AI_ZAUZET=false; beleziLog('ai_pitanje',{znakova:tekst.length, alati, odgovor:odgovor.length, tokeni:tok});   // tokeni: ulaz/kes/kesUpis/izlaz — kontrola troska i kesa u logu
   renderAi();
 }

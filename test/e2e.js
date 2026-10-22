@@ -3085,6 +3085,36 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
+  await acheck('T59 nastavak (2026-10-22): max_tokens bez teksta → jedan sazet nastavak (append-only, thinking blok ostaje), max_tokens sa tekstom → oznaka skracen, refusal → poruka; telo nosi max_tokens>=4000 i effort', async () => {
+    const tela = [];
+    const a = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));
+      if (n === 1) return { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 'sig1' }] }, error: null };
+      return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Kratko: sve u redu.' }] }, error: null }; } } });
+    await a.run("aiPitaj('Koji projekti kasne i zašto?')");
+    const bot = a.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
+    if (bot.length !== 1 || bot[0] !== 'Kratko: sve u redu.') throw new Error('nastavak: ' + JSON.stringify(bot));
+    if (tela.length !== 2) throw new Error('ocekivana 2 poziva, bilo ' + tela.length);
+    if (!(tela[0].max_tokens >= 4000) || !tela[0].output_config || tela[0].output_config.effort !== 'medium') throw new Error('telo: ' + JSON.stringify({ mt: tela[0].max_tokens, oc: tela[0].output_config }));
+    const msgs = tela[1].messages;
+    if (msgs.length !== 3 || msgs[1].role !== 'assistant' || msgs[1].content[0].type !== 'thinking' || msgs[1].content[0].signature !== 'sig1' || msgs[2].role !== 'user' || !/prekinut/.test(msgs[2].content[0].text)) throw new Error('istorija nastavka: ' + JSON.stringify(msgs.map(m => [m.role, m.content.map(b => b.type)])));
+    if (a.run('AI_GRESKA')) throw new Error('greska: ' + a.run('AI_GRESKA'));
+    // max_tokens dva puta zaredom bez teksta → samo jedan nastavak, pa poruka o prekidu (ne petlja)
+    const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null }) } });
+    await b.run("aiPitaj('x')");
+    const botb = b.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
+    if (botb.length !== 1 || !/skraćen/.test(botb[0])) throw new Error('dupli max_tokens: ' + JSON.stringify(botb));
+    // max_tokens SA tekstom → tekst + oznaka
+    const c = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Pola odgovora' }] }, error: null }) } });
+    await c.run("aiPitaj('x')");
+    const botc = c.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
+    if (botc.length !== 1 || !/^Pola odgovora\n\(Odgovor je skraćen/.test(botc[0])) throw new Error('skracen: ' + JSON.stringify(botc));
+    // refusal
+    const d = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [] }, error: null }) } });
+    await d.run("aiPitaj('x')");
+    const botd = d.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
+    if (botd.length !== 1 || !/odbio/.test(botd[0])) throw new Error('refusal: ' + JSON.stringify(botd));
+    if (d.run('AI_PORUKE.filter(m=>m.role==="assistant").length') !== 0) throw new Error('prazan assistant sadrzaj je usao u istoriju');
+  });
   await acheck('plutajuce dugme + panel samo direktor (nema taba; admin/rukovodilac bez dugmeta, aiOtvori ne otvara); panel: 4 brojke danas + 5 cipova + unos; alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
     const a = await boot();
     a.run("setRole('all')");
