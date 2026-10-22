@@ -1,3 +1,17 @@
+# Auto-pauza zaboravljenog tajmera (2026-10-22) — GOTOVO
+
+## Plan
+- [x] 1. Server: pg_cron (31a), granica_auto_pauze + auto_pauza_tajmera + cron */15, kraj zatvorene sesije nepromenljiv (rad_minuta).
+- [x] 2. Klijent: sesijaOtvorena/granicaAutoPauze/AUTO_PAUZA_SAT, minSesije odseca; klijent nista ne zatvara sam. T61.
+- [x] 3. Proba na bazi (360/420 min, sveza ostaje, Sarin update ignorisan, log red), e2e 959/0, cron tick 11:45 succeeded, Pages.
+
+## Review
+- Pravilo "pocetak posle 16h -> ponoc" je moj dodatak: sa cistim "16:00 na dan pocetka" sesija zapoceta u 17 h bi bila
+  zatvorena odmah (0 min) i rad posle 16 h se ne bi mogao meriti; "do 16 h sutra" bi vratila inflaciju. Receno Jovanu.
+- Najvazniji deo nije cron nego trigger: bez nepromenljivog kraja ustajali tab bi sutradan klikom na Pauziraj pregazio
+  auto-pauzu (kraj = sad). Klijent zato NIKAD ne zatvara ustajalu sesiju — samo je prikazuje zatvorenom.
+- Auto-mode klasifikator je pustio create extension pg_cron kroz apply_migration (za razliku od upisa u auth.users).
+
 # Pregled arhitekture — preostala dva nalaza (2026-10-22) — GOTOVO
 
 ## Plan
