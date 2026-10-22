@@ -101,6 +101,7 @@ class Query {
   neq(c, v){ this._filters.push(['neq', c, v]); return this; }
   not(c, oper, v){ this._filters.push(['not', c, oper, v]); return this; }
   in(c, v){ this._filters.push(['in', c, v]); return this; }
+  gte(c, v){ this._filters.push(['gte', c, v]); return this; }
 
   _match(row){
     return this._filters.every(f => {
@@ -108,6 +109,7 @@ class Query {
       if (kind === 'eq')  return row[col] === f[2];
       if (kind === 'neq') return row[col] !== f[2];
       if (kind === 'in')  return f[2].includes(row[col]);
+      if (kind === 'gte') return row[col] != null && String(row[col]) >= String(f[2]);
       if (kind === 'not') {
         const [, , oper, val] = f;
         if (oper === 'in') {

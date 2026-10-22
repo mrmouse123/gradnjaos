@@ -2564,6 +2564,37 @@ function saveResurs(rid){
    dashboardu dok Jovan ne podesi Site URL / self-signup). RPC-ovi iz migracije 12 su
    security definer sa sopstvenim guardom (je_direktor, ne sebi, ne poslednjem direktoru). */
 let NALOZI=null, LOG_K=null, NALOZI_MSG='', ANGAZ=null, ANG_OD='', ANG_DO='';
+/* Potrosnja asistenta (2026-10-22): tokeni iz log_koriscenja (ai_pitanje.tokeni) za TEKUCI mesec, cena po AI_CENE.
+   Cene = Claude Sonnet 5.5, USD po milion tokena (2026-10-22): ulaz 2, izlaz 10, citanje kesa 0,20, upis kesa 2,50;
+   limit = mesecni limit workspace-a u Anthropic konzoli (Jovan, 30 USD). Promena modela/cena → ovde. Uvid, ne kontrola:
+   pravi limit sprovodi Anthropic. Sopstveni upit (ne LOG_K: lista je ogranicena na 200 dogadjaja). */
+const AI_CENE={ulaz:2, izlaz:10, kes:0.20, kesUpis:2.50, limit:30, model:'Sonnet 5.5'};
+let AI_POTROSNJA=null;
+function aiPotrosnjaIz(redovi){
+  const t={pitanja:0, ulaz:0, kes:0, kesUpis:0, izlaz:0};
+  (redovi||[]).forEach(r=>{ const k=(r&&r.detalj&&r.detalj.tokeni)||{}; t.pitanja++; t.ulaz+=+k.ulaz||0; t.kes+=+k.kes||0; t.kesUpis+=+k.kesUpis||0; t.izlaz+=+k.izlaz||0; });
+  t.usd=(t.ulaz*AI_CENE.ulaz+t.izlaz*AI_CENE.izlaz+t.kes*AI_CENE.kes+t.kesUpis*AI_CENE.kesUpis)/1e6;
+  return t;
+}
+const fmtUsd=n=>(Math.round((+n||0)*100)/100).toFixed(2).replace('.',',')+' USD';
+function aiPotrosnjaKartica(){
+  if(!supa) return '';
+  const t=AI_POTROSNJA, mesec=todayStr().slice(0,7);
+  const telo = !t ? '<div class="empty">Učitavam…</div>' : (()=>{
+    const sve=t.ulaz+t.kes+t.kesUpis+t.izlaz, pct=Math.min(100, Math.round(t.usd/AI_CENE.limit*100)), kesPct=(t.ulaz+t.kes+t.kesUpis)?Math.round(t.kes/(t.ulaz+t.kes+t.kesUpis)*100):0;
+    const boja=pct>=90?'var(--red)':pct>=60?'var(--amber)':'var(--green)';
+    return `<div class="ai-danas" style="padding:0 0 10px">
+      <div><b class="num">${t.pitanja}</b><small>pitanja</small></div>
+      <div><b class="num">${Math.round(sve/1000)}k</b><small>tokena (ulaz ${Math.round((t.ulaz+t.kes+t.kesUpis)/1000)}k · izlaz ${Math.round(t.izlaz/1000)}k)</small></div>
+      <div><b class="num">${kesPct}%</b><small>iz keša</small></div>
+      <div><b class="num" style="color:${boja}">${fmtUsd(t.usd)}</b><small>od ${AI_CENE.limit} USD limita</small></div>
+    </div>
+    <div style="height:6px;border-radius:3px;background:var(--line);overflow:hidden"><div style="width:${pct}%;height:100%;background:${boja}"></div></div>`; })();
+  return `<div class="card" style="margin-bottom:18px">
+    <div class="card-h"><h3>Asistent — potrošnja ${mesec}</h3><span class="hint">${AI_CENE.model} · USD/M tokena: ulaz ${AI_CENE.ulaz}, izlaz ${AI_CENE.izlaz}, keš ${AI_CENE.kes}/${AI_CENE.kesUpis} · limit se sprovodi u Anthropic konzoli</span></div>
+    <div class="card-b" style="padding:14px 16px">${telo}</div>
+  </div>`;
+}
 function angazPeriod(){
   const dan=d=>{ const x=new Date(d); return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
   if(!ANG_DO) ANG_DO=dan(Date.now());
@@ -2706,6 +2737,7 @@ function viewNalozi(){
       </div>
     </div>
   </div>
+  ${aiPotrosnjaKartica()}
   ${angazovanostKartica()}
   <div class="card">
     <div class="card-h"><h3>Log korišćenja</h3><span class="hint">poslednjih ${(LOG_K||[]).length} događaja · <button class="btn ghost" style="padding:2px 8px;font-size:11px" onclick="ucitajNaloge()">↻ Osveži</button></span></div>
@@ -2737,15 +2769,17 @@ async function ucitajNaloge(){
   NALOZI_MSG='';
   try{
     const [od,do_]=angazPeriod();
-    const [{data:n,error:e1},{data:l,error:e2},{data:a,error:e3}]=await Promise.all([
+    const [{data:n,error:e1},{data:l,error:e2},{data:a,error:e3},{data:p,error:e4}]=await Promise.all([
       supa.rpc('nalozi_pregled'),
       supa.from('log_koriscenja').select('*').order('ts',{ascending:false}).limit(200),
-      supa.rpc('angazovanost',{p_od:od, p_do:do_})
+      supa.rpc('angazovanost',{p_od:od, p_do:do_}),
+      supa.from('log_koriscenja').select('detalj').eq('dogadjaj','ai_pitanje').gte('ts', todayStr().slice(0,7)+'-01')
     ]);
     if(e1) throw new Error(e1.message||String(e1));
     if(e2) throw new Error(e2.message||String(e2));
     if(e3) throw new Error(e3.message||String(e3));
-    NALOZI=n||[]; LOG_K=l||[]; ANGAZ=a||[];
+    if(e4) throw new Error(e4.message||String(e4));
+    NALOZI=n||[]; LOG_K=l||[]; ANGAZ=a||[]; AI_POTROSNJA=aiPotrosnjaIz(p||[]);
   }catch(e){ NALOZI=NALOZI||[]; LOG_K=LOG_K||[]; ANGAZ=ANGAZ||[]; NALOZI_MSG='Ne mogu da učitam naloge: '+esc(e.message||e); }
   if(current==='nalozi') render();
 }

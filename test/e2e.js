@@ -1250,6 +1250,26 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   const DIR_S28 = { user: { id: 'u-dir', email: 'direktor@test' } }, RUK_S28 = { user: { id: 'u-ruk', email: 'petar@test' } };
   const USERS28 = { 'direktor@test': { id: 'u-dir', password: 'dir' }, 'petar@test': { id: 'u-ruk', password: 'ruk' }, 'novi@test': { id: 'u-novi', password: 'x' } };
   const cekaj = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
+  await acheck('T28 potrosnja asistenta (2026-10-22): kartica u kokpitu sabira tokene ai_pitanje SAMO tekuceg meseca i racuna USD po AI_CENE; sopstveni upit (eq+gte)', async () => {
+    const a0 = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
+    const seed = JSON.parse(JSON.stringify(a0.g.__mock._db)); delete seed.log_koriscenja;
+    const mes = a0.run('todayStr().slice(0,7)');
+    seed.log_koriscenja = [
+      { id: 1, ts: mes + '-03T10:00:00Z', dogadjaj: 'ai_pitanje', detalj: { tokeni: { ulaz: 1000000, izlaz: 100000, kes: 0, kesUpis: 0 } } },       // 2 + 1 = 3,00
+      { id: 2, ts: mes + '-05T10:00:00Z', dogadjaj: 'ai_pitanje', detalj: { tokeni: { ulaz: 0, izlaz: 0, kes: 1000000, kesUpis: 1000000 } } },     // 0,20 + 2,50 = 2,70
+      { id: 3, ts: '2020-01-05T10:00:00Z', dogadjaj: 'ai_pitanje', detalj: { tokeni: { ulaz: 9000000, izlaz: 9000000, kes: 0, kesUpis: 0 } } },     // prosli mesec — ne broji se
+      { id: 4, ts: mes + '-06T10:00:00Z', dogadjaj: 'prijava', detalj: {} } ];
+    const a = await boot({ supabase: true, seed, session: DIR_S28, users: USERS28 });
+    a.run("go('nalozi')"); await cekaj();
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Asistent — potrošnja ' + mes)) throw new Error('nema kartice potrosnje');
+    if (!h.includes('5,70 USD')) throw new Error('USD nije 5,70: ' + (h.match(/[0-9]+,[0-9]{2} USD/) || [])[0]);
+    if (!h.includes('<b class="num">2</b><small>pitanja')) throw new Error('broj pitanja nije 2');
+    const q = a.g.__mock._log.find(l => l.table === 'log_koriscenja' && (l.filters || []).some(f => f[0] === 'gte'));
+    if (!q) { const p = a.run('AI_POTROSNJA'); if (!p || p.pitanja !== 2) throw new Error('AI_POTROSNJA: ' + JSON.stringify(p)); }
+    if (a.run('AI_POTROSNJA.usd') !== 5.7) throw new Error('usd: ' + a.run('AI_POTROSNJA.usd'));
+    const b = await boot(); if (b.run('aiPotrosnjaKartica()') !== '') throw new Error('demo rezim prikazuje karticu');
+  });
   await acheck('tab Nalozi: direktor ga ima i vidi listu (bez uloge oznacen); rukovodilac ga nema i viewNalozi() ga vraca na dash', async () => {
     const a = await boot({ supabase: true, seed: {}, session: DIR_S28, users: USERS28 });
     if (!a.run("tabs().some(t=>t.id==='nalozi')")) throw new Error('direktor nema tab nalozi');
