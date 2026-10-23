@@ -5220,8 +5220,8 @@ function formSite(id){
         <div class="f-row" id="tipRadovaBox" style="display:${samoPro?'none':'block'}"><label>Tip izvođenja</label><select id="f_tip"><option value="visokogradnja">Visokogradnja</option><option value="niskogradnja">Niskogradnja</option></select></div>
       </div>
       <div id="nivoFillBox" style="display:${samoPro?'block':'none'}">${sifrarnikChecklist('projektovanje', true)}</div>
-      <div id="mereFillBox" style="display:${samoPro?'none':'block'}">${sifrarnikChecklist('izvodjenje', true)}
-        <div class="f-row"><label>Ili učitaj ceo ugovoreni predmer iz Excela (investitorski šablon: list po vrsti radova, br. poz | opis | JM | količina | jed. cena bez PDV)</label>
+      <div id="mereFillBox" style="display:${samoPro?'none':'block'}">
+        <div class="f-row"><label>Ugovoreni predmer iz Excela (investitorski šablon: list po vrsti radova, br. poz | opis | JM | količina | jed. cena bez PDV) — artikli iz šifarnika se dodaju kasnije na strani Predmer</label>
           <div class="tools" style="margin:0"><label class="btn ghost" style="cursor:pointer">⇧ Učitaj predmer (.xlsx) <input id="pm_fajl" type="file" accept=".xlsx" style="display:none" onchange="predmerIzFajla(this,'pm_pregled')"></label><span class="sub">ukupno bez PDV se računa automatski; pozicije iz fajla se dodaju uz čekirane artikle</span></div>
           <div id="pm_pregled"></div>
         </div></div>`}
