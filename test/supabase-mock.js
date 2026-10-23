@@ -339,6 +339,8 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
         let mods = [...new Set((Array.isArray(args.p_moduli) ? args.p_moduli : ['projektovanje', 'izvodjenje']).filter(x => ['projektovanje', 'izvodjenje'].includes(x)))];
         if (!mods.length) return { data: null, error: { message: 'Izaberi bar jedan modul (projektovanje / izvođenje).' } };
         if (args.p_uloga === 'radnik' && mods.length !== 1) return { data: null, error: { message: 'Radnik se vezuje za tačno jedan modul.' } };
+        if (args.p_uloga === 'radnik' && mods.includes('izvodjenje') && !mods.includes('projektovanje')) return { data: null, error: { message: 'Radnik postoji samo u Projektovanju (u Izvođenju su podizvođači).' } };   // migracija 32
+        if (args.p_uloga === 'radnik') mods = ['projektovanje'];
         if (MODUL_ULOGE[args.p_uloga]) mods = [MODUL_ULOGE[args.p_uloga]];
         else if (!['rukovodilac', 'radnik'].includes(args.p_uloga)) mods = ['projektovanje', 'izvodjenje'];
         if (stara === 'direktor' && args.p_uloga !== 'direktor' && db.profili.filter(x => x.uloga === 'direktor').length <= 1) return { data: null, error: { message: 'Ovo je poslednji direktor — prvo dodeli ulogu direktora nekom drugom.' } };

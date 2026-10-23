@@ -890,7 +890,7 @@ const DIREKTORSKE=['direktor','direktor_projektovanja','direktor_izvodjenja'];  
 function jeUpravaUloga(u){ return u==='direktor'||u==='admin'||!!MODUL_ULOGE[u]; }
 function jeRukovodilacNalog(){ return !!(PROFIL && !jeUpravaUloga(PROFIL.uloga)); }   // = nije uprava: skor sa servera, bez pisanja fin kolona
 /* Uloge koje aplikacija poznaje (isti skup kao check constraint na profili.uloga). */
-const ULOGE=[['direktor','Direktor / IT super admin'],['admin','Admin'],['direktor_projektovanja','Direktor projektovanja'],['direktor_izvodjenja','Direktor izvođenja'],['rukovodilac','Rukovodilac'],['radnik','Radnik'],['spoljni','Spoljni saradnik']];   // = check constraint profili.uloga (migracija 27)
+const ULOGE=[['direktor','Direktor'],['admin','Admin'],['direktor_projektovanja','Direktor projektovanje'],['direktor_izvodjenja','Direktor izvođenje'],['rukovodilac','Rukovodilac (projektovanje / izvođenje)'],['radnik','Radnik (samo projektovanje)'],['spoljni','Spoljni saradnik']];   // = check constraint profili.uloga (migracija 27); imena = odluka klijenta 2026-10-23; radnik samo projektovanje (migracija 32)
 function uredjajTip(){ try{ return window.matchMedia&&window.matchMedia('(max-width:900px)').matches?'mobilni':'desktop'; }catch(e){ return '?'; } }
 /* Log koriscenja (migracija 12): append-only tabela VAN PUSH_TABLES (izuzetak od pravila 8 —
    nikad se ne cita u DATA, nikad ne ide kroz diff). Upis je fire-and-forget i ne dira saveErr.
@@ -1217,9 +1217,12 @@ function tabDozvoljen(id){
 function osobaIme(id){ if(!id) return '—'; if(id==='direkcija') return 'Direkcija'; const z=zapById[id]; if(z) return z.ime; const p=(DATA.podizvodjaci||[]).find(x=>x.id===id); return p?p.naziv:'—'; }
 function modulLabela(m){ return m==='projektovanje'?'projektovanje':m==='izvodjenje'?'izvođenje':m; }
 function ulogaLabela(u, fin, mods){
-  const b=({direktor:'direktor',admin:'admin',direktor_projektovanja:'direktor projektovanja',direktor_izvodjenja:'direktor izvođenja',rukovodilac:fin?'rukovodilac (sa finansijama)':'rukovodilac',radnik:'radnik',spoljni:'spoljni saradnik'})[u]||u;
-  const m=(u==='rukovodilac'||u==='radnik')?normalizujModule(mods):SVI_MODULI;
-  return b+((u==='rukovodilac'||u==='radnik')&&m.length===1?' · '+modulLabela(m[0]):'');
+  /* Imena (odluka klijenta 2026-10-23): Direktor, Admin, Direktor projektovanje, Direktor izvođenje, Rukovodilac projektovanje,
+     Rukovodilac izvođenje (modul iz naloga; oba modula = „Rukovodilac (oba modula)“), Radnik (samo projektovanje), Spoljni saradnik. */
+  const m=u==='rukovodilac'?normalizujModule(mods):u==='radnik'?['projektovanje']:SVI_MODULI;
+  const b=({direktor:'Direktor',admin:'Admin',direktor_projektovanja:'Direktor projektovanje',direktor_izvodjenja:'Direktor izvođenje',
+    rukovodilac:'Rukovodilac'+(m.length===1?' '+modulLabela(m[0]):' (oba modula)')+(fin?' · sa finansijama':''),radnik:'Radnik',spoljni:'Spoljni saradnik'})[u]||u;
+  return b;
 }
 let MODUL = 'sve';  // 'sve' | 'projektovanje' | 'izvodjenje'
 let PODTIP = 'sve'; // samo za izvodjenje: 'sve' | 'visokogradnja' | 'niskogradnja'
@@ -1253,7 +1256,7 @@ function setRole(r){
   else if(r==='admin') primeniUlogu('admin', null, true);
   else if(r==='dirpro') primeniUlogu('direktor_projektovanja', null, true);
   else if(r==='dirizv') primeniUlogu('direktor_izvodjenja', null, true);
-  else if(r.startsWith('radnik:')) primeniUlogu('radnik', r.slice(7), false, mods);
+  else if(r.startsWith('radnik:')) primeniUlogu('radnik', r.slice(7), false, mods);   // simulacija: modul iz sufiksa (pravi nalozi radnika su samo projektovanje — migracija 32, server)
   else if(r.startsWith('spoljni:')) primeniUlogu('spoljni', r.slice(8), false);
   else if(r.endsWith(':fin')) primeniUlogu('rukovodilac', r.slice(0,-4), true, mods);
   else primeniUlogu('rukovodilac', r, false, mods);
@@ -1267,9 +1270,9 @@ function roleValue(){ const v=vrstaUloge(); return v==='uprava'?(ULOGA==='admin'
    Trenutna vrednost (npr. iz testova) ostaje u listi da select ne "iskoci". */
 const POGLED_KAO=[
   ['all','Direktor — sve'], ['admin','Admin — sve, bez brisanja'],
-  ['dirpro','Direktor projektovanja — samo modul projektovanje'], ['dirizv','Direktor izvođenja — samo modul izvođenje'],
-  ['z17:fin|pro','Rukovodilac · projektovanje (Nikola, sa finansijama)'], ['z1|izv','Rukovodilac · izvođenje (Petar, bez finansija)'],
-  ['radnik:z10|pro','Radnik · projektovanje (Sara)'], ['radnik:z15|izv','Radnik · izvođenje (Miloš)'],
+  ['dirpro','Direktor projektovanje — samo modul projektovanje'], ['dirizv','Direktor izvođenje — samo modul izvođenje'],
+  ['z17:fin|pro','Rukovodilac projektovanje (Nikola, sa finansijama)'], ['z1|izv','Rukovodilac izvođenje (Petar, bez finansija)'],
+  ['radnik:z10|pro','Radnik (Sara)'],   // radnik postoji samo u Projektovanju (migracija 32); Miloš (z15) je prebačen na projektovanje
 ];
 function roleOptions(){
   const mojMod=PROFIL&&MODUL_ULOGE[PROFIL.uloga]||null;   // direktor modula: bez admina/drugog direktora modula i bez osoba drugog modula
@@ -2701,7 +2704,7 @@ function viewNalozi(){
     const kad=n.poslednja_prijava?fmtDate(String(n.poslednja_prijava).slice(0,10))+' '+String(n.poslednja_prijava).slice(11,16):'—';
     const st=n.bez_profila?'<span class="badge b-amber">bez uloge</span>':moj?'<span class="badge b-blue">ti</span>':'<span class="badge b-green">aktivan</span>';
     const u=esc(n.user_id), ul=n.uloga||'';
-    const nm=normalizujModule(n.moduli), modPolja=(ul==='rukovodilac'||ul==='radnik'||n.bez_profila);
+    const nm=normalizujModule(n.moduli), modPolja=(ul==='rukovodilac'||n.bez_profila);   // radnik: modul je uvek projektovanje (migracija 32)
     const kontrole = (moj||zakljucan) ? `<span class="sub">${ulogaLabela(n.uloga, n.vidi_finansije, n.moduli)}${zakljucan?' · menja samo direktor':''}</span>` :
       `<select id="nu_${u}" onchange="naloziTogglZap('${u}')">${n.bez_profila?'<option value="">— izaberi —</option>':''}${ulOpt(ul)}</select>
        <select id="nz_${u}" style="${ul==='rukovodilac'||ul==='radnik'||n.bez_profila?'':'display:none'}"><option value="">— zaposleni —</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${n.zaposleni_id===z.id?'selected':''}>${z.ime}</option>`).join('')}</select>
@@ -2762,6 +2765,7 @@ function naloziTogglZap(uid){
   const u=g('nu'); if(!u) return; const v=u.value;
   const z=g('nz'), s=g('ns'), f=g('nfl'), m=g('nml');
   if(z) z.style.display=(v==='rukovodilac'||v==='radnik')?'':'none';
+  if(m) m.style.display=v==='rukovodilac'?'inline-flex':'none';   // radnik: samo projektovanje, bez izbora modula
   if(s) s.style.display=v==='spoljni'?'':'none';
   if(f) f.style.display=v==='rukovodilac'?'':'none';
   if(m) m.style.display=(v==='rukovodilac'||v==='radnik')?'inline-flex':'none';
@@ -2798,10 +2802,10 @@ async function dodeliUlogu(email, uid){
   if(uloga==='spoljni'&&!sar){ alert('Spoljni saradnik mora biti vezan za podizvođača / saradnika.'); return; }
   const chk=id=>{ const e=document.getElementById(id); return !!(e&&e.checked); };
   const mods=[]; if(chk(uid?'nmp_'+uid:'n_mp')) mods.push('projektovanje'); if(chk(uid?'nmi_'+uid:'n_mi')) mods.push('izvodjenje');
-  const trebaModul=(uloga==='rukovodilac'||uloga==='radnik');
+  const trebaModul=(uloga==='rukovodilac');   // radnik → uvek ['projektovanje'] (migracija 32)
   if(trebaModul&&!mods.length){ alert('Izaberi bar jedan modul (projektovanje / izvođenje).'); return; }
   if(uloga==='radnik'&&mods.length!==1){ alert('Radnik se vezuje za tačno jedan modul.'); return; }
-  const {data,error}=await supa.rpc('dodeli_ulogu',{p_email:email, p_uloga:uloga, p_zaposleni_id:(uloga==='rukovodilac'||uloga==='radnik')?zap:null, p_vidi_finansije:fin, p_saradnik_id:uloga==='spoljni'?sar:null, p_moduli:trebaModul?mods:null});
+  const {data,error}=await supa.rpc('dodeli_ulogu',{p_email:email, p_uloga:uloga, p_zaposleni_id:(uloga==='rukovodilac'||uloga==='radnik')?zap:null, p_vidi_finansije:fin, p_saradnik_id:uloga==='spoljni'?sar:null, p_moduli:trebaModul?mods:(uloga==='radnik'?['projektovanje']:null)});
   if(error){ alert('Nije uspelo: '+(error.message||error)); return; }
   NALOZI_MSG='✓ '+esc(email)+': uloga '+(data==='dodeljeno'?'dodeljena':'izmenjena')+'. Korisnik je vidi pri sledećem otvaranju aplikacije.';
   await ucitajNaloge();

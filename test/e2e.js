@@ -1101,7 +1101,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const prof = a.g.__mock._db.profili;
     const r = prof.find(p => p.user_id === 'u-r'), s = prof.find(p => p.user_id === 'u-s'), p = prof.find(p => p.user_id === 'u-ruk');
     if (!r || r.uloga !== 'radnik' || r.zaposleni_id !== 'z2') throw new Error('radnik nije dodeljen: ' + JSON.stringify(r));
-    if (JSON.stringify(r.moduli) !== '["izvodjenje"]') throw new Error('radnik moduli: ' + JSON.stringify(r.moduli));
+    if (JSON.stringify(r.moduli) !== '["projektovanje"]') throw new Error('radnik moduli (uvek projektovanje, migracija 32): ' + JSON.stringify(r.moduli));
     if (JSON.stringify(s.moduli) !== '["projektovanje","izvodjenje"]') throw new Error('spoljni mora imati oba modula: ' + JSON.stringify(s.moduli));
     const rpcR = a.g.__mock._log.find(l => l.op === 'rpc' && l.name === 'dodeli_ulogu' && l.args && l.args.p_email === 'r@test' && l.args.p_moduli && l.args.p_moduli.length === 1);
     if (!rpcR) throw new Error('klijent nije poslao p_moduli za radnika');
@@ -3454,7 +3454,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run('vrstaUloge()') !== 'uprava' || !a.run('isDirector()') || !a.run('canFinance()') || a.run('jeSuper()') || !a.run('jeDirektorModula()')) throw new Error('dirpro: uprava/finansije/jeSuper/jeDirektorModula');
     if (JSON.stringify(a.run('MODULI')) !== '["projektovanje"]' || a.run('MODUL') !== 'sve' || a.run('modulSeg()') !== '' || a.run('upravaSve()')) throw new Error('dirpro MODULI/MODUL/segment/upravaSve');
     if (a.run('visibleSites().length') !== nPro || a.run('visibleSites().some(g=>!jePro(g))')) throw new Error('dirpro vidi izvodjenje');
-    if (a.run('roleValue()') !== 'dirpro' || !a.run("ulogaLabela('direktor_projektovanja')").includes('direktor projektovanja') || !a.run("ulogaLabela('direktor_izvodjenja')").includes('direktor izvođenja')) throw new Error('roleValue/labela');
+    if (a.run('roleValue()') !== 'dirpro' || a.run("ulogaLabela('direktor_projektovanja')") !== 'Direktor projektovanje' || a.run("ulogaLabela('direktor_izvodjenja')") !== 'Direktor izvođenje') throw new Error('roleValue/labela');
     const tabs = a.run('tabs().map(t=>t.id)');
     if (tabs.includes('magacin') || tabs.includes('pay') || !tabs.includes('tasks') || tabs.includes('nalozi') || !tabs.includes('clients')) throw new Error('dirpro tabovi (bez Admin kokpita, migracija 28): ' + tabs);
     a.run("current='nalozi'; render();"); if (a.run('current') !== 'dash') throw new Error('viewNalozi nije vratio direktora modula na dash');
@@ -4414,20 +4414,22 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('all')");
     const ro = a.run('roleOptions()');
     const vals = [...ro.matchAll(/value="([^"]+)"/g)].map(m => m[1]);
-    const ocek = ['all', 'admin', 'dirpro', 'dirizv', 'z17:fin|pro', 'z1|izv', 'radnik:z10|pro', 'radnik:z15|izv'];   // 6 test-profila (2026-10-11) + 2 direktora modula (2026-10-14)
-    if (JSON.stringify(vals) !== JSON.stringify(ocek)) throw new Error('Pogled kao != 8 profila: ' + JSON.stringify(vals));
-    if ((ro.match(/<option/g) || []).length !== 8) throw new Error('vise od 8 opcija');
+    const ocek = ['all', 'admin', 'dirpro', 'dirizv', 'z17:fin|pro', 'z1|izv', 'radnik:z10|pro'];   // 6 test-profila (2026-10-11) + 2 direktora modula (2026-10-14) − radnik izvodjenja (migracija 32)
+    if (JSON.stringify(vals) !== JSON.stringify(ocek)) throw new Error('Pogled kao != 7 profila: ' + JSON.stringify(vals));
+    if ((ro.match(/<option/g) || []).length !== 7) throw new Error('vise od 7 opcija');
+    if (!/Rukovodilac projektovanje|Rukovodilac izvođenje/.test(ro) || !/Direktor projektovanje/.test(ro)) throw new Error('imena uloga u Pogled kao: ' + ro.slice(0, 300));
+    if (a.run("ulogaLabela('rukovodilac', false, ['izvodjenje'])") !== 'Rukovodilac izvođenje' || a.run("ulogaLabela('rukovodilac', true, ['projektovanje'])") !== 'Rukovodilac projektovanje · sa finansijama' || a.run("ulogaLabela('radnik', false, ['izvodjenje'])") !== 'Radnik' || a.run("ulogaLabela('direktor_izvodjenja')") !== 'Direktor izvođenje' || a.run("ulogaLabela('spoljni')") !== 'Spoljni saradnik') throw new Error('ulogaLabela: ' + a.run("ulogaLabela('rukovodilac', false, ['izvodjenje'])"));
     if (!ro.includes('selected')) throw new Error('trenutni pogled nije selektovan');
     a.run("setRole('z3')");   // pogled koji nije u listi ostaje vidljiv kao 7. opcija
     const ro2 = a.run('roleOptions()');
-    if (!/value="z3" selected/.test(ro2) || (ro2.match(/<option/g) || []).length !== 9) throw new Error('trenutni pogled van liste nije dodat');
+    if (!/value="z3" selected/.test(ro2) || (ro2.match(/<option/g) || []).length !== 8) throw new Error('trenutni pogled van liste nije dodat');
     a.run("DATA.zaposleni=DATA.zaposleni.filter(z=>z.id!=='z15'); rebuildMaps(); setRole('all');");   // osoba koje nema → opcija se preskace
     if (a.run('roleOptions()').includes('radnik:z15')) throw new Error('opcija za nepostojecu osobu');
   });
   await acheck('ulogaLabela + viewNalozi: moduli u redu i formi; mock odbija radnika sa 2 modula, uprava/spoljni uvek oba', async () => {
     const a = await boot({ supabase: true, seed: {} });
-    if (!a.run("ulogaLabela('radnik',false,['izvodjenje'])").includes('izvođenje')) throw new Error('labela radnika bez modula');
-    if (a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])").includes('·')) throw new Error('oba modula ne treba da se ispisuju');
+    if (a.run("ulogaLabela('radnik',false,['izvodjenje'])") !== 'Radnik') throw new Error('labela radnika: ' + a.run("ulogaLabela('radnik',false,['izvodjenje'])"));   // radnik je uvek projektovanje (migracija 32)
+    if (!a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])").includes('(oba modula)')) throw new Error('oba modula: ' + a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])"));
     if (a.run("ulogaLabela('admin',true,['projektovanje'])").includes('·')) throw new Error('uprava nema modul u labeli');
     const r1 = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'radnik', p_zaposleni_id: 'z2', p_moduli: ['projektovanje', 'izvodjenje'] });
     if (!r1.error || !/tačno jedan/.test(r1.error.message)) throw new Error('mock: radnik sa 2 modula prosao');
