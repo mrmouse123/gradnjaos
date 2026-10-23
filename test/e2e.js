@@ -3085,6 +3085,16 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   /* ---- T60 (2026-10-22): validacija id-jeva pri ucitavanju — red sa navodnikom/zagradom u id-u ili FK polju se izbacuje (stored XSS kroz onclick) ---- */
+  await acheck('T62 (2026-10-23): u segmentu Projektovanje nema Magacina/sifarnika ni za upravu (tab, nav, viewMagacin → dash); u Izvodjenju i „sve“ ostaje', async () => {
+    const a = await boot();
+    a.run("setRole('all'); MODUL='projektovanje'; PODTIP='sve'; renderNav();");
+    if (a.run("tabs().some(t=>t.id==='magacin')")) throw new Error('tab Magacin u Projektovanju');
+    if (/Magacin/.test(a.g.document.getElementById('nav').innerHTML)) throw new Error('nav nudi Magacin u Projektovanju');
+    a.run("current='magacin'; render();"); if (a.run('current') !== 'dash') throw new Error('viewMagacin nije vratio na dash: ' + a.run('current'));
+    for (const tab of a.run('tabs().map(t=>t.id)')) { a.run(`current=${JSON.stringify(tab)}; render();`); if (/ifarnik/.test(a.g.document.getElementById('view').innerHTML)) throw new Error('sifarnik u Projektovanju na tabu ' + tab); }
+    a.run("MODUL='izvodjenje'; renderNav();"); if (!a.run("tabs().some(t=>t.id==='magacin')")) throw new Error('Magacin nestao iz Izvodjenja');
+    a.run("MODUL='sve'; renderNav();"); if (!a.run("tabs().some(t=>t.id==='magacin')")) throw new Error('Magacin nestao iz „sve“');
+  });
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {
     const zao = "x') onclick=\"alert(1)\" data-x='";

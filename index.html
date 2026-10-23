@@ -1208,7 +1208,8 @@ function primeniUlogu(uloga, ja, fin, moduli){
 const TABOVI_OSTALI=['dash','sites','time','tasks','diary','magacin','nabavka','pay'];
 function tabDozvoljen(id){
   if(id==='tasks' && !MODULI.includes('projektovanje')) return false;   // bez projektovanja nema zadataka (Izvodjenje: podizvodjaci), odluka 2026-10-11
-  if((id==='magacin'||id==='pay') && !MODULI.includes('izvodjenje')) return false;   // magacin = sifarnik Izvodjenja; naplata samo Izvodjenje (i za direktora modula)
+  if((id==='magacin'||id==='pay') && !MODULI.includes('izvodjenje')) return false;   // magacin = sifarnik Izvodjenja; naplata samo Izvodjenje (i za direktora modula
+  if(id==='magacin' && modulEfektivni()==='projektovanje') return false;   // u segmentu Projektovanje nema sifarnika/magacina ni za upravu (zahtev 2026-10-23))
   if(vrstaUloge()==='uprava') return true;
   if(id==='pay') return false;   // tab Naplata vidi SAMO uprava (direktor/admin/direktor izvodjenja) — odluka klijenta 2026-10-14; rukovodilac situacije radi iz fioke gradilista
   return TABOVI_OSTALI.includes(id);
@@ -2836,6 +2837,7 @@ function filtrirajMagacin(inp){
   document.querySelectorAll('#view tr[data-txt]').forEach(tr=>{ tr.style.display=(!q||String(tr.dataset.txt||'').includes(q))?'':'none'; });
 }
 function viewMagacin(){
+  if(!tabDozvoljen('magacin')){ current='dash'; return viewDash(); }   // segment Projektovanje / nalog bez izvodjenja (zahtev 2026-10-23)
   const artikli=sifrarnikZa('izvodjenje'), sfIds=new Set(artikli.map(x=>MG_PREFIX+x.id));
   const red=(m,sifra)=>{
     const posl=(DATA.mag_promene||[]).filter(x=>x.mid===m.id).sort((a,b)=>dParse(b.datum)-dParse(a.datum))[0];
