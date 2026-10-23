@@ -3225,7 +3225,7 @@ function viewPredmer(){
     const pct=x.kol?Math.round(Math.min(x.izv||0,x.kol)/x.kol*100):0;
     return `<tr>
       <td class="num" style="color:var(--faint)">${i+1}</td>
-      <td class="strong"><span class="num sub" style="margin-right:6px">${rbPredmera(x)}</span>${x.sifra?`<span class="badge" style="margin-right:6px" title="Šifra artikla (samo u alatu)">${x.sifra}</span>`:''}${x.poz}</td>
+      <td class="strong"><span class="num sub" style="margin-right:6px">${rbPredmera(x)}</span>${x.sifra&&x.sifra!==rbPredmera(x)?`<span class="badge" style="margin-right:6px" title="Šifra artikla (samo u alatu)">${x.sifra}</span>`:''}${x.poz}</td>
       <td>${x.jm}</td>
       <td class="r num-cell">${x.kol}</td>
       ${cene?`<td class="r num-cell">${fmtEur(x.cena)}</td>`:''}${fin?`<td class="r num-cell">${fmtEur(x.kol*x.cena)}</td>`:''}
