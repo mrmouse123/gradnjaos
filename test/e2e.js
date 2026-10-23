@@ -3115,6 +3115,13 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("setRole('dirpro'); current='resursi'; render();"); h = a.g.document.getElementById('view').innerHTML;
     if (h.includes("resDep='izvodjenje'") || h.includes("dodeliSveResurse('izvodjenje')") || h.includes('dodeliSveResurse(null)')) throw new Error('dirpro vidi tudji departman');
     a.run("dodeliSveResurse('izvodjenje')"); if (a.run("DATA.resursi.some(r=>r.modul==='izvodjenje')")) throw new Error('dirpro dodelio tudjem departmanu');
+    // tudji departman: dirpro ne sme da ga obrise izmenom, ni da ga pregazi sa „Dodeli sve“ (pregled 2026-10-23)
+    a.run("DATA.resursi.find(r=>r.id==='rD4').modul='izvodjenje'; formResurs('rD4');");
+    if (!a.g.document.getElementById('modal').innerHTML.includes('(drugi departman)')) throw new Error('tudji departman nije prikazan kao zakljucan');
+    a.g.document.getElementById('f_rnaziv').value = 'Štampač'; a.g.document.getElementById('f_rmod').value = 'izvodjenje'; a.run("saveResurs('rD4')");
+    if (a.run("DATA.resursi.find(r=>r.id==='rD4').modul") !== 'izvodjenje') throw new Error('dirpro obrisao tudji departman izmenom');
+    a.run("dodeliSveResurse('projektovanje')"); if (a.run("DATA.resursi.find(r=>r.id==='rD4').modul") !== 'izvodjenje') throw new Error('Dodeli sve pregazio tudji departman');
+    a.run("DATA.resursi.find(r=>r.id==='rD4').modul=null;");
     // zaposleni
     a.run("setRole('all'); MODUL='sve';");
     const zPro = a.run("DATA.zaposleni.find(z=>(z.grs||[]).length&&(z.grs||[]).every(x=>grById[x]&&jePro(grById[x]))).id"), zIzv = a.run("DATA.zaposleni.find(z=>(z.grs||[]).length&&(z.grs||[]).every(x=>grById[x]&&!jePro(grById[x]))).id");
@@ -3126,6 +3133,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== 'projektovanje' || a.run(`depZaposlenog(zapById[${JSON.stringify(zIzv)}])`) !== 'projektovanje') throw new Error('izricit departman ne pobedjuje');
     a.run(`formEmp(${JSON.stringify(zIzv)})`); a.g.document.getElementById('f_eime').value = 'Test Ime'; a.g.document.getElementById('f_est').value = 'Na terenu'; a.g.document.getElementById('f_edep').value = ''; a.run(`saveEmp(${JSON.stringify(zIzv)})`);
     if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== null) throw new Error('prazan departman mora biti null (pravilo 8)');
+    a.run(`zapById[${JSON.stringify(zIzv)}].departman='izvodjenje'; setRole('dirpro'); formEmp(${JSON.stringify(zIzv)});`);
+    a.g.document.getElementById('f_eime').value = 'Test Ime'; a.g.document.getElementById('f_est').value = 'Na terenu'; a.g.document.getElementById('f_edep').value = 'izvodjenje'; a.run(`saveEmp(${JSON.stringify(zIzv)})`);
+    if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== 'izvodjenje') throw new Error('dirpro obrisao tudji departman zaposlenog izmenom');
+    a.run("setRole('all');");
     a.run("empDep='svi'; resDep='svi';");
   });
   await acheck('T64 (2026-10-23): trebovanje ide direktoru izvodjenja (RPC mejl_direktora_izvodjenja) + dodatni mejl iz forme (narudzbe.mejl, validacija); bez takvog naloga → NABAVKA_EMAIL; mailto nosi oba; kartica prikazuje dodatni mejl', async () => {
@@ -3355,6 +3366,18 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const botd = d.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botd.length !== 1 || !/odbio/.test(botd[0])) throw new Error('refusal: ' + JSON.stringify(botd));
     if (d.run('AI_PORUKE.filter(m=>m.role==="assistant").length') !== 0) throw new Error('prazan assistant sadrzaj je usao u istoriju');
+    // max_tokens SA tool_use blokom → nastavak nosi tool_result stubove + tekst (inace 400 za svako sledece pitanje); refusal sa tool_use → assistant poruka se skida
+    const telaG = [];
+    const g2 = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { telaG.push(JSON.parse(JSON.stringify(body)));
+      if (n === 1) return { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 'x' }, { type: 'tool_use', id: 'tuX', name: 'gradilista', input: {} }] }, error: null };
+      return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Kratko.' }] }, error: null }; } } });
+    await g2.run("aiPitaj('x')");
+    const msgG = telaG[1].messages[2];
+    if (msgG.role !== 'user' || msgG.content[0].type !== 'tool_result' || msgG.content[0].tool_use_id !== 'tuX' || msgG.content[1].type !== 'text' || !/prekinut/.test(msgG.content[1].text)) throw new Error('stub tool_result: ' + JSON.stringify(msgG));
+    if (g2.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").length') !== 1 || g2.run('AI_GRESKA')) throw new Error('nastavak sa stubom nije prosao');
+    const g3 = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [{ type: 'tool_use', id: 'tuR', name: 'gradilista', input: {} }] }, error: null }) } });
+    await g3.run("aiPitaj('x')");
+    if (g3.run('AI_PORUKE.length') !== 1 || g3.run('AI_PORUKE[0].role') !== 'user') throw new Error('refusal sa tool_use ostavio assistant poruku: ' + g3.run('JSON.stringify(AI_PORUKE.map(m=>m.role))'));
     // nastavak koji API odbije → iskrena poruka, bez banera greske
     const f = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null } : { data: null, error: new Error('Model nije odgovorio (400): thinking') } } });
     await f.run("aiPitaj('x')");

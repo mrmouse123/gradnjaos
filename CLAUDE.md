@@ -115,7 +115,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     kao non-stream odgovor (thinking + signature nepromenjeni → istorija append-only); petlja ne zna za tok. *Potrošnja:*
     `AI_CENE` je jedino mesto cena/limita.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..32.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..33.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.

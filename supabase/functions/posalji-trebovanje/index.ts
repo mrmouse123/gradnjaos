@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Samo POST.' }, 405);
 
-  let payload: { to?: string; subject?: string; body?: string };
+  let payload: { to?: string | string[]; subject?: string; body?: string };
   try {
     payload = await req.json();
   } catch {
@@ -41,6 +41,11 @@ Deno.serve(async (req: Request) => {
   const { to, subject, body } = payload;
   if (!to || !subject || !body) {
     return json({ error: 'Nedostaje to/subject/body.' }, 400);
+  }
+  // primaoci: najvise 2 (direktor izvodjenja + dodatni mejl dobavljaca), ispravnog oblika — funkcija nije otvoreni relej
+  const primaoci = (Array.isArray(to) ? to : [to]).map(x => String(x).trim().toLowerCase()).filter((x, i, a) => a.indexOf(x) === i);
+  if (primaoci.length < 1 || primaoci.length > 2 || primaoci.some(x => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))) {
+    return json({ error: 'Primaoci: 1–2 ispravne adrese.' }, 400);
   }
   if (!RESEND_API_KEY) {
     // Namerno 500, ne 404: razlikuje "nije deploy-ovano" od "deploy-ovano, nedostaje kljuc"
@@ -55,7 +60,7 @@ Deno.serve(async (req: Request) => {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, text: body }),   // od 2026-10-23 klijent salje niz primalaca (direktor izvodjenja + dodatni mejl)
+      body: JSON.stringify({ from: FROM, to: primaoci, subject, text: body }),
     });
     const data = await res.json();
     if (!res.ok) return json({ error: data }, res.status);
