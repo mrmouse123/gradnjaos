@@ -3178,6 +3178,34 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const h = a.g.document.getElementById('view').innerHTML;
     if (sifre.length && !h.includes('Šifra artikla (samo u alatu)')) throw new Error('Predmer strana bez oznake sifre');
   });
+  await acheck('T66 (2026-10-23): predmer skida sa stanja magacina — artikli iz sifarnika: izlaz koliko ima (ne u minus), manjak u alertu i logu, virtuelan red postaje pravi; Projektovanje/rukovodilac/bez sifre = nista; savePredmerImport samo novi redovi', async () => {
+    const a = await boot({ supabase: true, seed: {} });
+    a.run("setRole('all'); MODUL='sve';");
+    const g = a.run("DATA.gradilista.find(x=>!jePro(x)).id"), sf1 = a.run("sifrarnikZa('izvodjenje').filter(x=>x.sifra)[0]"), sf2 = a.run("sifrarnikZa('izvodjenje').filter(x=>x.sifra)[1]");
+    a.run(`DATA.magacin.push({id:'mg-'+${JSON.stringify(sf1.id)}, naziv:${JSON.stringify(sf1.naziv)}, jm:'kom', stanje:10});`);
+    const n0 = a.g._calls.alert.length, mp0 = a.run('DATA.mag_promene.length');
+    const rez = a.run(`skiniSaStanjaZaPredmer(${JSON.stringify(g)}, [{sifra:${JSON.stringify(sf1.sifra)}, kol:4}, {sifra:${JSON.stringify(sf2.sifra)}, kol:20}, {sifra:null, kol:5}, {sifra:'NEPOSTOJI', kol:1}])`);
+    if (!rez || rez.skinuto.length !== 1 || rez.skinuto[0].kol !== 4 || rez.manjak.length !== 1 || rez.manjak[0].fali !== 20) throw new Error('rezultat: ' + JSON.stringify(rez));
+    if (a.run(`DATA.magacin.find(x=>x.id==='mg-'+${JSON.stringify(sf1.id)}).stanje`) !== 6) throw new Error('stanje nije 6');
+    if (a.run(`DATA.magacin.some(x=>x.id==='mg-'+${JSON.stringify(sf2.id)})`)) throw new Error('virtuelan red bez skidanja je upisan');
+    const mp = a.run('DATA.mag_promene.slice(' + mp0 + ')'); if (mp.length !== 1 || mp[0].tip !== 'izlaz' || mp[0].kol !== 4 || mp[0].gr !== g) throw new Error('mag_promene: ' + JSON.stringify(mp));
+    if (a.g._calls.alert.length !== n0 + 1 || !/NEMA NA STANJU/.test(a.g._calls.alert[n0]) || !/skinuto/.test(a.g._calls.alert[n0])) throw new Error('alert: ' + a.g._calls.alert.slice(n0));
+    for (let i = 0; i < 8; i++) await new Promise(r => setImmediate(r));   // beleziLog je fire-and-forget
+    if (!(a.g.__mock._db.log_koriscenja || []).some(l => l.dogadjaj === 'magacin_predmer' && l.detalj.gr === g)) throw new Error('nema loga');
+    // manjak ceo (stanje 0): nista se ne skida, red se ne pravi, alert samo manjak
+    const rez2 = a.run(`skiniSaStanjaZaPredmer(${JSON.stringify(g)}, [{sifra:${JSON.stringify(sf2.sifra)}, kol:3}])`);
+    if (!rez2 || rez2.skinuto.length || rez2.manjak.length !== 1) throw new Error('manjak: ' + JSON.stringify(rez2));
+    // Projektovanje → null; rukovodilac → null
+    const gp = a.run("DATA.gradilista.find(x=>jePro(x)).id");
+    if (a.run(`skiniSaStanjaZaPredmer(${JSON.stringify(gp)}, [{sifra:${JSON.stringify(sf1.sifra)}, kol:1}])`) !== null) throw new Error('projektovanje je skinulo');
+    a.run("setRole('z1|izv')"); if (a.run(`skiniSaStanjaZaPredmer('g1', [{sifra:${JSON.stringify(sf1.sifra)}, kol:1}])`) !== null) throw new Error('rukovodilac je skinuo');
+    a.run("setRole('all');");
+    // savePredmerImport: samo novi redovi (nalepljeno bez sifre → nista; iz pripreme sa sifrom artikla → skida)
+    const st6 = a.run(`DATA.magacin.find(x=>x.id==='mg-'+${JSON.stringify(sf1.id)}).stanje`);
+    a.run(`formPredmerImport(${JSON.stringify(g)}); PREDMER_PRIPREMA={redovi:[{sifra:${JSON.stringify(sf1.sifra)}, poz:'Artikal iz fajla', jm:'kom', kol:2, cena:100, izvor:null}]};`);   // forma resetuje pripremu pri otvaranju
+    a.g.document.getElementById('f_pm_paste').value = ''; a.run(`savePredmerImport(${JSON.stringify(g)})`);
+    if (a.run(`DATA.magacin.find(x=>x.id==='mg-'+${JSON.stringify(sf1.id)}).stanje`) !== st6 - 2) throw new Error('uvoz nije skinuo 2');
+  });
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {
     const zao = "x') onclick=\"alert(1)\" data-x='";

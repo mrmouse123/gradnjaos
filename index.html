@@ -2747,7 +2747,7 @@ function viewNalozi(){
        ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
     return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
   }).join('');
-  const DOG={resursi_departman:'Dodela resursa departmanu',ai_pitanje:'Pitanje asistentu',ai_akcija:'Akcija iz asistenta',prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_pauza:'⏸ Pauza zadatka',zadatak_kraj:'■ Kraj zadatka'};
+  const DOG={magacin_predmer:'Magacin: skinuto po predmeru',resursi_departman:'Dodela resursa departmanu',ai_pitanje:'Pitanje asistentu',ai_akcija:'Akcija iz asistenta',prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_pauza:'⏸ Pauza zadatka',zadatak_kraj:'■ Kraj zadatka'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
     else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_pauza'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.opis?' — '+d.opis:'')+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'')+(d.ukupno!=null&&d.ukupno!==d.minuta?' · ukupno '+fmtTrajanje(d.ukupno):'');
@@ -2949,6 +2949,37 @@ function saveMagPromena(mid,tip){
   saveState(); closeModal(); render();
 }
 
+/* SKIDANJE SA STANJA MAGACINA PRI UČITAVANJU PREDMERA (2026-10-23, zahtev klijenta): kad uprava (direktor, admin, direktor
+   izvođenja) napravi gradilište Izvođenja i učita predmer — ili na postojeće gradilište uveze predmer / doda artikle iz
+   šifarnika — ugovorene količine artikala iz šifarnika (predmer.sifra = sifrarnik.sifra) se skidaju sa stanja magacina:
+   izlaz u mag_promene (gr = gradilište). Skida se koliko ima (stanje ne ide u minus); manjak se prijavljuje i loguje.
+   Samo uprava, samo Izvođenje, nikad iz demo seed-a/reset-a (poziva se samo iz saveSite/savePredmerImport/saveIzSifarnika). */
+function skiniSaStanjaZaPredmer(grId, redovi){
+  const g=grById[grId]||DATA.gradilista.find(x=>x.id===grId);
+  if(!isDirector()||!g||jePro(g)||!modulDozvoljen(g.modul||'izvodjenje')) return null;
+  const artikli=sifrarnikZa('izvodjenje').filter(x=>x.sifra), poSifri={}; artikli.forEach(x=>{ poSifri[x.sifra]=x; });
+  const ts=Date.now(); let k=0; const skinuto=[], manjak=[];
+  (redovi||[]).forEach(p=>{
+    const sf=p.sifra?poSifri[p.sifra]:null; if(!sf) return;
+    const kol=+p.kol||0; if(kol<=0) return;
+    const m=magacinArtikal(MG_PREFIX+sf.id); if(!m) return;
+    const ima=Math.max(0,+m.stanje||0), uzeto=Math.min(ima,kol), fali=Math.round((kol-uzeto)*100)/100;
+    if(uzeto>0){
+      if(!(DATA.magacin||[]).some(x=>x.id===m.id)) DATA.magacin.push(m);
+      m.stanje=Math.round((ima-uzeto)*100)/100;
+      DATA.mag_promene.push({ id:'mp'+ts+'-'+(k++), mid:m.id, datum:todayStr(), tip:'izlaz', kol:uzeto, gr:grId });
+      skinuto.push({naziv:unesc(sf.naziv), kol:uzeto, jm:sf.jm||'kom'});
+    }
+    if(fali>0) manjak.push({naziv:unesc(sf.naziv), fali, jm:sf.jm||'kom'});
+  });
+  if(!skinuto.length&&!manjak.length) return null;
+  beleziLog('magacin_predmer',{gr:grId, skinuto, manjak});
+  const por=(skinuto.length?'Sa stanja magacina skinuto: '+skinuto.map(x=>x.naziv+' '+x.kol+' '+x.jm).join(', ')+'.':'')+
+            (manjak.length?(skinuto.length?'\n':'')+'NEMA NA STANJU (treba nabaviti): '+manjak.map(x=>x.naziv+' '+x.fali+' '+x.jm).join(', ')+'.':'');
+  try{ alert(por); }catch(e){}
+  return {skinuto, manjak};
+}
+
 /* ---------- PREDMER / SPECIFIKACIJA USLUGA ---------- */
 /* Sifrarnik mera/pozicija (tabela `sifrarnik`, migracija 14): projektovanje = nivoi dokumentacije
    (grupa = nivo), izvodjenje = tipicne pozicije po grupama radova. Uprava ga uredjuje u Admin kokpitu;
@@ -3143,6 +3174,7 @@ function saveIzSifarnika(grId){
   if(!isDirector()||!smemNa(grId)) return;
   const g=grById[grId]; if(!g||jePro(g)) return;
   const n=dodajIzSifarnika(grId)+dodajRaznoIzvodjenje(grId);
+  if(n) skiniSaStanjaZaPredmer(grId, predmerZa(grId).slice(-n));
   osveziNapredak(grId); saveState(); closeModal(); render();
 }
 let PRED_ID=null;
@@ -3762,6 +3794,7 @@ function savePredmerImport(grId){
     n++;
   });
   if(!n){ alert('Nijedna pozicija nije prepoznata — učitaj .xlsx šablon ili proveri da su nalepljene kolone razdvojene tabom ili tačka-zarezom.'); return; }
+  skiniSaStanjaZaPredmer(grId, predmerZa(grId).slice(-n));   // samo novi redovi
   osveziNapredak(grId); saveState(); closeModal(); render();
 }
 /* ============================================================
@@ -5352,6 +5385,7 @@ function saveSite(grId){
   } else {
     dodajIzSifarnika(gid); dodajRaznoIzvodjenje(gid); dodajPredmerIzPripreme(gid);
     rebuildMaps();
+    skiniSaStanjaZaPredmer(gid, predmerZa(gid));   // ugovorene kolicine artikala → izlaz iz magacina (zahtev 2026-10-23)
     /* Zadaci se pri kreiranju NE seju (odluka 2026-10-09): šablon faza ostaje opciono dugme u fioci (ubaciSablonFaza). */
   }
   rebuildMaps(); if(jeProNovi) sinhronizujSveske(gid);
