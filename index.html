@@ -3745,7 +3745,7 @@ function savePredmerRed(grId,pid){
     Object.keys(SV_KAND).forEach(k=>{ const c=document.getElementById('f_sv_'+k); if(!c||!c.checked) return;
       const sf=(DATA.sifrarnik||[]).find(y=>y.id===SV_KAND[k]); if(!sf||sf.grupa!==faza) return;
       const poz=sifrarnikPoz(sf,'projektovanje'); if(ima.has(unesc(poz).toLowerCase())) return; ima.add(unesc(poz).toLowerCase());
-      DATA.predmer.push({ id:'pm'+ts+'-'+(n++), gr:grId, poz, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad }); });
+      DATA.predmer.push({ id:'pm'+ts+'-'+(n++), gr:grId, poz, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad, rb:sledeciRb(grId) }); });
     if(!n){ alert('Čekiraj bar jedan dokument.'); return; }
     SV_KAND={};
     osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render(); osveziFioku(grId); return;
@@ -3760,7 +3760,7 @@ function savePredmerRed(grId,pid){
     x.zaduzen=v('f_pm_zad')||null;
     osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render(); return;
   }
-  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null });
+  DATA.predmer.push({ id:'pm'+Date.now(), gr:grId, poz, jm:v('f_pm_jm')||'kom', kol:(v('f_pm_kol').trim()!==''&&Number.isFinite(+v('f_pm_kol'))?+v('f_pm_kol'):1), cena:+String(v('f_pm_cena')).replace(',','.')||0, izv:0, zaduzen:v('f_pm_zad')||null , rb:sledeciRb(grId) });
   osveziNapredak(grId); sinhronizujSveske(grId); saveState(); closeModal(); render();
 }
 function formPredmerImport(grId){
@@ -5374,12 +5374,12 @@ function saveSite(grId){
     sifrarnikZa('projektovanje').forEach((s,idx)=>{
       const c=document.getElementById('f_nd_'+idx); if(!c||!c.checked) return;
       const z=document.getElementById('f_ndz_'+idx); const zad=(z&&z.value)||null;
-      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:sifrarnikPoz(s,'projektovanje'), jm:s.jm||'kom', kol:1, cena:0, izv:0, zaduzen:zad, rb:sledeciRb(gid)});
     });
     for(let k=0;k<RAZNO_N;k++){   // „Razno": slobodne stavke, prazne se preskacu
       const inp=document.getElementById('f_nr_'+k); const naziv=esc(String((inp&&inp.value)||'').trim()); if(!naziv) continue;
       const z=document.getElementById('f_nrz_'+k); const zad=(z&&z.value)||null;
-      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:'Razno — '+naziv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad});
+      DATA.predmer.push({id:'pm'+ts+'-'+(n++), gr:gid, poz:'Razno — '+naziv, jm:'kom', kol:1, cena:0, izv:0, zaduzen:zad, rb:sledeciRb(gid)});
     }
     RAZNO_N=0;
   } else {
