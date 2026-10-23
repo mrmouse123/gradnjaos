@@ -3150,6 +3150,34 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!url2.startsWith('mailto:' + encodeURIComponent(b.run('NABAVKA_EMAIL')) + '?')) throw new Error('fallback: ' + url2.slice(0, 80));
     if (b.run('DATA.narudzbe[DATA.narudzbe.length-1].mejl') !== null) throw new Error('prazan mejl mora biti null');
   });
+  await acheck('T65 (2026-10-23): redni broj pozicije — dopuniRb (investitorska sifra → rb, sifra artikla → 1..n), sledeciRb, novi redovi dobijaju rb; izvoz situacije i predmera prikazuju rb a NE sifru artikla; Predmer strana prikazuje oba', async () => {
+    const a = await boot();
+    a.run("setRole('all'); MODUL='sve';");
+    const g = a.run("DATA.gradilista.find(x=>!jePro(x)&&predmerZa(x.id).length).id");
+    const pm = a.run(`predmerZa(${JSON.stringify(g)})`);
+    if (pm.some(p => !p.rb)) throw new Error('dopuniRb nije popunio: ' + JSON.stringify(pm.map(p => [p.sifra, p.rb])));
+    if (pm.some(p => p.sifra && a.run(`jeSifraArtikla(${JSON.stringify(p.sifra)})`) && p.rb === p.sifra)) throw new Error('sifra artikla je postala rb');
+    a.run(`DATA.predmer.push({id:'pmU1', gr:${JSON.stringify(g)}, poz:'Uvezeno', jm:'kom', kol:1, cena:0, izv:0, zaduzen:null, sifra:'4.0.1', rb:null}); dopuniRb();`);
+    if (a.run("DATA.predmer.find(p=>p.id==='pmU1').rb") !== '4.0.1') throw new Error('investitorska numeracija nije rb');
+    const nxt = a.run(`sledeciRb(${JSON.stringify(g)})`); if (!/^\d+$/.test(nxt) || +nxt <= pm.length) throw new Error('sledeciRb: ' + nxt);
+    // izvoz situacije: prva kolona = rb, nigde sifra artikla M0xx
+    const sit = a.run(`DATA.situacije.find(s=>s.gr===${JSON.stringify(g)})`) || a.run(`(()=>{ const s={id:'sRb', gr:${JSON.stringify(g)}, br:'PS-RB', vrsta:'privremena', izdato:todayStr(), valuta:todayStr(), status:'izdato', iznos:0, pregled:'odobrena'}; DATA.situacije.push(s); return s; })()`);
+    const stavke = a.run(`stavkeZa(${JSON.stringify(sit.id)}).length`);
+    if (!stavke) a.run(`DATA.situacija_stavke.push({id:'stRb1', sit:${JSON.stringify(sit.id)}, gr:${JSON.stringify(g)}, predmer_id:predmerZa(${JSON.stringify(g)})[0].id, sifra:predmerZa(${JSON.stringify(g)})[0].sifra||null, poz:predmerZa(${JSON.stringify(g)})[0].poz, jm:'kom', kol:1, kol_ugovoreno:1, kumulativ:1, razlika:0})`);
+    const u65 = await a.run(`izvozSituacije(${JSON.stringify(sit.id)}, 'lat')`); if (!u65) throw new Error('izvoz nije vratio fajl');
+    a.g.__u65 = u65; const red65 = await a.run('citajXlsx(__u65.buffer, true)');
+    const rbovi = a.run(`predmerZa(${JSON.stringify(g)}).map(p=>p.rb)`), sifre = a.run(`predmerZa(${JSON.stringify(g)}).map(p=>p.sifra).filter(x=>x&&jeSifraArtikla(x))`);
+    const kol1 = red65.map(r => String(r[0] || ''));
+    for (const sf of sifre) if (kol1.includes(sf)) throw new Error('sifra artikla u prvoj koloni izvoza: ' + sf);
+    if (!rbovi.some(rb => kol1.includes(String(rb)))) throw new Error('rb nije u prvoj koloni: ' + JSON.stringify(kol1.slice(0, 14)));
+    // izvoz predmera: Br. poz. = rb
+    const pr = a.run(`izvozPredmer(${JSON.stringify(g)})`);
+    const prTekst = JSON.stringify(pr); for (const sf of sifre) if (prTekst.includes('"' + sf + '"')) throw new Error('sifra artikla u izvozu predmera: ' + sf);
+    // Predmer strana: prikazuje i rb i sifru
+    a.run(`current='predmer'; PREDMER_GR=${JSON.stringify(g)}; render();`);
+    const h = a.g.document.getElementById('view').innerHTML;
+    if (sifre.length && !h.includes('Šifra artikla (samo u alatu)')) throw new Error('Predmer strana bez oznake sifre');
+  });
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {
     const zao = "x') onclick=\"alert(1)\" data-x='";

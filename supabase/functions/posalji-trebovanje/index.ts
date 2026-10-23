@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to: [to], subject, text: body }),
+      body: JSON.stringify({ from: FROM, to: Array.isArray(to) ? to : [to], subject, text: body }),   // od 2026-10-23 klijent salje niz primalaca (direktor izvodjenja + dodatni mejl)
     });
     const data = await res.json();
     if (!res.ok) return json({ error: data }, res.status);

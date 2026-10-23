@@ -3121,7 +3121,7 @@ function dodajIzSifarnika(grId){
     const z=document.getElementById('f_sfz_'+idx), ko=document.getElementById('f_sfk_'+idx), ce=document.getElementById('f_sfc_'+idx);
     const raw=ko?String(ko.value).trim():''; let kol=raw===''?1:+raw; if(!Number.isFinite(kol)||kol<=0) kol=1;   // type=number: kanonicna vrednost (pravilo 4)
     const rawC=ce?String(ce.value).trim():''; let cena=rawC===''?0:+rawC; if(!Number.isFinite(cena)||cena<0) cena=0;   // ugovorena jed. cena (uprava)
-    DATA.predmer.push({id:'pm'+ts+'-s'+(n++), gr:grId, poz:s.naziv, jm:s.jm||'kom', kol, cena, izv:0, zaduzen:(z&&z.value)||null, sifra:s.sifra||null});
+    DATA.predmer.push({id:'pm'+ts+'-s'+(n++), gr:grId, poz:s.naziv, jm:s.jm||'kom', kol, cena, izv:0, zaduzen:(z&&z.value)||null, sifra:s.sifra||null, rb:sledeciRb(grId)});
     ima.add(kljuc); if(s.sifra) imaSifra.add(s.sifra);
   });
   return n;
@@ -3193,7 +3193,7 @@ function viewPredmer(){
     const pct=x.kol?Math.round(Math.min(x.izv||0,x.kol)/x.kol*100):0;
     return `<tr>
       <td class="num" style="color:var(--faint)">${i+1}</td>
-      <td class="strong">${x.sifra?`<span class="num sub" style="margin-right:6px">${x.sifra}</span>`:''}${x.poz}</td>
+      <td class="strong"><span class="num sub" style="margin-right:6px">${rbPredmera(x)}</span>${x.sifra?`<span class="badge" style="margin-right:6px" title="Šifra artikla (samo u alatu)">${x.sifra}</span>`:''}${x.poz}</td>
       <td>${x.jm}</td>
       <td class="r num-cell">${x.kol}</td>
       ${cene?`<td class="r num-cell">${fmtEur(x.cena)}</td>`:''}${fin?`<td class="r num-cell">${fmtEur(x.kol*x.cena)}</td>`:''}
@@ -3427,7 +3427,7 @@ function izvozSituacije(id, pismo){
   const fKol=(i,R)=>{ if(i===1) return okon ? grupe.slice(3).map((_,k)=>KOL(3+k)+R).join('+') : KOL(2)+R+'+'+KOL(nT-1)+R;
     if(i===2&&okon&&nT>4) return grupe.slice(3,-1).map((_,k)=>KOL(3+k)+R).join('+'); return null; };
   const redStavke=(p,R)=>{ const iz=p.izvor||{}, cena=p.cena!=null?+p.cena:null, q=kolicine(p), nad=!!iz.nadpoz;
-    const r=[c(nad?'':T(p.sifra||''),S.sifra), c(T(cir&&iz.cir?iz.cir:p.poz),S.opis), c(T(p.jm||''),S.jm)];
+    const r=[c(nad?'':T(rbPredmera(p)),S.sifra), c(T(cir&&iz.cir?iz.cir:p.poz),S.opis), c(T(p.jm||''),S.jm)];   // samo redni broj (odluka 2026-10-23)
     q.forEach((v,i)=>{ const f=fillRed(i); r.push(c(okr(v),S.kol(f),fKol(i,R)), c(cena,S.cena(f),i?CEN(0)+R:null), c(cena==null?null:okr(v*cena),S.uk(f),KOL(i)+R+'*'+CEN(i)+R)); });
     return {r,q,cena}; };
   const poListu=new Map(); predmerZa(s.gr).forEach(p=>{ const l=p.izvor&&p.izvor.list?T(p.izvor.list):''; if(!poListu.has(l)) poListu.set(l,[]); poListu.get(l).push(p); });
@@ -3463,7 +3463,7 @@ function izvozSituacije(id, pismo){
   }
   const van=stavkeZa(id).filter(x=>!x.predmer_id);
   if(van.length){ const rows=[...info(),[c(H.vanPred,S.naslov),c('',S.naslov),c('',S.naslov),c('',S.naslov)],[c(H.brPoz,S.pod),c(H.opis,S.pod),c(H.jm,S.pod),c(H.kol,S.pod)]];
-    van.forEach(x=>rows.push([c(T(x.sifra||''),S.sifra),c(T(x.poz),S.opis),c(T(x.jm||''),S.jm),c(okr(+x.kol||0),S.kol(ZELENA))]));
+    van.forEach(x=>rows.push([c('',S.sifra),c(T(x.poz),S.opis),c(T(x.jm||''),S.jm),c(okr(+x.kol||0),S.kol(ZELENA))]));   // van predmera: bez šifre artikla u izvozu
     listovi.push({ime:H.vanPred, redovi:rows, kolone:[6.6,58,8.4,10.7], spoji:['A4:D4'], stampa:true}); }
   const nazivi=[H.ugovoreno,H.kumul,...(okon?pre.map(x=>x.vrsta==='okoncana'?H.poOkon:H.poPriv(rimski(privPre.indexOf(x)+1))):[]),okon?H.poOkon:H.poPriv(rimski(privPre.length+1))];
   const rr=[...info(),[c(H.rekap,S.rekLab)],[c('',S.ok),c('',S.ok),...nazivi.map((n,i)=>c(n,S.grupa(i===0?SIVA:i===1?ZUTA:i===nazivi.length-1?ZELENA:NAR)))]];
@@ -3758,7 +3758,7 @@ function savePredmerImport(grId){
     const poz=esc(c[0]); if(!poz) return;
     const kol=broj(c[2])||1;
     const cena=broj(c[3]);
-    DATA.predmer.push({ id:'pm'+ts+'-'+n, gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null });
+    DATA.predmer.push({ id:'pm'+ts+'-'+n, gr:grId, poz, jm:esc(c[1]||'kom'), kol, cena, izv:0, zaduzen:null, rb:sledeciRb(grId) });
     n++;
   });
   if(!n){ alert('Nijedna pozicija nije prepoznata — učitaj .xlsx šablon ili proveri da su nalepljene kolone razdvojene tabom ili tačka-zarezom.'); return; }
@@ -4058,7 +4058,7 @@ function izvozPredmer(grId){
   const fin=canFinance();
   const head=['Br. poz.','Pozicija','JM','Ugovorena kol.','Jed. cena bez PDV (RSD)','Ukupno ugovoreno (RSD)','Izvedena kol.','Izvedena vrednost (RSD)','Preostalo kol.'];
   const rows=list.map(x=>{ const c=fin?(+x.cena||0):null, iz=Math.min(+x.izv||0,+x.kol||0);
-    return [unesc(x.sifra||''), unesc(x.poz), unesc(x.jm||''), +x.kol||0, c, c==null?null:Math.round((+x.kol||0)*c*100)/100, +x.izv||0, c==null?null:Math.round(iz*c*100)/100, Math.max(0,(+x.kol||0)-(+x.izv||0))]; });
+    return [unesc(rbPredmera(x)), unesc(x.poz), unesc(x.jm||''), +x.kol||0, c, c==null?null:Math.round((+x.kol||0)*c*100)/100, +x.izv||0, c==null?null:Math.round(iz*c*100)/100, Math.max(0,(+x.kol||0)-(+x.izv||0))]; });
   const uk=fin?[ '', 'UKUPNO bez PDV', '', null, null, Math.round(rows.reduce((a,r)=>a+(r[5]||0),0)*100)/100, null, Math.round(rows.reduce((a,r)=>a+(r[7]||0),0)*100)/100, null ]:null;
   return preuzmiXlsx('izvedene-kolicine-'+(g?unesc(g.naziv).replace(/[^\p{L}\p{N}]+/gu,'-'):grId), [{ime:'Izvedeno', redovi:[[g?unesc(g.naziv):grId], [], head, ...rows, ...(uk?[[], uk]:[])]}]);
 }
@@ -4915,7 +4915,7 @@ function dodajPredmerIzPripreme(grId){
   const ts=Date.now(); let n=0;
   PREDMER_PRIPREMA.redovi.forEach(r=>{
     const poz=esc(r.poz), k=String(r.sifra||'')+'|'+normPoz(poz); if(ima.has(k)) return; ima.add(k);
-    DATA.predmer.push({id:'pm'+ts+'-x'+(n++), gr:grId, poz, jm:esc(r.jm)||'kom', kol:r.kol, cena:canFinance()?r.cena:0, izv:0, zaduzen:null, sifra:r.sifra?esc(String(r.sifra)):null, izvor:escIzvor(r.izvor)});
+    DATA.predmer.push({id:'pm'+ts+'-x'+(n++), gr:grId, poz, jm:esc(r.jm)||'kom', kol:r.kol, cena:canFinance()?r.cena:0, izv:0, zaduzen:null, sifra:r.sifra?esc(String(r.sifra)):null, izvor:escIzvor(r.izvor), rb:r.sifra&&!jeSifraArtikla(String(r.sifra))?esc(String(r.sifra)):sledeciRb(grId)});   // investitorska numeracija = rb
   });
   PREDMER_PRIPREMA=null;
   return n;
@@ -5258,7 +5258,7 @@ function dodajRaznoIzvodjenje(grId){
     const naziv=esc(v('f_nr_'+k).trim()); if(!naziv) continue;
     const rawK=v('f_nrk_'+k).trim(); let kol=rawK===''?1:+rawK; if(!Number.isFinite(kol)||kol<=0) kol=1;
     const rawC=v('f_nrc_'+k).trim(); let cena=rawC===''?0:+rawC; if(!Number.isFinite(cena)||cena<0) cena=0;
-    DATA.predmer.push({id:'pm'+ts+'-r'+(n++), gr:grId, poz:naziv, jm:esc(v('f_nrj_'+k))||'kom', kol, cena:canFinance()?cena:0, izv:0, zaduzen:v('f_nrz_'+k)||null, sifra:null});
+    DATA.predmer.push({id:'pm'+ts+'-r'+(n++), gr:grId, poz:naziv, jm:esc(v('f_nrj_'+k))||'kom', kol, cena:canFinance()?cena:0, izv:0, zaduzen:v('f_nrz_'+k)||null, sifra:null, rb:sledeciRb(grId)});
   }
   RAZNO_N=0;
   return n;
@@ -5762,8 +5762,20 @@ function ocistiIdeve(d){
   if(n) console.warn('GradnjaOS: izbačeno '+n+' redova sa neispravnim id-jem (dozvoljeno: slova, cifre, _ . : | -).');
   return n;
 }
+/* REDNI BROJ POZICIJE (2026-10-23, migracija 32, predmer.rb): pozicija ima rb (investitorska numeracija iz uvezenog fajla ili 1..n
+   po gradilištu) I sifra (šifra artikla iz šifarnika). Izvoz situacija (lat/ćir) i izvoz predmera prikazuju SAMO rb; šifra artikla
+   ostaje u alatu (Predmer, situacija, trebovanje, magacin). Redovi bez rb (stari/demo) ga dobijaju pri učitavanju. */
+function jeSifraArtikla(sf){ return !!sf && (DATA.sifrarnik||[]).some(x=>x.sifra&&x.sifra===sf); }
+function rbPredmera(p){ if(p&&p.rb) return String(p.rb); const l=predmerZa(p.gr), i=l.indexOf(p); return i>=0?String(i+1):''; }
+function sledeciRb(grId, lista){ const l=lista||predmerZa(grId); let max=0; l.forEach(p=>{ const n=Number(p.rb); if(Number.isFinite(n)&&n>max) max=n; }); return String(Math.max(max, l.length)+1); }
+function dopuniRb(){
+  const poGr={}; (DATA.predmer||[]).forEach(p=>{ (poGr[p.gr]=poGr[p.gr]||[]).push(p); });
+  Object.values(poGr).forEach(l=>{ let n=0; l.forEach(p=>{ if(p.rb==null||p.rb===''){ p.rb = (p.sifra&&!jeSifraArtikla(p.sifra)) ? String(p.sifra) : null; } });
+    l.forEach(p=>{ if(p.rb==null){ n++; while(l.some(q=>q!==p&&q.rb===String(n))) n++; p.rb=String(n); } }); });
+}
 function normalizeData(){
   ocistiIdeve(DATA);
+  dopuniRb();
   (DATA.zaposleni||[]).forEach(z=>{ if(!Array.isArray(z.grs)) z.grs = z.gr?[z.gr]:[]; delete z.gr; if(!Array.isArray(z.bivsi)) z.bivsi=[]; });
   (DATA.gradilista||[]).forEach(g=>{ if(!g.modul) g.modul='izvodjenje'; if(g.modul==='izvodjenje'&&!g.tip) g.tip='visokogradnja'; });
   if(!DATA.situacije) DATA.situacije=[];
