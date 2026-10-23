@@ -1,3 +1,8 @@
+# Pregled novog koda (2026-10-23) — GOTOVO
+- [x] Subagent jednostavnost + subagent tacnost nad `7c08b19..HEAD`; nalazi provereni na kodu; 2 commita (1317306, a7f2881); migracija 33.
+- Nauceno: posle uklanjanja UI dela (ceklist e) proveriti SVE pozivaoce koji citaju njegove id-jeve (dodajRaznoIzvodjenje je citao
+  Projektovanje-Razno); pravilo koje zivi na 4 mesta (uloge) se menja na sva 4 u ISTOM commitu — ovde su klijent i mock zaostali.
+
 # Pet tacaka klijenta (2026-10-23) — GOTOVO (5. tacka: mejl trebovanja ceka Resend)
 
 ## Plan (advisor: migracija prvo, pa najmanje → najrizicnije, svaki korak svoj commit)

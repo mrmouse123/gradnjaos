@@ -293,3 +293,18 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   loga u mock-u mora imati id, `formPredmerImport` resetuje `PREDMER_PRIPREMA` pri otvaranju, `beleziLog` je asinhron
   (sačekati tick pre provere loga). RLS proba 2026-10-23: Petar vidi rb kroz view i ne može da ga promeni; Nikola (pro) sme;
   `dodeli_ulogu` radnik+izvodjenje odbijen; `mejl_direktora_izvodjenja` = dirizv@gradnjaos.test i za rukovodioca.
+
+- **Pregled novog koda sa dva skila (2026-10-23, `7c08b19..HEAD`, dva nezavisna subagenta):** *jednostavnost* — `saveSite`
+  Izvođenja više ne zove `dodajIzSifarnika`/`dodajRaznoIzvodjenje` (ček-liste nema u formi; Razno redovi uneti pod
+  Projektovanjem mogli su da upadnu u novo gradilište Izvođenja), mrtva pravila radnik-modul u kokpitu/mocku (server je jedino
+  pravilo), departman UI u `depBadge/depCipovi/depOpcije/depIzForme`, `aiAkcija` jedan log, `aiCitajSSE` bez mrtvog parametra,
+  testovi bez pinovanja konstanti. *Tačnost* — (1) AI petlja: `max_tokens`/`refusal` odgovor može da sadrži `tool_use` blok;
+  bez `tool_result` u sledećoj poruci API vraća 400 za SVAKO sledeće pitanje → nastavak nosi stub rezultate + tekst u istoj
+  user poruci, prekid skida assistant poruku (`AI_PORUKE.pop()`); (2) direktor modula je izmenom zaposlenog/resursa brisao tuđi
+  departman (select nije imao tu opciju → null) → `depOpcije` prikazuje tuđi departman kao zaključanu izabranu opciju,
+  `depIzForme(v, staro)` čuva staro; „Dodeli sve“ ne dira resurse tuđeg departmana; (3) sitno: `sledeciRb` ceo broj (5.3 → 6),
+  `savePredmerImport` smemNa, `ai_akcija` za zadatak nosi `forma:'otvorena'`, potrošnja `limit(5000)` + lokalni početak
+  meseca, `posalji-trebovanje` 1–2 ispravne adrese (nije otvoreni relej), migracija 33 (`angazovanost` broji otvorenu sesiju
+  do granice auto-pauze; `mejl_direktora_izvodjenja` samo uz profil — proba: direktor dobija mejl, nalog bez profila null).
+  Ostavljeno svesno: `AI_EFFORT` let (menja se iz konzole / žive probe), `AI_STREAM` gate, zavisnost od sata uređaja u
+  `granicaAutoPauze` (server je izvor istine).
