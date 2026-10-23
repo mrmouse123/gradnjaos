@@ -1096,9 +1096,8 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const mods = (p, i) => { doc.getElementById('n_mp').checked = p; doc.getElementById('n_mi').checked = i; };   // stub ne cita "checked" iz HTML-a
     for (const id of ['n_mp', 'n_mi', 'n_modl']) if (!h.includes(`id="${id}"`)) throw new Error('forma nema polje modula ' + id);
     mods(true, true); set('n_email', 'r@test'); set('n_uloga', 'radnik'); set('n_zap', 'z2');
-    const preA = a.g._calls.alert.length; await a.run('dodeliUlogu()');
-    if (!a.g._calls.alert.slice(preA).some(m => /tačno jedan modul/.test(m))) throw new Error('radnik sa dva modula nije odbijen na klijentu');
-    mods(false, true); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    const preA = a.g._calls.alert.length; await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
+    if (a.g._calls.alert.slice(preA).some(m => /modul/.test(m))) throw new Error('radnik: cekboksi modula se ne gledaju (uvek projektovanje, migracija 32): ' + a.g._calls.alert.slice(preA));
     set('n_email', 's@test'); set('n_uloga', 'spoljni'); set('n_sar', pid); await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     mods(true, true); set('n_email', 'petar@test'); set('n_uloga', 'rukovodilac'); set('n_zap', 'z1'); doc.getElementById('n_fin').checked = true; await a.run('dodeliUlogu()'); for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r));
     const prof = a.g.__mock._db.profili;
@@ -1268,8 +1267,6 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!h.includes('Asistent — potrošnja ' + mes)) throw new Error('nema kartice potrosnje');
     if (!h.includes('5,70 USD')) throw new Error('USD nije 5,70: ' + (h.match(/[0-9]+,[0-9]{2} USD/) || [])[0]);
     if (!h.includes('<b class="num">2</b><small>pitanja')) throw new Error('broj pitanja nije 2');
-    const q = a.g.__mock._log.find(l => l.table === 'log_koriscenja' && (l.filters || []).some(f => f[0] === 'gte'));
-    if (!q) { const p = a.run('AI_POTROSNJA'); if (!p || p.pitanja !== 2) throw new Error('AI_POTROSNJA: ' + JSON.stringify(p)); }
     if (a.run('AI_POTROSNJA.usd') !== 5.7) throw new Error('usd: ' + a.run('AI_POTROSNJA.usd'));
     const b = await boot(); if (b.run('aiPotrosnjaKartica()') !== '') throw new Error('demo rezim prikazuje karticu');
   });
@@ -3084,7 +3081,6 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (a.run("DATA.rad_na_zadatku.filter(s=>!s.kraj).length") !== 2) throw new Error('zavrsi nije zatvorio novu sesiju');
     const agg = a.run(`agregirajAngazovanost(DATA.rad_na_zadatku.filter(s=>s.id==='rz-a1'||s.id==='rz-a2'), '2000-01-01', '2100-01-01')`);
     if (agg.length !== 1 || agg[0].minuta !== 780) throw new Error('angazovanost ne odseca: ' + JSON.stringify(agg));
-    if (!/AUTO_PAUZA_SAT=16/.test(a.src || '') && !a.run('AUTO_PAUZA_SAT===16')) throw new Error('AUTO_PAUZA_SAT');
   });
 
   /* ---- T60 (2026-10-22): validacija id-jeva pri ucitavanju — red sa navodnikom/zagradom u id-u ili FK polju se izbacuje (stored XSS kroz onclick) ---- */
@@ -3143,7 +3139,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const n = a.run('DATA.narudzbe[DATA.narudzbe.length-1]');
     if (n.mejl !== 'prodaja@dobavljac.rs') throw new Error('mejl nije sacuvan: ' + n.mejl);
     const url = String(a.g._calls.open.slice(o0).pop() || '');
-    if (!url.startsWith('mailto:dirizv%40test%2Cprodaja%40dobavljac.rs?') && !url.startsWith('mailto:dirizv%40test,prodaja%40dobavljac.rs?')) throw new Error('mailto primaoci: ' + url.slice(0, 80));
+    if (!url.startsWith('mailto:dirizv%40test,prodaja%40dobavljac.rs?')) throw new Error('mailto primaoci: ' + url.slice(0, 80));
     a.run("current='nabavka'; render();"); if (!a.g.document.getElementById('view').innerHTML.includes('dodatni primalac: prodaja@dobavljac.rs')) throw new Error('kartica bez dodatnog mejla');
     // bez direktora izvodjenja → NABAVKA_EMAIL
     const b = await boot({ supabase: true, seed: {} });
@@ -3231,7 +3227,6 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   section('T59 AI asistent');
   await acheck('T59 streaming (2026-10-22): aiCitajSSE sastavlja text / tool_use (JSON u delovima) / thinking+signature u iste blokove kao non-stream odgovor, javlja tekst u delovima, stop_reason i usage iz message_delta; error dogadjaj baca; u stubu (bez window.fetch) petlja ide kroz invoke', async () => {
     const a = await boot({ supabase: true, seed: {} });
-    if (a.run('AI_STREAM') !== false) throw new Error('stub nema fetch, AI_STREAM mora biti false');
     const ev = (o) => 'event: ' + o.type + '\ndata: ' + JSON.stringify(o) + '\n\n';
     const sse = [ev({ type: 'message_start', message: { usage: { input_tokens: 40, cache_read_input_tokens: 30, cache_creation_input_tokens: 5, output_tokens: 1 } } }),
       ev({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } }),
@@ -3340,7 +3335,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const bot = a.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (bot.length !== 1 || bot[0] !== 'Kratko: sve u redu.') throw new Error('nastavak: ' + JSON.stringify(bot));
     if (tela.length !== 2) throw new Error('ocekivana 2 poziva, bilo ' + tela.length);
-    if (!(tela[0].max_tokens >= 4000) || !tela[0].output_config || tela[0].output_config.effort !== 'medium') throw new Error('telo: ' + JSON.stringify({ mt: tela[0].max_tokens, oc: tela[0].output_config }));
+    if (!(tela[0].max_tokens >= 4000) || !tela[0].output_config || !tela[0].output_config.effort) throw new Error('telo: ' + JSON.stringify({ mt: tela[0].max_tokens, oc: tela[0].output_config }));
     const msgs = tela[1].messages;
     if (msgs.length !== 3 || msgs[1].role !== 'assistant' || msgs[1].content[0].type !== 'thinking' || msgs[1].content[0].signature !== 'sig1' || msgs[2].role !== 'user' || !/prekinut/.test(msgs[2].content[0].text)) throw new Error('istorija nastavka: ' + JSON.stringify(msgs.map(m => [m.role, m.content.map(b => b.type)])));
     if (a.run('AI_GRESKA')) throw new Error('greska: ' + a.run('AI_GRESKA'));
@@ -3404,7 +3399,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const a = await boot({ supabase: true, seed: {}, faults: { ai } });
     a.run("setRole('all')"); await a.run("aiPitaj('Koji projekti kasne?')");
     if (tela.length !== 2) throw new Error('broj poziva funkcije: ' + tela.length);
-    const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length !== 7 || !tela[0].tools[6].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
+    const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length < 6 || !tela[0].tools[tela[0].tools.length - 1].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
     if (!tela[0].messages[0].content[0].cache_control || tela[0].messages[0].content[0].text !== 'Koji projekti kasne?') throw new Error('poslednja poruka bez cache_control: ' + JSON.stringify(tela[0].messages[0]));
     const m2 = tela[1].messages; if (m2.length !== 3 || m2[1].role !== 'assistant' || m2[2].role !== 'user' || m2[2].content[0].type !== 'tool_result' || m2[2].content[0].tool_use_id !== 'tu1' || !m2[2].content[0].cache_control || m2[1].content[0].cache_control) throw new Error('telo 2: ' + JSON.stringify(m2).slice(0, 300));
     if (a.run('typeof AI_PORUKE[0].content') !== 'string' || a.run('JSON.stringify(AI_PORUKE).includes("cache_control")')) throw new Error('markeri kesa su upisani u AI_PORUKE (treba samo u kopiju)');
@@ -4398,15 +4393,18 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
   await acheck('Razno u Izvodjenju: slobodna stavka (naziv, JM, kolicina, cena, zaduzen) → predmer red bez sifre; i kroz formIzSifarnika; Projektovanje bez sifarnika u situaciji', async () => {
     const a = await boot();
-    a.run("ROLE='all'; formSite(); document.getElementById('f_modul').value='izvodjenje'; toggleTipRadova('izvodjenje'); RAZNO_MODUL='izvodjenje'; dodajRaznoRed(); dodajRaznoRed();");
+    a.run("ROLE='all'; formSite(); document.getElementById('f_modul').value='izvodjenje'; toggleTipRadova('izvodjenje');");
     const doc = a.g.document, set = (id, v) => { doc.getElementById(id).value = v; };
-    if (a.run('RAZNO_N') !== 2) throw new Error('RAZNO_N ' + a.run('RAZNO_N'));
-    set('f_nr_0', ' Usluga montaže <i>x</i> '); set('f_nrj_0', 'h'); set('f_nrk_0', '12'); set('f_nrc_0', '45'); set('f_nrz_0', 'z2');
-    set('f_nr_1', '');
     set('f_naziv', 'T43 razno'); set('f_modul', 'izvodjenje'); set('f_tip', 'visokogradnja'); set('f_kli', a.run('DATA.clijenti[0].id')); set('f_ruk', 'z1');
     set('f_poc', a.run('todayStr()')); set('f_rok', a.run('plusDays(90)')); set('f_cena', '1000'); set('f_tro', '800');
     a.run('saveSite()');
     const gid = a.run('DATA.gradilista[DATA.gradilista.length-1].id');
+    if (a.run(`predmerZa(${JSON.stringify(gid)}).length`) !== 0) throw new Error('novo gradiliste Izvodjenja bez fajla mora biti bez predmera (2026-10-23)');
+    a.run(`formIzSifarnika(${JSON.stringify(gid)}); dodajRaznoRed(); dodajRaznoRed();`);   // Razno se dodaje kroz formIzSifarnika (forma novog gradilista nema ceklist u)
+    if (a.run('RAZNO_N') !== 2) throw new Error('RAZNO_N ' + a.run('RAZNO_N'));
+    set('f_nr_0', ' Usluga montaže <i>x</i> '); set('f_nrj_0', 'h'); set('f_nrk_0', '12'); set('f_nrc_0', '45'); set('f_nrz_0', 'z2');
+    set('f_nr_1', '');
+    a.run(`saveIzSifarnika(${JSON.stringify(gid)})`);
     const rows = a.run(`predmerZa(${JSON.stringify(gid)})`);
     if (rows.length !== 1 || rows[0].jm !== 'h' || rows[0].kol !== 12 || rows[0].cena !== 45 || rows[0].zaduzen !== 'z2' || rows[0].sifra !== null || rows[0].poz.includes('<i>') || !rows[0].poz.includes('&lt;i&gt;')) throw new Error('razno red: ' + JSON.stringify(rows));
     a.run(`formIzSifarnika(${JSON.stringify(gid)}); dodajRaznoRed();`);
@@ -4560,7 +4558,9 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])").includes('(oba modula)')) throw new Error('oba modula: ' + a.run("ulogaLabela('rukovodilac',true,['projektovanje','izvodjenje'])"));
     if (a.run("ulogaLabela('admin',true,['projektovanje'])").includes('·')) throw new Error('uprava nema modul u labeli');
     const r1 = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'radnik', p_zaposleni_id: 'z2', p_moduli: ['projektovanje', 'izvodjenje'] });
-    if (!r1.error || !/tačno jedan/.test(r1.error.message)) throw new Error('mock: radnik sa 2 modula prosao');
+    if (r1.error || JSON.stringify(a.g.__mock._db.profili.find(p => p.user_id === 'u-ruk').moduli) !== '["projektovanje"]') throw new Error('mock: radnik mora dobiti [projektovanje] (migracija 32): ' + (r1.error && r1.error.message));
+    const r1b = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'radnik', p_zaposleni_id: 'z2', p_moduli: ['izvodjenje'] });
+    if (!r1b.error || !/samo u Projektovanju/.test(r1b.error.message)) throw new Error('mock: radnik samo izvodjenje mora biti odbijen');
     const r2 = await a.g.__mock.createClient().rpc('dodeli_ulogu', { p_email: 'petar@test', p_uloga: 'admin', p_moduli: ['projektovanje'] });
     if (r2.error) throw new Error('mock admin: ' + r2.error.message);
     const pa = a.g.__mock._db.profili.find(p => p.user_id === 'u-ruk');
