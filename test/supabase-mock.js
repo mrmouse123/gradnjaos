@@ -290,6 +290,7 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
     async rpc(name, args){
       log.push({ op: 'rpc', name, args });
       if (faults.rpcFail) return { data: null, error: { message: faults.rpcFail } };
+      if (name === 'mejl_direktora_izvodjenja') { const p = (db.profili || []).find(x => x.uloga === 'direktor_izvodjenja'); const u = p && Object.entries(authOpts.users || {}).find(([, x]) => x.id === p.user_id); return { data: u ? u[0] : null, error: null }; }   // migracija 32
       /* Migracija 12: nalozi i log — isti guardovi kao na serveru (direktor; ne sebi; ne poslednjem direktoru). */
       const emailOd = id => Object.keys(authOpts.users || {}).find(e => (authOpts.users[e] || {}).id === id) || null;
       const idOd = email => ((authOpts.users || {})[String(email || '').toLowerCase()] || {}).id || null;

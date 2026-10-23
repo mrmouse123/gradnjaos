@@ -2473,7 +2473,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (poziv.name !== 'posalji-trebovanje') throw new Error('pogresno ime funkcije: ' + poziv.name);
     if (!poziv.body || !poziv.body.to || !poziv.body.subject || !poziv.body.body)
       throw new Error('nepotpun payload: ' + JSON.stringify(poziv.body));
-    if (poziv.body.to !== NABAVKA_EMAIL_TEST(a)) throw new Error('to != NABAVKA_EMAIL: ' + poziv.body.to);
+    if (!(Array.isArray(poziv.body.to) ? poziv.body.to.includes(NABAVKA_EMAIL_TEST(a)) : poziv.body.to === NABAVKA_EMAIL_TEST(a))) throw new Error('to != NABAVKA_EMAIL: ' + JSON.stringify(poziv.body.to));   // od 2026-10-23 niz primalaca
     if (a.g._calls.open.length !== preOpen) throw new Error('mailto otvoren iako je mejl uspesno poslat preko funkcije');
   });
   function NABAVKA_EMAIL_TEST(a){ return a.run('NABAVKA_EMAIL'); }
@@ -3128,6 +3128,27 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run(`formEmp(${JSON.stringify(zIzv)})`); a.g.document.getElementById('f_eime').value = 'Test Ime'; a.g.document.getElementById('f_est').value = 'Na terenu'; a.g.document.getElementById('f_edep').value = ''; a.run(`saveEmp(${JSON.stringify(zIzv)})`);
     if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== null) throw new Error('prazan departman mora biti null (pravilo 8)');
     a.run("empDep='svi'; resDep='svi';");
+  });
+  await acheck('T64 (2026-10-23): trebovanje ide direktoru izvodjenja (RPC mejl_direktora_izvodjenja) + dodatni mejl iz forme (narudzbe.mejl, validacija); bez takvog naloga → NABAVKA_EMAIL; mailto nosi oba; kartica prikazuje dodatni mejl', async () => {
+    const users = { 'direktor@test': { id: 'u-dir', password: 'x' }, 'dirizv@test': { id: 'u-dirizv', password: 'x' } };
+    const a = await boot({ supabase: true, seed: { profili: [{ user_id: 'u-dir', uloga: 'direktor', zaposleni_id: null, ime: 'Direktor' }, { user_id: 'u-dirizv', uloga: 'direktor_izvodjenja', zaposleni_id: null, ime: 'DI', moduli: ['izvodjenje'] }] }, users });
+    a.run("formNarudzba()"); a.g.document.getElementById('f_ngr').value = a.run('DATA.gradilista[0].id');   // select u stubu nema vrednost
+    a.g.document.getElementById('st_n_1').value = 'Cement'; a.g.document.getElementById('f_nmejl').value = 'losmejl';
+    const n0 = a.g._calls.alert.length; a.run('saveNarudzba()'); if (a.g._calls.alert.length === n0 || a.run('DATA.narudzbe.some(n=>n.mejl)')) throw new Error('los mejl prosao');
+    a.g.document.getElementById('f_nmejl').value = 'Prodaja@Dobavljac.rs';
+    const o0 = a.g._calls.open.length; a.run('saveNarudzba()'); for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    const n = a.run('DATA.narudzbe[DATA.narudzbe.length-1]');
+    if (n.mejl !== 'prodaja@dobavljac.rs') throw new Error('mejl nije sacuvan: ' + n.mejl);
+    const url = String(a.g._calls.open.slice(o0).pop() || '');
+    if (!url.startsWith('mailto:dirizv%40test%2Cprodaja%40dobavljac.rs?') && !url.startsWith('mailto:dirizv%40test,prodaja%40dobavljac.rs?')) throw new Error('mailto primaoci: ' + url.slice(0, 80));
+    a.run("current='nabavka'; render();"); if (!a.g.document.getElementById('view').innerHTML.includes('dodatni primalac: prodaja@dobavljac.rs')) throw new Error('kartica bez dodatnog mejla');
+    // bez direktora izvodjenja → NABAVKA_EMAIL
+    const b = await boot({ supabase: true, seed: {} });
+    b.run("formNarudzba()"); b.g.document.getElementById('f_ngr').value = b.run('DATA.gradilista[0].id'); b.g.document.getElementById('st_n_1').value = 'Cement';
+    const o1 = b.g._calls.open.length; b.run('saveNarudzba()'); for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r));
+    const url2 = String(b.g._calls.open.slice(o1).pop() || '');
+    if (!url2.startsWith('mailto:' + encodeURIComponent(b.run('NABAVKA_EMAIL')) + '?')) throw new Error('fallback: ' + url2.slice(0, 80));
+    if (b.run('DATA.narudzbe[DATA.narudzbe.length-1].mejl') !== null) throw new Error('prazan mejl mora biti null');
   });
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {

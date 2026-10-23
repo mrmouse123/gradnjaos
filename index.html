@@ -4525,12 +4525,21 @@ function narudzbaMailBody(n){
   lines.push('','\u2014 Poslato iz GradnjaOS');
   return lines.join('\n');
 }
+/* Primaoci trebovanja (zahtev 2026-10-23): UVEK direktor izvođenja (email naloga sa tom ulogom — RPC mejl_direktora_izvodjenja,
+   migracija 32; bez takvog naloga ili bez baze → NABAVKA_EMAIL) + opcioni dodatni mejl iz forme (narudzbe.mejl). */
+async function primaociTrebovanja(n){
+  let dir=null;
+  if(supa){ try{ const {data,error}=await supa.rpc('mejl_direktora_izvodjenja'); if(!error&&data) dir=String(data); }catch(e){} }
+  const lista=[dir||NABAVKA_EMAIL]; if(n.mejl&&!lista.includes(unesc(n.mejl))) lista.push(unesc(n.mejl));
+  return lista;
+}
 async function posaljiMejlNabavci(id){
   const n=(DATA.narudzbe||[]).find(x=>x.id===id); if(!n) return;
   if(!smemNa(n.gr)) return;
   const g=grById[n.gr];
   const subject='Trebovanje materijala \u2014 '+(g?unesc(g.naziv):'')+' \u2014 '+fmtDate(n.datum);
   const telo=narudzbaMailBody(n);
+  const primaoci=await primaociTrebovanja(n);
   /* Pravo slanje preko Edge Function-a (supabase/functions/posalji-trebovanje),
      samo kad je Supabase povezan. Deploy ceka Jovanovo "da" (CLAUDE.md). Dok
      funkcija nije deploy-ovana (ili RESEND_API_KEY nije podesen), invoke()
@@ -4538,12 +4547,12 @@ async function posaljiMejlNabavci(id){
      korisnika osim sto (kad proradi) ne treba klik u mail klijentu. */
   if(mode==='supabase' && supa && supa.functions){
     try{
-      const {error}=await supa.functions.invoke('posalji-trebovanje', { body:{ to:NABAVKA_EMAIL, subject, body:telo } });
+      const {error}=await supa.functions.invoke('posalji-trebovanje', { body:{ to:primaoci, subject, body:telo } });
       if(error) throw new Error(error.message||JSON.stringify(error));
       return;
     }catch(e){ console.error('Edge function posalji-trebovanje (fallback na mailto):', e); }
   }
-  const url='mailto:'+encodeURIComponent(NABAVKA_EMAIL)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(telo);
+  const url='mailto:'+primaoci.map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(telo);
   try{ window.open(url,'_self'); }catch(e){}
 }
 function viewNabavka(){
@@ -4559,6 +4568,7 @@ function viewNabavka(){
         ${st}
       </div>
       <div class="card-b">
+        ${n.mejl?`<div class="sub" style="margin-bottom:6px">✉ dodatni primalac: ${n.mejl}</div>`:''}
         ${(n.stavke||[]).map(x=>`<div class="dr-kv"><span class="k">${x.sifra?`<span class="num sub">${x.sifra}</span> \u00b7 `:''}${x.naziv}${x.predmer_id?' <span class="badge b-blue" title="Pozicija iz ugovorenog predmera">predmer</span>':''}</span><span class="v num">${x.kolicina} ${x.jm}</span></div>`).join('')}
         ${n.napomena?`<div style="font-size:12.5px;color:var(--muted);margin-top:10px">\uD83D\uDCDD ${n.napomena}</div>`:''}
         <div style="display:flex;gap:8px;margin-top:14px">
@@ -4570,7 +4580,7 @@ function viewNabavka(){
     </div>`;
   }).join('') || '<div class="card"><div class="empty">Jo\u0161 nema trebovanja materijala.</div></div>';
   return head('Trebovanje materijala','Poru\u010di materijal za gradili\u0161te \u2014 \u010duvanjem se otvara gotov mejl za slu\u017ebu nabavke.') +
-  `<div class="banner blue">${icon('warn')}<div>Mejl slu\u017ebe nabavke: <b>${NABAVKA_EMAIL}</b> \u2014 \u010duvanjem trebovanja otvara se popunjen mejl, ostaje samo klik \u201ePo\u0161alji\u201c. Adresa se menja u konfiguraciji na vrhu fajla.</div></div>
+  `<div class="banner blue">${icon('warn')}<div>Trebovanje ide <b>direktoru izvođenja</b> (nalog sa tom ulogom; bez njega: ${NABAVKA_EMAIL}) i, ako upišeš, dodatnom mejlu dobavljača \u2014 \u010duvanjem trebovanja otvara se popunjen mejl, ostaje samo klik \u201ePo\u0161alji\u201c. Adresa se menja u konfiguraciji na vrhu fajla.</div></div>
   <div class="tools">${mogaDaUpravljam()?`<button class="btn" onclick="formNarudzba()">${icon('plus')} Novo trebovanje</button>`:'<span class="sub">Trebovanje šalje rukovodilac gradilišta.</span>'}</div>
   ${cards}`;
 }
@@ -4625,10 +4635,13 @@ function formNarudzba(){
         <div id="stavkeBox">${stavkaRed(1)}</div>
         <button class="btn ghost" style="padding:6px 12px;font-size:12px" onclick="addStavka()">${icon('plus')} Dodaj stavku</button>
       </div>
-      <div class="f-row"><label>Napomena (opciono)</label><textarea id="f_nnap" placeholder="npr. isporuka pre 7h, kontakt na kapiji\u2026" style="min-height:52px"></textarea></div>
+      <div class="f-2">
+        <div class="f-row"><label>Napomena (opciono)</label><textarea id="f_nnap" placeholder="npr. isporuka pre 7h, kontakt na kapiji\u2026" style="min-height:52px"></textarea></div>
+        <div class="f-row"><label>Dodatni mejl (dobavljač / krajnji korisnik, opciono)</label><input id="f_nmejl" type="email" placeholder="npr. prodaja@dobavljac.rs"><div class="sub" style="margin-top:4px">Trebovanje uvek ide direktoru izvođenja; ovde upiši još jednog primaoca.</div></div>
+      </div>
       <div class="m-foot">
         <button class="btn ghost" onclick="closeModal()">Otka\u017ei</button>
-        <button class="btn" onclick="saveNarudzba()">Sa\u010duvaj i otvori mejl</button>
+        <button class="btn" onclick="saveNarudzba()">Sa\u010duvaj i po\u0161alji</button>
       </div>
     </div>`, {siroka:true, kljuc:'trebovanje'});
   osveziNarPredmer(sites[0].id);
@@ -4649,7 +4662,8 @@ function saveNarudzba(){
     if(nz) stavke.push({naziv:nz, kolicina:kol, jm:v('st_j_'+i)||'kom'});
   }
   if(!stavke.length){ alert('Unesi bar jednu stavku materijala.'); return; }
-  const n={ id:'n'+Date.now(), gr, autor:(ROLE==='all'?'direkcija':ROLE), datum:todayStr(), rok:v('f_nrok')||plusDays(5), status:'poslato', napomena:esc(String(v('f_nnap')).trim()), stavke };
+  const mejl=String(v('f_nmejl')).trim().toLowerCase(); if(mejl&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mejl)){ alert('Dodatni mejl nije ispravan.'); return; }
+  const n={ id:'n'+Date.now(), gr, autor:(ROLE==='all'?'direkcija':ROLE), datum:todayStr(), rok:v('f_nrok')||plusDays(5), status:'poslato', napomena:esc(String(v('f_nnap')).trim()), stavke, mejl:mejl?esc(mejl):null };
   DATA.narudzbe.push(n); NAR_PM={};
   saveState(); closeModal(); render();
   posaljiMejlNabavci(n.id);
