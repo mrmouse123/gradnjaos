@@ -270,3 +270,26 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   Demo režim (bez baze) nema cron — red ostaje bez kraja, prikaz odsečen. Proba na bazi 2026-10-22: 10:00 → 16:00/360 min,
   17:00 → 00:00/420 min, sveža ostala otvorena, Sarin update kraj=now() na zatvorenoj ignorisan, log red upisan. Server
   `angazovanost()` RPC otvorenu sesiju i dalje broji do now() (prozor ≤15 min — ostavljeno). T61.
+
+- **Pet tačaka klijenta (2026-10-23, migracija 32):** poruka „Ovo su potrebne popravke" → sedam commita po koracima (advisor:
+  migracija prvo, pa najmanje i najbezbednije). 1) Projektovanje: tab Magacin (= šifarnik Izvođenja) se ne nudi u segmentu
+  Projektovanje ni upravi — `tabDozvoljen('magacin')` gleda `modulEfektivni()`, `viewMagacin` vraća na dash (T62 renderuje sve
+  tabove i traži „šifarnik"); auto-pauza u 16:00 je već bila urađena 2026-10-22. 2) Izvođenje: trebovanje → RPC
+  `mejl_direktora_izvodjenja()` (definer; email naloga sa ulogom direktor_izvodjenja, inače `NABAVKA_EMAIL`) + polje „Dodatni
+  mejl" (`narudzbe.mejl`, validacija, prikaz na kartici), `primaociTrebovanja(n)`, mailto sa više adresa, funkcija
+  `posalji-trebovanje` prima niz (`to: Array.isArray(to)?to:[to]`; deploy i dalje čeka Resend) — T64; redni broj:
+  `predmer.rb` (backfill: `sifra` koja NIJE šifra artikla → rb, ostalo `row_number` po gr; view `predmer_v` sa rb NA KRAJU,
+  column grant, trigger: ne-uprava na Izvođenju ne menja rb), klijent `jeSifraArtikla/rbPredmera/sledeciRb/dopuniRb`
+  (normalizeData), izvoz situacije `c(T(rbPredmera(p)))` umesto sifre, VAN PREDMERA prazna prva kolona, `izvozPredmer` Br. poz.
+  = rb, Predmer strana prikazuje rb + badge šifre — T65; magacin: `skiniSaStanjaZaPredmer(grId, redovi)` (opis u CLAUDE.md) —
+  odluka: skida koliko ima, manjak prijavi (negativno stanje bi bila alternativa; Jovan nije rekao) — T66. 3)+4) departman:
+  `resursi.modul`, `zaposleni.departman` (check projektovanje|izvodjenje), čipovi Svi/Departman projektovanje/Departman
+  izvođenje, kolona Departman, select u formama (null kad prazno — pravilo 8), `dodeliSveResurse(dep|null)` uz confirm (null
+  samo puna uprava), log `resursi_departman` — T63. 5) uloge: `ULOGE`/`ulogaLabela` nova imena; radnik SAMO projektovanje:
+  constraint `profili_moduli_uloga_check` + `dodeli_ulogu` (raise na izvodjenje-samo, inače forsira projektovanje) + kokpit
+  bez čekboksa modula za radnika + mock; milos (z15) prebačen na projektovanje u migraciji; „Pogled kao" bez radnika
+  izvođenja (7 opcija), ali `setRole('radnik:X|izv')` i dalje simulira (testovi radnika na Izvođenju). Lekcije iz testova:
+  select u stubu nema vrednost (`f_ngr` set ručno), stub ne čita `value` iz HTML-a (`f_rnaziv`/`f_eime` set ručno), seed
+  loga u mock-u mora imati id, `formPredmerImport` resetuje `PREDMER_PRIPREMA` pri otvaranju, `beleziLog` je asinhron
+  (sačekati tick pre provere loga). RLS proba 2026-10-23: Petar vidi rb kroz view i ne može da ga promeni; Nikola (pro) sme;
+  `dodeli_ulogu` radnik+izvodjenje odbijen; `mejl_direktora_izvodjenja` = dirizv@gradnjaos.test i za rukovodioca.

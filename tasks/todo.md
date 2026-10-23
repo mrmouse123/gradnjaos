@@ -1,3 +1,20 @@
+# Pet tacaka klijenta (2026-10-23) — GOTOVO (5. tacka: mejl trebovanja ceka Resend)
+
+## Plan (advisor: migracija prvo, pa najmanje → najrizicnije, svaki korak svoj commit)
+- [x] 1. Migracija 32 + RLS proba (rb, mejl, modul/departman, radnik samo projektovanje, RPC mejl direktora izvodjenja).
+- [x] 2. Imena uloga + Admin kokpit radnik bez modula + Pogled kao.
+- [x] 3. Projektovanje bez Magacina/sifarnika (T62).
+- [x] 4. Resursi/Zaposleni departman + Dodeli sve (T63).
+- [x] 5. Trebovanje: direktor izvodjenja + dodatni mejl (T64).
+- [x] 6. Redni broj pozicije u izvozu (T65).
+- [x] 7. Magacin: predmer skida sa stanja (T66).
+- [x] docs: CLAUDE.md, beleske, memorija.
+
+## Pretpostavke rečene Jovanu
+- Magacin: skida koliko ima, manjak prijavi (alternativa: negativno stanje).
+- Miloš (radnik izvodjenje) → radnik projektovanje; nema vise radnika Izvodjenja.
+- Trebovanje: primalac = nalog sa ulogom direktor_izvodjenja (RPC), fallback NABAVKA_EMAIL.
+
 # Asistent paket: nivo 2 + streaming + potrosnja (2026-10-22) — GOTOVO
 
 ## Plan (redosled po advisoru: najmanje i najbezbednije prvo)

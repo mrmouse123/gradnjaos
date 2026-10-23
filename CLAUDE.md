@@ -92,6 +92,18 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     na prvom ulazu (`'mg-'+id`), render NIKAD ne gura virtuelne redove u DATA; trebovanje iz ugovorenog predmera (`NAR_PM` mapa).
   - *Dokumenti:* `dokumenti.data` bez select granta → `dokumenti_v` + `dokument_podaci(id)`; brisanje = server PRVO pa lokalno.
   - *Adresa:* `gradilista.adresa` je u view-u, trigeru, formi, fioci, izveštajima i mejlu.
+  - *Zahtevi klijenta 2026-10-23 (migracija 32):* (a) `predmer.rb` = REDNI BROJ pozicije (investitorska numeracija iz uvoza ili
+    1..n po gradilištu; `dopuniRb` pri učitavanju, `sledeciRb` za nove redove) — izvoz situacija lat/ćir i izvoz predmera
+    prikazuju SAMO rb, šifra artikla (`predmer.sifra`) ostaje u alatu i NE briše se (ključ uparivanja stavki). (b) Trebovanje:
+    primalac je UVEK direktor izvođenja (RPC `mejl_direktora_izvodjenja`, inače `NABAVKA_EMAIL`) + opcioni `narudzbe.mejl`;
+    Edge Function i mailto dobijaju NIZ primalaca. (c) `skiniSaStanjaZaPredmer(gr, redovi)`: artikli iz šifarnika u NOVOM predmeru
+    (saveSite, savePredmerImport, saveIzSifarnika — samo novi redovi) idu kao izlaz iz magacina, koliko ima (ne u minus), manjak
+    u alertu + log `magacin_predmer`; uprava, Izvođenje, nikad iz seed/reset. (d) `resursi.modul` / `zaposleni.departman`
+    (null = svi; izveden iz gradilišta kad nije izričit — `depResursa`/`depZaposlenog`), čipovi i „Dodeli sve resurse“ (uprava,
+    direktor modula samo svoj). (e) U segmentu Projektovanje nema Magacina ni upravi (`tabDozvoljen`, `viewMagacin` → dash).
+    (f) Imena uloga (`ULOGE`, `ulogaLabela`): Direktor, Admin, Direktor projektovanje, Direktor izvođenje, Rukovodilac
+    projektovanje/izvođenje (iz modula), Radnik (SAMO projektovanje: constraint + `dodeli_ulogu` + kokpit bez izbora modula),
+    Spoljni saradnik. T62–T66.
   - *Validacija id-jeva (2026-10-22):* `ocistiIdeve(DATA)` na početku `normalizeData` izbacuje red čiji id/FK (`ID_POLJA` +
     `ID_POLJA_TABELE`) nije `[A-Za-z0-9_.:|-]{1,80}` — id-jevi idu sirovi u `onclick="…('${id}')"`, pa je ovo brana od stored XSS
     kroz REST mimo app-a. `osoba` je id SAMO u `rad_na_zadatku` (u klijentima/podizvođačima je ime). T60.
@@ -103,7 +115,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     kao non-stream odgovor (thinking + signature nepromenjeni → istorija append-only); petlja ne zna za tok. *Potrošnja:*
     `AI_CENE` je jedino mesto cena/limita.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..31.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..32.sql` redom.
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -143,7 +155,8 @@ nigde ne računa — ako zatreba, to je nova odluka (stopa, prikaz sa/bez).
 - rukovodilac PROJEKTOVANJE + finansije: `nikola@gradnjaos.test` → `z17` (Nikola Vuković; vodi g9, trtr, test 1)
 - rukovodilac IZVOĐENJE bez finansija: `petar@gradnjaos.test` → `z1` (Petar Kovačević; vodi g1, Test 2)
 - radnik PROJEKTOVANJE: `sara@gradnjaos.test` → `z10` (Sara Ilić; tim g9 + trtr; 3 zadatka na g9 za tajmer)
-- radnik IZVOĐENJE: `milos@gradnjaos.test` → `z15` (Miloš Đukić; tim g1, g6; bez zadataka)
+- radnik (bivši „izvođenje“): `milos@gradnjaos.test` → `z15` (Miloš Đukić; tim g1, g6) — od 2026-10-23 radnik postoji SAMO u
+  Projektovanju (migracija 32), pa je njegov profil prebačen na `moduli=[projektovanje]`; na gradilištima Izvođenja ništa ne vidi.
 - Lozinke su poslate Jovanu u chatu, NISU u repou. Promena: dugme "Lozinka" u sidebaru.
 - Novi korisnik: Supabase → Authentication → Users → Add user (email+lozinka,
   auto confirm), pa u aplikaciji **Admin kokpit** → dodeli ulogu (uprava; admin ne
