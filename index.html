@@ -1960,7 +1960,9 @@ function bindClientSearch(){ const el=document.getElementById('clSearch'); if(!e
 }
 
 /* ---------- ZAPOSLENI ---------- */
-let empQuery='', empFilter='all';
+let empQuery='', empFilter='all', empDep='svi';   // empDep: svi | projektovanje | izvodjenje (zahtev 2026-10-23)
+/* Departman zaposlenog (migracija 32, zaposleni.departman): izričit, inače izveden iz modula gradilišta na kojima je (jedan modul → taj; mešano/ništa → null = svi). */
+function depZaposlenog(z){ if(z.departman) return z.departman; const m=new Set((z.grs||[]).map(x=>grById[x]).filter(Boolean).map(g=>g.modul||'izvodjenje')); return m.size===1?[...m][0]:null; }
 function viewEmps(){
   const filters=[['all','Svi'],['Na terenu','Na terenu'],['Kancelarija','Kancelarija'],['Odsutan','Odsutni']];
   return head('Zaposleni','Klikni na red za profil — projekat, opis posla i aktivni zadaci.') +
@@ -1969,19 +1971,21 @@ function viewEmps(){
     ${filters.map(f=>`<button class="chip ${empFilter===f[0]?'active':''}" onclick="setEmpFilter('${f[0]}')">${f[1]}</button>`).join('')}
     ${isDirector()?`<button class="btn" style="margin-left:auto" onclick="formEmp()">${icon('plus')} Novi zaposleni</button>`:''}
   </div>
+  <div class="tools" style="margin-top:-6px">${[['svi','Svi'],['projektovanje','Departman projektovanje'],['izvodjenje','Departman izvođenje']].filter(([d])=>d==='svi'||modulDozvoljen(d)).map(d=>`<button class="chip ${empDep===d[0]?'active':''}" onclick="empDep='${d[0]}';render()">${d[1]}</button>`).join('')}</div>
   <div class="card"><div id="empTable" style="overflow-x:auto">${empsTable()}</div></div>`;
 }
 function empsTable(){
   const ids=visibleSiteIds();
-  let list=DATA.zaposleni.filter(z=>(upravaSve()||(z.grs||[]).some(x=>ids.has(x))) && (empFilter==='all'||z.status===empFilter));
+  let list=DATA.zaposleni.filter(z=>(upravaSve()||(z.grs||[]).some(x=>ids.has(x))) && (empFilter==='all'||z.status===empFilter) && (empDep==='svi'||depZaposlenog(z)===empDep));
   if(empQuery.trim()){ const q=empQuery.toLowerCase(); list=list.filter(z=>unesc(z.ime+' '+z.poz+' '+(z.grs||[]).map(x=>grById[x]?grById[x].naziv:'').join(' ')).toLowerCase().includes(q)); }
   if(!list.length) return `<div class="empty">Nema rezultata.</div>`;
-  return `<table><thead><tr><th>Zaposleni</th><th>Pozicija</th><th>Projekat</th><th>Opis posla</th><th>Status</th>${jeSuper()?'<th></th>':''}</tr></thead><tbody>
+  return `<table><thead><tr><th>Zaposleni</th><th>Pozicija</th><th>Departman</th><th>Projekat</th><th>Opis posla</th><th>Status</th>${jeSuper()?'<th></th>':''}</tr></thead><tbody>
     ${list.map(z=>{ const projs=(z.grs||[]).map(x=>grById[x]).filter(Boolean);
       const kratko = z.opis ? (z.opis.length>72 ? z.opis.slice(0,71)+'…' : z.opis) : '—';
       return `<tr class="clk" onclick="openEmp('${z.id}')">
         <td><div class="who"><div class="av">${initials(z.ime)}</div><div><div class="strong">${z.ime}</div><div class="sub num">${z.tel}</div></div></div></td>
         <td>${z.poz}</td>
+        <td>${depZaposlenog(z)?`<span class="badge ${depZaposlenog(z)==='projektovanje'?'b-blue':'b-green'}">${depLabela(depZaposlenog(z))}</span>`:'<span class="sub">—</span>'}</td>
         <td><span style="color:var(--blue);font-weight:600">${projs.map(g=>g.naziv).join('</span><div style="height:3px"></div><span style="color:var(--blue);font-weight:600">')||'—'}</span>${projs.length>1?`<div class="sub">${projs.length} projekta</div>`:''}</td>
         <td style="max-width:280px"><span style="font-size:12.5px;color:var(--muted)">${kratko}</span></td>
         <td><span class="badge ${EMP_STATUS[z.status]}">${z.status}</span></td>
@@ -2419,7 +2423,7 @@ function formEmp(id){
       </div>`}
       <div class="f-2">
         <div class="f-row"><label>Status</label><select id="f_est">${['Na terenu','Kancelarija','Odsutan'].map(s=>`<option${sel(s,z&&z.status)}>${s}</option>`).join('')}</select></div>
-        <div></div>
+        <div class="f-row"><label>Departman</label><select id="f_edep"><option value="">— po gradilištima —</option>${['projektovanje','izvodjenje'].filter(modulDozvoljen).map(d=>`<option value="${d}" ${z&&z.departman===d?'selected':''}>${depLabela(d)}</option>`).join('')}</select></div>
       </div>
       <div class="f-row"><label>Opis posla</label><textarea id="f_eopis" placeholder="Šta ova osoba konkretno radi na projektu…">${z?z.opis||'':''}</textarea></div>
       <div class="m-foot">
@@ -2435,10 +2439,12 @@ function saveEmp(id){
   if(id){   // IZMENA: grs/bivsi/id se ne diraju (raspored ide kroz formRaspored/formTim)
     const z=zapById[id]; if(!z) return;
     z.ime=ime; z.poz=v('f_epoz'); z.tel=esc(String(v('f_etel')).trim())||'—'; z.status=v('f_est'); z.opis=esc(String(v('f_eopis')).trim());
+    const dep=v('f_edep'); z.departman=(dep==='projektovanje'||dep==='izvodjenje')&&modulDozvoljen(dep)?dep:null;   // pravilo 8: null, ne delete
     rebuildMaps(); saveState(); closeModal(); renderNav(); render(); return;
   }
   const grs=DATA.gradilista.filter(g=>{const c=document.getElementById('f_egr_'+g.id); return c&&c.checked;}).map(g=>g.id);
-  DATA.zaposleni.push({ id:'z'+Date.now(), ime, poz:v('f_epoz'), grs, bivsi:[], status:v('f_est'), tel:esc(v('f_etel').trim())||'—', opis:esc(v('f_eopis').trim()) });
+  const depN=v('f_edep');
+  DATA.zaposleni.push({ id:'z'+Date.now(), ime, poz:v('f_epoz'), grs, bivsi:[], status:v('f_est'), tel:esc(v('f_etel').trim())||'—', opis:esc(v('f_eopis').trim()), departman:(depN==='projektovanje'||depN==='izvodjenje')&&modulDozvoljen(depN)?depN:null });
   rebuildMaps(); saveState(); closeModal(); renderNav(); render();
 }
 
@@ -2504,12 +2510,30 @@ function otvoriAdmDoc(grId,key){
 }
 /* ---------- RESURSI (vozila, licence, polise, oprema) ---------- */
 const RES_TIP={vozilo:'Vozila', alat:'Alati i oprema', racunar:'Računari', licenca:'Licence', polisa:'Polise osiguranja'};
-let resFilter='sve';
+let resFilter='sve', resDep='svi';   // resDep: svi | projektovanje | izvodjenje (zahtev 2026-10-23)
+/* Departman resursa (migracija 32, resursi.modul): izričito dodeljen, inače izveden iz modula gradilišta kome je dodeljen; null bez gradilišta = svi. */
+function depResursa(r){ if(r.modul) return r.modul; const g=r.gr?grById[r.gr]:null; return g?(g.modul||'izvodjenje'):null; }
+function depLabela(d){ return d==='projektovanje'?'Projektovanje':d==='izvodjenje'?'Izvođenje':'Svi'; }
+/* Dodeli SVE vidljive resurse jednom departmanu (ili svima = null). Uprava; modulDozvoljen za direktora modula. Pravilo 8: null, ne delete. */
+function dodeliSveResurse(dep){
+  if(!isDirector()) return;
+  dep=dep==='projektovanje'||dep==='izvodjenje'?dep:null;
+  if(dep&&!modulDozvoljen(dep)) return;
+  const vidljiva=visibleSiteIds();
+  const lista=(DATA.resursi||[]).filter(r=>(!r.gr || isDirector() && smemNa(r.gr) || vidljiva.has(r.gr)) && (!r.gr || smemNa(r.gr)));
+  if(!lista.length) return;
+  if(!confirm('Dodeliti svih '+lista.length+' resursa departmanu: '+depLabela(dep)+'?')) return;
+  lista.forEach(r=>{ r.modul=dep; });
+  beleziLog('resursi_departman',{departman:dep, broj:lista.length});
+  saveState(); render();
+}
 function resIstice(r){ if(!r.istice) return 9999; return daysBetween(TODAY,dParse(r.istice)); }
 function viewResursi(){
   const vidljiva=visibleSiteIds();
-  const list=(DATA.resursi||[]).filter(r=>(resFilter==='sve'||r.tip===resFilter) && (!r.gr || isDirector() || vidljiva.has(r.gr)));
+  const list=(DATA.resursi||[]).filter(r=>(resFilter==='sve'||r.tip===resFilter) && (!r.gr || isDirector() || vidljiva.has(r.gr)) && (resDep==='svi'||depResursa(r)===resDep));
   const cips=[['sve','Svi'],...Object.entries(RES_TIP)].map(c=>`<button class="chip ${resFilter===c[0]?'on':''}" onclick="resFilter='${c[0]}';render()">${c[1]}</button>`).join('');
+  const depCips=[['svi','Svi'],['projektovanje','Departman projektovanje'],['izvodjenje','Departman izvođenje']].filter(([d])=>d==='svi'||modulDozvoljen(d)).map(c=>`<button class="chip ${resDep===c[0]?'on':''}" onclick="resDep='${c[0]}';render()">${c[1]}</button>`).join('');
+  const dodela=isDirector()?`<span class="sub" style="margin-left:auto">Dodeli sve:</span>${['projektovanje','izvodjenje'].filter(modulDozvoljen).map(d=>`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="dodeliSveResurse('${d}')">${depLabela(d)}</button>`).join('')}${jePunaUprava()?`<button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="dodeliSveResurse(null)">Svima</button>`:''}`:'';
   const rows=list.sort((a,b)=>resIstice(a)-resIstice(b)).map(r=>{
     const d=resIstice(r);
     const ist = !r.istice ? '<span class="sub">—</span>' : d<0 ? `<span class="badge b-red">Isteklo ${fmtDate(r.istice)}</span>` : d<=30 ? `<span class="badge b-amber">Ističe ${fmtDate(r.istice)}</span>` : `<span class="num" style="font-size:12.5px">${fmtDate(r.istice)}</span>`;
@@ -2518,15 +2542,17 @@ function viewResursi(){
       <td><div class="strong">${r.naziv}</div><div class="sub">${RES_TIP[r.tip]||r.tip}${r.napomena?' · '+r.napomena:''}</div></td>
       <td class="num" style="font-size:12.5px">${r.oznaka||'—'}</td>
       <td>${g?`<span style="color:var(--blue);font-weight:600;cursor:pointer" onclick="openSite('${g.id}')">${g.naziv}</span>`:'<span class="sub">Baza / kancelarija</span>'}</td>
+      <td><span class="badge ${depResursa(r)==='projektovanje'?'b-blue':depResursa(r)==='izvodjenje'?'b-green':''}">${depLabela(depResursa(r))}</span></td>
       <td>${z?z.ime:'—'}</td>
       <td class="r">${ist}</td>
       ${isDirector()?`<td class="r"><button class="btn ghost" style="padding:5px 10px;font-size:11.5px" onclick="formResurs('${r.id}')">✎</button>${smemBrisati(r.gr)?' '+BRISI_DUGME('obrisiResurs',r.id):''}</td>`:''}
     </tr>`;
   }).join('');
   return head('Resursi','Vozila, oprema, licence i polise — dodela i rokovi važenja.') +
-  `<div class="tools">${isDirector()?`<button class="btn" onclick="formResurs()">${icon('plus')} Novi resurs</button>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap">${cips}</div></div>
+  `<div class="tools">${isDirector()?`<button class="btn" onclick="formResurs()">${icon('plus')} Novi resurs</button>`:''}<div style="display:flex;gap:6px;flex-wrap:wrap">${cips}</div>
+  <div class="tools" style="margin-top:-6px">${depCips}${dodela}</div></div>
   <div class="card"><div style="overflow-x:auto"><table>
-    <thead><tr><th>Resurs</th><th>Oznaka</th><th>Dodeljeno</th><th>Zadužen</th><th class="r">Važi do</th>${isDirector()?'<th></th>':''}</tr></thead>
+    <thead><tr><th>Resurs</th><th>Oznaka</th><th>Dodeljeno</th><th>Departman</th><th>Zadužen</th><th class="r">Važi do</th>${isDirector()?'<th></th>':''}</tr></thead>
     <tbody>${rows}</tbody></table>
     ${list.length?'':'<div class="empty">Nema resursa u ovoj kategoriji.</div>'}
   </div>`;
@@ -2549,6 +2575,10 @@ function formResurs(rid){
         <div class="f-row"><label>Dodeljeno gradilištu</label><select id="f_rgr"><option value="">Baza / kancelarija</option>${DATA.gradilista.map(g=>`<option value="${g.id}" ${r&&r.gr===g.id?'selected':''}>${g.naziv}</option>`).join('')}</select></div>
         <div class="f-row"><label>Zadužen</label><select id="f_rzad"><option value="">—</option>${DATA.zaposleni.map(z=>`<option value="${z.id}" ${r&&r.zaduzen===z.id?'selected':''}>${z.ime}</option>`).join('')}</select></div>
       </div>
+      <div class="f-2">
+        <div class="f-row"><label>Departman</label><select id="f_rmod"><option value="">Svi / po gradilištu</option>${['projektovanje','izvodjenje'].filter(modulDozvoljen).map(d=>`<option value="${d}" ${r&&r.modul===d?'selected':''}>${depLabela(d)}</option>`).join('')}</select></div>
+        <div></div>
+      </div>
       <div class="f-row"><label>Napomena</label><input id="f_rnap" value="${r?(r.napomena||''):''}"></div>
       <div class="m-foot"><button class="btn ghost" onclick="closeModal()">Otkaži</button><button class="btn" onclick="saveResurs('${rid||''}')">Sačuvaj</button></div>
     </div>`);
@@ -2558,7 +2588,8 @@ function saveResurs(rid){
   const r0=rid?(DATA.resursi||[]).find(x=>x.id===rid):null; if(r0&&r0.gr&&!smemNa(r0.gr)) return;
   const v=id=>{const e=document.getElementById(id); return e?e.value:'';};
   const naziv=esc(String(v('f_rnaziv')).trim()); if(!naziv){ alert('Unesi naziv resursa.'); return; }
-  const o={ tip:v('f_rtip')||'alat', naziv, oznaka:esc(String(v('f_roznaka')).trim()), istice:v('f_ristice')||null, gr:v('f_rgr')||null, zaduzen:v('f_rzad')||null, napomena:esc(String(v('f_rnap')).trim()) };
+  const mod=v('f_rmod'); if(mod&&!modulDozvoljen(mod)){ alert('Nemaš pristup tom departmanu.'); return; }
+  const o={ tip:v('f_rtip')||'alat', naziv, oznaka:esc(String(v('f_roznaka')).trim()), istice:v('f_ristice')||null, gr:v('f_rgr')||null, zaduzen:v('f_rzad')||null, napomena:esc(String(v('f_rnap')).trim()), modul:mod==='projektovanje'||mod==='izvodjenje'?mod:null };
   const r=rid?(DATA.resursi||[]).find(x=>x.id===rid):null;
   if(r) Object.assign(r,o); else DATA.resursi.push(Object.assign({id:'r'+Date.now()},o));
   saveState(); closeModal(); renderNav(); render();
@@ -2716,7 +2747,7 @@ function viewNalozi(){
        ${n.bez_profila?'':`<button class="btn ghost" style="padding:4px 10px;font-size:12px;color:var(--red)" onclick="ukloniPristup('${esc(n.email)}')">Ukloni</button>`}`;
     return `<tr><td class="strong">${esc(n.email||'')}</td><td>${esc(n.ime||'')}</td><td>${st}</td><td>${kad}</td><td><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${kontrole}</div></td></tr>`;
   }).join('');
-  const DOG={ai_pitanje:'Pitanje asistentu',ai_akcija:'Akcija iz asistenta',prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_pauza:'⏸ Pauza zadatka',zadatak_kraj:'■ Kraj zadatka'};
+  const DOG={resursi_departman:'Dodela resursa departmanu',ai_pitanje:'Pitanje asistentu',ai_akcija:'Akcija iz asistenta',prijava:'Prijava',odjava:'Odjava',otvaranje:'Otvaranje',cuvanje:'Čuvanje',uloga_promena:'Promena uloge',pristup_uklonjen:'Pristup uklonjen',brisanje:'Brisanje',zadatak_start:'▶ Početak zadatka',zadatak_pauza:'⏸ Pauza zadatka',zadatak_kraj:'■ Kraj zadatka'};
   const logRed=l=>{ const d=l.detalj||{}; let det='';
     if(l.dogadjaj==='cuvanje') det=Object.entries(d).map(([t,n])=>t+' ×'+n).join(', ');
     else if(l.dogadjaj==='zadatak_start'||l.dogadjaj==='zadatak_pauza'||l.dogadjaj==='zadatak_kraj') det='„'+(d.naziv||d.zadatak||'')+'"'+(d.opis?' — '+d.opis:'')+(d.gr&&grById[d.gr]?' · '+unesc(grById[d.gr].naziv):'')+(d.minuta!=null?' · '+fmtTrajanje(d.minuta):'')+(d.ukupno!=null&&d.ukupno!==d.minuta?' · ukupno '+fmtTrajanje(d.ukupno):'');

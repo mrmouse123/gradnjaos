@@ -3095,6 +3095,40 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     a.run("MODUL='izvodjenje'; renderNav();"); if (!a.run("tabs().some(t=>t.id==='magacin')")) throw new Error('Magacin nestao iz Izvodjenja');
     a.run("MODUL='sve'; renderNav();"); if (!a.run("tabs().some(t=>t.id==='magacin')")) throw new Error('Magacin nestao iz „sve“');
   });
+  await acheck('T63 (2026-10-23): Resursi i Zaposleni — departman: cipovi Svi/Projektovanje/Izvodjenje, izveden iz gradilista kad nije izricit, forma cuva modul/departman (null = svi), „Dodeli sve“ uz confirm menja sve vidljive, log; direktor modula samo svoj departman; th==td', async () => {
+    const a = await boot();
+    a.run("setRole('all'); MODUL='sve'; PODTIP='sve';");
+    const gPro = a.run("DATA.gradilista.find(g=>jePro(g)).id"), gIzv = a.run("DATA.gradilista.find(g=>!jePro(g)).id");
+    a.run(`DATA.resursi.push({id:'rD1',tip:'alat',naziv:'Totalna stanica',oznaka:'',gr:${JSON.stringify(gPro)},zaduzen:null,istice:null,napomena:'',modul:null},{id:'rD2',tip:'vozilo',naziv:'Kiper',oznaka:'',gr:${JSON.stringify(gIzv)},zaduzen:null,istice:null,napomena:'',modul:null},{id:'rD3',tip:'alat',naziv:'Laptop',oznaka:'',gr:null,zaduzen:null,istice:null,napomena:'',modul:'projektovanje'},{id:'rD4',tip:'alat',naziv:'Štampač',oznaka:'',gr:null,zaduzen:null,istice:null,napomena:'',modul:null});`);
+    if (a.run("depResursa(DATA.resursi.find(r=>r.id==='rD1'))") !== 'projektovanje' || a.run("depResursa(DATA.resursi.find(r=>r.id==='rD2'))") !== 'izvodjenje' || a.run("depResursa(DATA.resursi.find(r=>r.id==='rD3'))") !== 'projektovanje' || a.run("depResursa(DATA.resursi.find(r=>r.id==='rD4'))") !== null) throw new Error('depResursa');
+    a.run("resDep='projektovanje'; current='resursi'; render();"); let h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('Totalna stanica') || !h.includes('Laptop') || h.includes('Kiper') || h.includes('Štampač')) throw new Error('filter projektovanje');
+    a.run("resDep='svi'; render();"); h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes('<th>Departman</th>') || !h.includes("dodeliSveResurse('izvodjenje')") || !h.includes('dodeliSveResurse(null)')) throw new Error('kolona/dugmad dodele');
+    const th = (h.match(/<th[ >]/g) || []).length, td = ((h.split('<tbody>')[1] || '').split('<tr>')[1] || '').split('</tr>')[0].match(/<td[ >]/g).length; if (th !== td) throw new Error('th/td: ' + th + '/' + td);
+    a.run("dodeliSveResurse('izvodjenje')");
+    if (!a.g._calls.confirm.length || a.run("DATA.resursi.filter(r=>r.modul==='izvodjenje').length") !== a.run('DATA.resursi.length')) throw new Error('dodeli sve nije primenjeno');
+    a.run("dodeliSveResurse(null)"); if (a.run("DATA.resursi.some(r=>r.modul!==null)")) throw new Error('dodeli svima nije null');
+    // forma: modul se cuva
+    a.run("formResurs('rD4')"); a.g.document.getElementById('f_rnaziv').value = 'Štampač'; a.g.document.getElementById('f_rmod').value = 'projektovanje'; a.run("saveResurs('rD4')");   // stub ne cita value iz HTML-a
+    if (a.run("DATA.resursi.find(r=>r.id==='rD4').modul") !== 'projektovanje') throw new Error('forma resursa ne cuva modul');
+    // direktor modula: vidi samo svoj departman u cipovima i dodeli samo svoj
+    a.run("setRole('dirpro'); current='resursi'; render();"); h = a.g.document.getElementById('view').innerHTML;
+    if (h.includes("resDep='izvodjenje'") || h.includes("dodeliSveResurse('izvodjenje')") || h.includes('dodeliSveResurse(null)')) throw new Error('dirpro vidi tudji departman');
+    a.run("dodeliSveResurse('izvodjenje')"); if (a.run("DATA.resursi.some(r=>r.modul==='izvodjenje')")) throw new Error('dirpro dodelio tudjem departmanu');
+    // zaposleni
+    a.run("setRole('all'); MODUL='sve';");
+    const zPro = a.run("DATA.zaposleni.find(z=>(z.grs||[]).length&&(z.grs||[]).every(x=>grById[x]&&jePro(grById[x]))).id"), zIzv = a.run("DATA.zaposleni.find(z=>(z.grs||[]).length&&(z.grs||[]).every(x=>grById[x]&&!jePro(grById[x]))).id");
+    if (a.run(`depZaposlenog(zapById[${JSON.stringify(zPro)}])`) !== 'projektovanje' || a.run(`depZaposlenog(zapById[${JSON.stringify(zIzv)}])`) !== 'izvodjenje') throw new Error('depZaposlenog izveden');
+    a.run("empDep='projektovanje'; current='emps'; render();"); h = a.g.document.getElementById('view').innerHTML;
+    if (!h.includes(`openEmp('${zPro}')`) || h.includes(`openEmp('${zIzv}')`) || !h.includes('<th>Departman</th>')) throw new Error('filter zaposlenih');
+    const th2 = (h.match(/<th[ >]/g) || []).length, td2 = (h.split('<tr class="clk"')[1] || '').split('</tr>')[0].match(/<td[ >]/g).length; if (th2 !== td2) throw new Error('th/td zaposleni: ' + th2 + '/' + td2);
+    a.run(`formEmp(${JSON.stringify(zIzv)})`); a.g.document.getElementById('f_eime').value = 'Test Ime'; a.g.document.getElementById('f_est').value = 'Na terenu'; a.g.document.getElementById('f_edep').value = 'projektovanje'; a.run(`saveEmp(${JSON.stringify(zIzv)})`);
+    if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== 'projektovanje' || a.run(`depZaposlenog(zapById[${JSON.stringify(zIzv)}])`) !== 'projektovanje') throw new Error('izricit departman ne pobedjuje');
+    a.run(`formEmp(${JSON.stringify(zIzv)})`); a.g.document.getElementById('f_eime').value = 'Test Ime'; a.g.document.getElementById('f_est').value = 'Na terenu'; a.g.document.getElementById('f_edep').value = ''; a.run(`saveEmp(${JSON.stringify(zIzv)})`);
+    if (a.run(`zapById[${JSON.stringify(zIzv)}].departman`) !== null) throw new Error('prazan departman mora biti null (pravilo 8)');
+    a.run("empDep='svi'; resDep='svi';");
+  });
   section('T60 validacija id-jeva');
   await acheck('ocistiIdeve: redovi sa neispravnim id/FK poljem (i grs) se izbacuju pri ucitavanju iz baze, ispravni ostaju; render nema sirovu injekciju; normalizeData je zove', async () => {
     const zao = "x') onclick=\"alert(1)\" data-x='";
