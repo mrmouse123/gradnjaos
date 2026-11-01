@@ -202,8 +202,14 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   UI: `formSituacija(gr)` (smemNa; predmer + „＋ iz šifarnika", `SIT_DODATNE` mapa, NE skriveni input),
   `detaljSituacije`, fioka „Situacije", Naplata, `computeAlerts` fin-alert „preko ugovorene količine"
   (= uprava „dobija razliku"). `predmer.izv` se iz situacije NE menja (pravilo 5). T43.
+- **AI asistent — prekidač** (2026-11-01, odluka klijenta „za sad sakrij, kasnije možemo da reaktiviramo“): `let AI_UKLJUCEN=false`
+  + `aiDostupan()=AI_UKLJUCEN&&jeSuper()` zamenjuje `jeSuper()` na svih 6 ulaza asistenta (`renderAi`, `aiOtvori`, `aiPitaj`, `aiAkcija`,
+  `aiPregledSituacije`, dugme u `detaljSituacije`). Ništa drugo nije dirano: Edge Function `ai-asistent` v6 i `ANTHROPIC_API_KEY`
+  ostaju deploy-ovani (kapija po ulozi i dalje važi), CSS/HTML ljuska (`#aiDugme`, `#aiPanel`) ostaje. Reaktivacija = `AI_UKLJUCEN=true`.
+  Test: e2e `boot({ai:true})` pali prekidač pre prvog `render()`-a (svi T59 testovi), novi prvi T59 test čuva podrazumevano
+  ugašeno stanje (direktor bez dugmeta, pitanje/pregled no-op, fioka bez dugmeta) i povratak na `true`.
 - **AI asistent direktora** (2026-10-21, zahtev klijenta; nivo 1): NIJE tab — plutajuće dugme gore desno (`#aiDugme`,
-  `.ai-dugme.vidi` samo `jeSuper()`, broj = situacije na pregledu + crvena upozorenja, `aiBroj`) otvara panel `#aiPanel`
+  `.ai-dugme.vidi` samo `aiDostupan()` (do 2026-11-01 `jeSuper()`), broj = situacije na pregledu + crvena upozorenja, `aiBroj`) otvara panel `#aiPanel`
   sa desne strane na svakom tabu (`renderAi()` iz `render()`; na ≤900 px dugme je dole desno iznad bnav-a). Panel: 4 brojke
   „danas" (klik = pitanje), razgovor, čipovi, unos; `aiOtvori/aiZatvori`, `AI_OTVOREN`. ARHITEKTURA: Edge Function `supabase/functions/ai-asistent/` je tanki posrednik ka
   Anthropic Messages API-ju — čuva `ANTHROPIC_API_KEY` (secret, NIKAD u repou/klijentu), proverava JWT → `profili.uloga='direktor'`

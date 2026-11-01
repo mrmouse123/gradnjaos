@@ -107,7 +107,10 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   - *Validacija id-jeva (2026-10-22):* `ocistiIdeve(DATA)` na početku `normalizeData` izbacuje red čiji id/FK (`ID_POLJA` +
     `ID_POLJA_TABELE`) nije `[A-Za-z0-9_.:|-]{1,80}` — id-jevi idu sirovi u `onclick="…('${id}')"`, pa je ovo brana od stored XSS
     kroz REST mimo app-a. `osoba` je id SAMO u `rad_na_zadatku` (u klijentima/podizvođačima je ime). T60.
-  - *AI asistent (samo direktor):* Edge Function `ai-asistent` je tanki posrednik (ključ u secretu, kapija `profili.uloga='direktor'`),
+  - *AI asistent (samo direktor; SAKRIVEN od 2026-11-01, odluka klijenta):* `AI_UKLJUCEN=false` → `aiDostupan()` (= `AI_UKLJUCEN && jeSuper()`)
+    je JEDINI uslov za dugme, panel, `aiPitaj`, `aiAkcija`, `aiPregledSituacije` i dugme „Pregledaj sa asistentom“ u fioci situacije.
+    Reaktivacija = `AI_UKLJUCEN=true` (jedna linija; Edge Function i secret ostaju deploy-ovani). Testovi T59 pale ga kroz
+    `boot({ai:true})`, prvi T59 test čuva da je podrazumevano ugašen. Edge Function `ai-asistent` je tanki posrednik (ključ u secretu, kapija `profili.uloga='direktor'`),
     alati rade U KLIJENTU nad DATA (`aiIzvrsiAlat`, `aiBezModula`), model NIŠTA ne upisuje, tekst modela se `esc`-uje, keširanje
     prompta (`aiTelo`), log `ai_pitanje` bez sadržaja; UI = plutajuće dugme + panel (`renderAi` iz `render()`).
     *Nivo 2 (2026-10-22):* model i dalje NIŠTA ne upisuje — `predlozi_akciju` samo pravi dugme, `aiAkcija` zove postojeće
@@ -371,7 +374,8 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
       `https://mrmouse123.github.io/gradnjaos/`. Kad stigne domen (Jovan kupuje na Vercelu), promeniti Site URL i dodati
       novi Redirect URL; Pages može da ostane uz CNAME.
 - [ ] Edge Function trebovanja: deploy + RESEND_API_KEY (kad Jovan kaže)
-- [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 30 USD/mes), radi uživo 2026-10-22
+- [x] AI asistent: funkcija `ai-asistent` deploy-ovana 2026-10-21, `ANTHROPIC_API_KEY` postavljen (workspace „Gradnja OS", limit 30 USD/mes), radi uživo 2026-10-22;
+      **sakriven u UI od 2026-11-01** (`AI_UKLJUCEN=false`, odluka klijenta „za sad ne treba“) — funkcija i secret ostaju, reaktivacija jednom linijom
 - [x] Test-nalozi direktora modula `dirpro@gradnjaos.test` / `dirizv@gradnjaos.test` — 2026-10-22, RLS probe po dizajnu
 - [x] GitHub publish + Pages — 2026-09-24, https://mrmouse123.github.io/gradnjaos/
 - [ ] .xlsx binarni upload — svesno odloženo; PDF dokumenta uz šablone — čeka.
