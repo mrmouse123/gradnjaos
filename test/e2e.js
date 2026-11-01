@@ -84,6 +84,7 @@ async function boot(opts = {}){
   }
   const ctx = vm.createContext(g);
   vm.runInContext(script, ctx, { filename: 'index.html<script>', displayErrors: true });
+  if (opts.ai) vm.runInContext('AI_UKLJUCEN=true', ctx);   // asistent je podrazumevano sakriven (2026-11-01); T59 ga pali pre prvog render()-a
   // pusti async IIFE (loadState -> normalizeData -> render) da se izvrši
   for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r));   // auth + profil + 15 tabela
   return {
@@ -3236,8 +3237,20 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
 
   /* ---- T59 (2026-10-21): AI asistent direktora — tab samo direktor, alati nad DATA, petlja tool_use, esc teksta modela, greske ---- */
   section('T59 AI asistent');
+  await acheck('T59 prekidac (2026-11-01): AI_UKLJUCEN=false podrazumevano — direktor nema dugme, aiOtvori/aiPitaj/aiPregledSituacije no-op, fioka situacije bez „Pregledaj sa asistentom“; AI_UKLJUCEN=true vraca sve', async () => {
+    const a = await boot({ supabase: true, seed: {}, faults: { ai: () => { throw new Error('asistent pozvan dok je ugasen'); } } });
+    if (a.run('AI_UKLJUCEN') !== false) throw new Error('AI_UKLJUCEN nije false podrazumevano');
+    a.run("setRole('all'); render(); aiOtvori();");
+    if (a.g.document.getElementById('aiDugme').classList.contains('vidi') || a.g.document.getElementById('aiPanel').classList.contains('on') || a.run('AI_OTVOREN')) throw new Error('ugasen asistent prikazuje dugme/panel');
+    await a.run("aiPitaj('x')"); const sid = a.run("(()=>{ const s=DATA.situacije.find(x=>!jePro(grById[x.gr])); s.pregled='na_pregledu'; return s.id; })()");
+    await a.run(`aiPregledSituacije(${JSON.stringify(sid)})`);
+    if (a.run('AI_RAZGOVOR.length') !== 0 || a.run('AI_OTVOREN')) throw new Error('ugasen asistent prihvatio pitanje');
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`); if (a.g.document.getElementById('modal').innerHTML.includes('aiPregledSituacije(')) throw new Error('fioka situacije nudi asistenta dok je ugasen');
+    a.run('closeModal(); AI_UKLJUCEN=true; render();'); if (!a.g.document.getElementById('aiDugme').classList.contains('vidi')) throw new Error('AI_UKLJUCEN=true ne vraca dugme');
+    a.run(`detaljSituacije(${JSON.stringify(sid)})`); if (!a.g.document.getElementById('modal').innerHTML.includes('aiPregledSituacije(')) throw new Error('AI_UKLJUCEN=true ne vraca dugme u fioci'); a.run('closeModal()');
+  });
   await acheck('T59 streaming (2026-10-22): aiCitajSSE sastavlja text / tool_use (JSON u delovima) / thinking+signature u iste blokove kao non-stream odgovor, javlja tekst u delovima, stop_reason i usage iz message_delta; error dogadjaj baca; u stubu (bez window.fetch) petlja ide kroz invoke', async () => {
-    const a = await boot({ supabase: true, seed: {} });
+    const a = await boot({ ai: true, supabase: true, seed: {} });
     const ev = (o) => 'event: ' + o.type + '\ndata: ' + JSON.stringify(o) + '\n\n';
     const sse = [ev({ type: 'message_start', message: { usage: { input_tokens: 40, cache_read_input_tokens: 30, cache_creation_input_tokens: 5, output_tokens: 1 } } }),
       ev({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } }),
@@ -3280,10 +3293,10 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
         { type: 'tool_use', id: 'a6', name: 'predlozi_akciju', input: { tip: 'pozovi_rukovodioca', gr: grIzv } },
         { type: 'tool_use', id: 'a7', name: 'predlozi_akciju', input: { tip: 'vrati_situaciju', sit: sitId } } ] }, error: null };
       return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Gotovo — dugmad su ispod.' }] }, error: null }; };
-    const a0 = await boot();   // DEMO id-jevi su deterministicki — citamo ih pre boota sa mock-om
+    const a0 = await boot({ ai: true, ai: true });   // DEMO id-jevi su deterministicki — citamo ih pre boota sa mock-om
     const sit = a0.run("DATA.situacije.find(x=>grById[x.gr]&&!jePro(grById[x.gr]))");
     const grPro = a0.run("DATA.gradilista.find(g=>jePro(g)).id"), grIzv = sit.gr;
-    const a = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, promptReturns: 'Ispravi stavku 3', faults: { ai: mk(sit.id, grPro, grIzv) } });
+    const a = await boot({ ai: true, supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, promptReturns: 'Ispravi stavku 3', faults: { ai: mk(sit.id, grPro, grIzv) } });
     a.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sit.id) + ").pregled='na_pregledu'");
     await a.run("aiPitaj('Pregledaj situaciju')");
     // rezultati alata: a1 ok + NIJE izvrseno, a2 dedupe (ok), a3 greska, a4 ok, a5 greska (nije pro), a6 ok, a7 greska (bez komentara)
@@ -3316,7 +3329,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!a.g._calls.open.slice(o0).some(x => /^tel:\+?\d+$/.test(String(x)))) throw new Error('tel: ' + JSON.stringify(a.g._calls.open.slice(o0)));
     // odobri: confirm pa odobriSituaciju
     const sb = sit.id;
-    const b = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, confirmReturns: true, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Situacija je u redu.' }, { type: 'tool_use', id: 'b1', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: sb } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null } } });
+    const b = await boot({ ai: true, supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, confirmReturns: true, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Situacija je u redu.' }, { type: 'tool_use', id: 'b1', name: 'predlozi_akciju', input: { tip: 'odobri_situaciju', sit: sb } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null } } });
     b.run("DATA.situacije.find(x=>x.id===" + JSON.stringify(sb) + ").pregled='na_pregledu'");
     await b.run("aiPitaj('x')"); const ib = b.run('AI_RAZGOVOR.length-1');
     b.run(`aiAkcija(${ib},0)`);
@@ -3328,7 +3341,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (!tela[0].tools.some(x => x.name === 'predlozi_akciju') || !/predlozi_akciju/.test(tela[0].system[0].text)) throw new Error('alat/prompt');
     // predlozi_akciju PRE ijednog teksta → predlog se prihvata (dugme), a rezultat nosi upozorenje da direktor jos nema tekst; model u sledecem krugu pise tekst
     const telaC = [];
-    const c = await boot({ supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, faults: { ai: (body, n) => { telaC.push(JSON.parse(JSON.stringify(body)));
+    const c = await boot({ ai: true, supabase: true, seed: {}, session: { user: { id: 'u-dir', email: 'direktor@test' } }, faults: { ai: (body, n) => { telaC.push(JSON.parse(JSON.stringify(body)));
       if (n === 1) return { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'c1', name: 'predlozi_akciju', input: { tip: 'pozovi_rukovodioca', gr: grIzv } }] }, error: null };
       return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Evo odgovora sa podacima.' }] }, error: null }; } } });
     await c.run("aiPitaj('Koji projekti kasne?')");
@@ -3339,7 +3352,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
   await acheck('T59 nastavak (2026-10-22): max_tokens bez teksta → jedan sazet nastavak (append-only, thinking blok ostaje), max_tokens sa tekstom → oznaka skracen, refusal → poruka; telo nosi max_tokens>=4000 i effort', async () => {
     const tela = [];
-    const a = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));
+    const a = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));
       if (n === 1) return { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 'sig1' }] }, error: null };
       return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Kratko: sve u redu.' }] }, error: null }; } } });
     await a.run("aiPitaj('Koji projekti kasne i zašto?')");
@@ -3351,41 +3364,41 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     if (msgs.length !== 3 || msgs[1].role !== 'assistant' || msgs[1].content[0].type !== 'thinking' || msgs[1].content[0].signature !== 'sig1' || msgs[2].role !== 'user' || !/prekinut/.test(msgs[2].content[0].text)) throw new Error('istorija nastavka: ' + JSON.stringify(msgs.map(m => [m.role, m.content.map(b => b.type)])));
     if (a.run('AI_GRESKA')) throw new Error('greska: ' + a.run('AI_GRESKA'));
     // max_tokens dva puta zaredom bez teksta → samo jedan nastavak, pa poruka o prekidu (ne petlja)
-    const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null }) } });
+    const b = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null }) } });
     await b.run("aiPitaj('x')");
     const botb = b.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botb.length !== 1 || !/skraćen/.test(botb[0])) throw new Error('dupli max_tokens: ' + JSON.stringify(botb));
     // max_tokens SA tekstom → tekst + oznaka
-    const c = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Pola odgovora' }] }, error: null }) } });
+    const c = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'max_tokens', content: [{ type: 'text', text: 'Pola odgovora' }] }, error: null }) } });
     await c.run("aiPitaj('x')");
     const botc = c.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botc.length !== 1 || !/^Pola odgovora\n\(Odgovor je skraćen/.test(botc[0])) throw new Error('skracen: ' + JSON.stringify(botc));
     // refusal
-    const d = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [] }, error: null }) } });
+    const d = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [] }, error: null }) } });
     await d.run("aiPitaj('x')");
     const botd = d.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botd.length !== 1 || !/odbio/.test(botd[0])) throw new Error('refusal: ' + JSON.stringify(botd));
     if (d.run('AI_PORUKE.filter(m=>m.role==="assistant").length') !== 0) throw new Error('prazan assistant sadrzaj je usao u istoriju');
     // max_tokens SA tool_use blokom → nastavak nosi tool_result stubove + tekst (inace 400 za svako sledece pitanje); refusal sa tool_use → assistant poruka se skida
     const telaG = [];
-    const g2 = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { telaG.push(JSON.parse(JSON.stringify(body)));
+    const g2 = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: (body, n) => { telaG.push(JSON.parse(JSON.stringify(body)));
       if (n === 1) return { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 'x' }, { type: 'tool_use', id: 'tuX', name: 'gradilista', input: {} }] }, error: null };
       return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Kratko.' }] }, error: null }; } } });
     await g2.run("aiPitaj('x')");
     const msgG = telaG[1].messages[2];
     if (msgG.role !== 'user' || msgG.content[0].type !== 'tool_result' || msgG.content[0].tool_use_id !== 'tuX' || msgG.content[1].type !== 'text' || !/prekinut/.test(msgG.content[1].text)) throw new Error('stub tool_result: ' + JSON.stringify(msgG));
     if (g2.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").length') !== 1 || g2.run('AI_GRESKA')) throw new Error('nastavak sa stubom nije prosao');
-    const g3 = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [{ type: 'tool_use', id: 'tuR', name: 'gradilista', input: {} }] }, error: null }) } });
+    const g3 = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'refusal', content: [{ type: 'tool_use', id: 'tuR', name: 'gradilista', input: {} }] }, error: null }) } });
     await g3.run("aiPitaj('x')");
     if (g3.run('AI_PORUKE.length') !== 1 || g3.run('AI_PORUKE[0].role') !== 'user') throw new Error('refusal sa tool_use ostavio assistant poruku: ' + g3.run('JSON.stringify(AI_PORUKE.map(m=>m.role))'));
     // nastavak koji API odbije → iskrena poruka, bez banera greske
-    const f = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null } : { data: null, error: new Error('Model nije odgovorio (400): thinking') } } });
+    const f = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: (body, n) => n === 1 ? { data: { stop_reason: 'max_tokens', content: [{ type: 'thinking', thinking: '', signature: 's' }] }, error: null } : { data: null, error: new Error('Model nije odgovorio (400): thinking') } } });
     await f.run("aiPitaj('x')");
     const botf = f.run('AI_RAZGOVOR.filter(m=>m.ko==="bot").map(m=>m.tekst)');
     if (botf.length !== 1 || !/prekinut/.test(botf[0]) || f.run('AI_GRESKA')) throw new Error('pad nastavka: ' + JSON.stringify([botf, f.run('AI_GRESKA')]));
   });
   await acheck('plutajuce dugme + panel samo direktor (nema taba; admin/rukovodilac bez dugmeta, aiOtvori ne otvara); panel: 4 brojke danas + 5 cipova + unos; alati: gradilista/detalj/situacija/upozorenja/dnevnik oblik i guardovi; nepoznat id → greska; aiPitaj van direktora ne zove funkciju', async () => {
-    const a = await boot();
+    const a = await boot({ ai: true, ai: true });
     a.run("setRole('all')");
     if (a.run("tabs().some(t=>t.id==='asistent')")) throw new Error('asistent je tab (treba plutajuce dugme)');
     a.run('render()'); if (!a.g.document.getElementById('aiDugme').classList.contains('vidi') || !/Asistent/.test(a.g.document.getElementById('aiDugme').innerHTML)) throw new Error('direktor nema dugme asistenta');
@@ -3419,7 +3432,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     const ai = (body, n) => { tela.push(JSON.parse(JSON.stringify(body)));   // snimak: AI_PORUKE je ziv niz
       if (n === 1) return { data: { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Gledam gradilišta.' }, { type: 'tool_use', id: 'tu1', name: 'gradilista', input: {} }] }, error: null };
       return { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: '**Kasne**: 1 projekat.\n- Liman Park [[gr:g1]] kasni\n<script>alert(1)</script> nema [[sit:nepostoji]] kraj' }] }, error: null }; };
-    const a = await boot({ supabase: true, seed: {}, faults: { ai } });
+    const a = await boot({ ai: true, supabase: true, seed: {}, faults: { ai } });
     a.run("setRole('all')"); await a.run("aiPitaj('Koji projekti kasne?')");
     if (tela.length !== 2) throw new Error('broj poziva funkcije: ' + tela.length);
     const sys = tela[0].system; if (!Array.isArray(sys) || !sys[0].text.includes('GradnjaOS') || !sys[0].cache_control || tela[0].tools.length < 6 || !tela[0].tools[tela[0].tools.length - 1].cache_control || tela[0].tools[0].cache_control || tela[0].messages.length !== 1 || tela[0].messages[0].role !== 'user') throw new Error('telo 1 (kesiranje): ' + JSON.stringify(tela[0]).slice(0, 300));
@@ -3435,21 +3448,21 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     // draft u polju prezivljava render() iz drugog razloga; alat koji baci izuzetak → {greska} u tool_result, ne pad petlje
     a.g.document.getElementById('aiUnos').value = 'nenaslato pitanje'; a.run('render()');
     if (a.g.document.getElementById('aiUnos').value !== 'nenaslato pitanje' || !a.run('AI_OTVOREN')) throw new Error('render() obrisao draft / zatvorio panel');
-    const telaX = []; const x = await boot({ supabase: true, seed: {}, faults: { ai: (body, n) => { telaX.push(JSON.parse(JSON.stringify(body))); return n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tx', name: 'gradiliste_detalj', input: { id: { ne: 'string' } } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null }; } } });
+    const telaX = []; const x = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: (body, n) => { telaX.push(JSON.parse(JSON.stringify(body))); return n === 1 ? { data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tx', name: 'gradiliste_detalj', input: { id: { ne: 'string' } } }] }, error: null } : { data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }, error: null }; } } });
     x.run("setRole('all'); grById=new Proxy(grById,{get:(o,k)=>{ if(typeof k==='string'&&k==='[object Object]') throw new Error('bum'); return o[k]; }});"); await x.run("aiPitaj('x')");
     const tr = JSON.parse(telaX[1].messages[2].content[0].content); if (!tr.greska || x.run('AI_GRESKA') !== '' || x.run('AI_RAZGOVOR[1].tekst') !== 'ok') throw new Error('izuzetak alata nije pretvoren u greska: ' + JSON.stringify(tr) + ' ' + x.run('AI_GRESKA'));
     // cap krugova
-    const b = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'upozorenja', input: {} }] }, error: null }) } });
+    const b = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'upozorenja', input: {} }] }, error: null }) } });
     b.run("setRole('all')"); await b.run("aiPitaj('petlja')");
     if (b.g.__mock._log.filter(l => l.op === 'functions.invoke').length !== 6 || !/Prekinuto/.test(b.run('(AI_RAZGOVOR[1]||{}).tekst||""'))) throw new Error('cap krugova: ' + b.g.__mock._log.filter(l => l.op === 'functions.invoke').length + ' poziva; greska=' + b.run('AI_GRESKA') + ' razgovor=' + b.run('JSON.stringify(AI_RAZGOVOR)'));
     // nije deploy-ovana
-    const c = await boot({ supabase: true, seed: {} }); c.run("setRole('all')"); await c.run("aiPitaj('x')");
+    const c = await boot({ ai: true, supabase: true, seed: {} }); c.run("setRole('all')"); await c.run("aiPitaj('x')");
     if (!/nije deploy-ovana|ANTHROPIC_API_KEY/.test(c.run('AI_GRESKA')) || c.run('AI_ZAUZET')) throw new Error('nije deploy-ovana: ' + c.run('AI_GRESKA'));
     // bez kljuca (funkcija vraca gresku)
-    const d = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: null, error: { message: 'ANTHROPIC_API_KEY nije podešen (Supabase → Edge Functions → Secrets).' } }) } });
+    const d = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: null, error: { message: 'ANTHROPIC_API_KEY nije podešen (Supabase → Edge Functions → Secrets).' } }) } });
     d.run("setRole('all')"); await d.run("aiPitaj('x')"); if (!/ANTHROPIC_API_KEY/.test(d.run('AI_GRESKA'))) throw new Error('bez kljuca: ' + d.run('AI_GRESKA'));
     // dugme u detalju situacije na pregledu (direktor, supabase) i aiPregledSituacije
-    const e = await boot({ supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Preporuka: odobri.' }] }, error: null }) } });
+    const e = await boot({ ai: true, supabase: true, seed: {}, faults: { ai: () => ({ data: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Preporuka: odobri.' }] }, error: null }) } });
     e.run("setRole('all')"); const sid = e.run("(()=>{ const s=DATA.situacije.find(x=>!jePro(grById[x.gr])); s.pregled='na_pregledu'; return s.id; })()");
     e.run(`detaljSituacije(${JSON.stringify(sid)})`); if (!e.g.document.getElementById('modal').innerHTML.includes(`aiPregledSituacije('${sid}')`)) throw new Error('nema dugmeta Pregledaj sa asistentom');
     await e.run(`aiPregledSituacije(${JSON.stringify(sid)})`);

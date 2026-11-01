@@ -3810,6 +3810,8 @@ function savePredmerImport(grId){
    postaju linkovi samo ako ID postoji u DATA. Petlja alata ima gornju granicu (AI_MAX_KRUGOVA).
    ============================================================ */
 let AI_RAZGOVOR=[], AI_PORUKE=[], AI_ZAUZET=false, AI_GRESKA='';
+let AI_UKLJUCEN=false;   // prekidac asistenta (odluka klijenta 2026-11-01: sakriven do daljeg; true = vrati dugme/panel/„Pregledaj sa asistentom“). let: testovi i ziva proba ga pale.
+const aiDostupan=()=>AI_UKLJUCEN&&jeSuper();   // JEDINI uslov za sve ulaze asistenta (dugme, panel, aiPitaj, aiAkcija, pregled situacije)
 const AI_MAX_KRUGOVA=6, AI_MAX_REDOVA=60; let AI_EFFORT='medium';   // nivo napora modela (low|medium|high) — let namerno: menja se iz konzole / zive probe (zivo.js) bez build koraka
 const AI_PITANJA=['Šta se promenilo i šta me čeka danas?','Koji projekti kasne i zašto?','Koliko je naplaćeno po projektu u odnosu na ugovoreno?','Pregledaj situacije koje čekaju moj pregled','Gde troškovi idu ispred napretka?'];
 const ai_u=v=>unesc(String(v??''));
@@ -3862,7 +3864,7 @@ function aiPredloziAkciju(inp){
   return {ok:true, poruka:'Dugme „'+unesc(A.labela)+'“ je prikazano direktoru (NIJE izvršeno — on klikne i potvrdi). Direktor vidi samo tvoj tekst, ne i razmišljanje: ako pun odgovor (podaci, brojke, razlozi) još nije napisan u tekstu, napiši ga sada; dugme pomeni jednom kratkom rečenicom na kraju. Ne tvrdi da je akcija urađena.'};
 }
 function aiAkcija(idx, i){
-  const m=AI_RAZGOVOR[idx], a=m&&m.akcije&&m.akcije[i]; if(!a||a.uradjeno||!jeSuper()) return;
+  const m=AI_RAZGOVOR[idx], a=m&&m.akcije&&m.akcije[i]; if(!a||a.uradjeno||!aiDostupan()) return;
   if(a.tip==='odobri_situaciju'||a.tip==='vrati_situaciju'){
     const sit=(DATA.situacije||[]).find(x=>x.id===a.sit); if(!sit||!smemNa(sit.gr)||pregledSit(sit)!=='na_pregledu'){ alert('Situacija više nije na pregledu.'); return; }
     if(a.tip==='odobri_situaciju'){ if(!confirm('Odobriti situaciju '+unesc(sit.br)+'?')) return; odobriSituaciju(sit.id); if(pregledSit(sit)!=='odobrena') return; }
@@ -4016,14 +4018,14 @@ let AI_OTVOREN=false;
 function aiBroj(al){ const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); return sits.filter(x=>pregledSit(x)==='na_pregledu').length+(al||computeAlerts()).filter(a=>a.sev==='red').length; }
 function renderAi(){
   const d=document.getElementById('aiDugme'), p=document.getElementById('aiPanel'); if(!d||!p) return;
-  const vidi=jeSuper(); d.classList.toggle('vidi', vidi);
+  const vidi=aiDostupan(); d.classList.toggle('vidi', vidi);
   if(!vidi){ AI_OTVOREN=false; p.classList.remove('on'); p.innerHTML=''; return; }
   const al=aiBezModula(computeAlerts), n=aiBezModula(()=>aiBroj(al)); d.innerHTML=icon('ai')+' Asistent'+(n?`<span class="tag num">${n}</span>`:'');
   const staroPolje=document.getElementById('aiUnos'), draft=staroPolje?String(staroPolje.value||''):'';   // render() iz drugog razloga (ponoc, cuvanje) ne sme da obrise nenaslat tekst
   p.classList.toggle('on', AI_OTVOREN); p.innerHTML=AI_OTVOREN?aiBezModula(()=>aiPanelHtml(al)):'';
   if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&draft) e.value=draft; aiSkrol(); }
 }
-function aiOtvori(){ if(!jeSuper()) return; AI_OTVOREN=!AI_OTVOREN; renderAi(); if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&e.focus) e.focus(); } }
+function aiOtvori(){ if(!aiDostupan()) return; AI_OTVOREN=!AI_OTVOREN; renderAi(); if(AI_OTVOREN){ const e=document.getElementById('aiUnos'); if(e&&e.focus) e.focus(); } }
 function aiZatvori(){ AI_OTVOREN=false; renderAi(); }
 function aiPanelHtml(al){
   const sits=(DATA.situacije||[]).filter(x=>vidimGr(x.gr)&&imaNaplatu(grById[x.gr])); al=al||computeAlerts();
@@ -4044,12 +4046,12 @@ function aiPitajIzPolja(){ const e=document.getElementById('aiUnos'); const t=e?
 function aiOcisti(){ AI_RAZGOVOR=[]; AI_PORUKE=[]; AI_GRESKA=''; renderAi(); }
 function aiSkrol(){ try{ const p=document.getElementById('aiPoruke'); if(p&&p.scrollHeight!=null) p.scrollTop=p.scrollHeight; }catch(e){} }
 function aiPregledSituacije(sitId){
-  const sit=(DATA.situacije||[]).find(x=>x.id===sitId); if(!sit||!jeSuper()) return;
+  const sit=(DATA.situacije||[]).find(x=>x.id===sitId); if(!sit||!aiDostupan()) return;
   const g=grById[sit.gr]; AI_OTVOREN=true; renderAi();
   return aiPitaj('Pregledaj situaciju '+unesc(sit.br)+(g?' na gradilištu '+unesc(g.naziv):'')+' (id situacije: '+sit.id+') i preporuči da li da je odobrim ili vratim rukovodiocu.');
 }
 async function aiPitaj(tekst){
-  tekst=String(tekst||'').trim(); if(!tekst||AI_ZAUZET||!jeSuper()) return;
+  tekst=String(tekst||'').trim(); if(!tekst||AI_ZAUZET||!aiDostupan()) return;
   AI_GRESKA=''; AI_RAZGOVOR.push({ko:'ja', tekst}); AI_PORUKE.push({role:'user', content:tekst}); AI_ZAUZET=true; AI_OTVOREN=true; renderAi();
   const alati=[], tok={ulaz:0, kes:0, kesUpis:0, izlaz:0}; let odgovor='', nastavljeno=false; AI_PREDLOZI=[];
   try{
@@ -5116,7 +5118,7 @@ function detaljSituacije(id){
         ${isDirector()&&pregledSit(s)!=='odobrena'?`<button class="btn ghost" onclick="odobriSituaciju('${s.id}')">✓ Odobri</button>`:''}
         ${!isDirector()&&smemNa(s.gr)&&pregledSit(s)==='vracena'?`<button class="btn ghost" onclick="closeModal();formSituacija('${s.gr}','${s.id}')">✎ Ispravi i pošalji ponovo</button>`:''}
         ${nap&&s.status!=='placeno'&&pregledSit(s)==='odobrena'?`<button class="btn ghost" onclick="markPaid('${s.id}')">✓ Plaćeno</button>`:''}
-        ${jeSuper()&&supa&&pregledSit(s)!=='odobrena'?`<button class="btn ghost" onclick="aiPregledSituacije('${s.id}')">🤖 Pregledaj sa asistentom</button>`:''}
+        ${aiDostupan()&&supa&&pregledSit(s)!=='odobrena'?`<button class="btn ghost" onclick="aiPregledSituacije('${s.id}')">🤖 Pregledaj sa asistentom</button>`:''}
         ${smemIzvozSituacije(s)?`<button class="btn ghost" onclick="izvozSituacije('${s.id}','lat')">⬇ Excel (latinica)</button><button class="btn ghost" onclick="izvozSituacije('${s.id}','cir')">⬇ Excel (ćirilica)</button>`:''}
         <button class="btn" onclick="closeModal()">Zatvori</button>
       </div>
