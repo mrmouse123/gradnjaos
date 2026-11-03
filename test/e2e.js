@@ -22,7 +22,15 @@ const { makeGlobals } = require('./dom-stub');
 const { makeSupabaseMock, preracunSituacijeMock } = require('./supabase-mock');
 
 const ROOT = path.join(__dirname, '..');
-const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+/* index.html ucitava css/ i js/ fajlove preko <link>/<script src>. Provere nad tekstom (CSS, markup, zabranjene reci) rade nad
+   JEDNIM dokumentom, pa se spoljni fajlovi vracaju na svoje mesto; izvrsavanje (boot) ide fajl po fajl kao u pregledacu. */
+function inlineAssets(html){
+  const rd = rel => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  return html
+    .replace(/<link rel="stylesheet" href="(css\/[^"?]+)(?:\?[^"]*)?">/g, (_, f) => '<style>\n' + rd(f) + '</style>')
+    .replace(/<script src="(js\/[^"?]+)(?:\?[^"]*)?"><\/script>/g, (_, f) => '<script>\n' + rd(f) + '</script>');
+}
+const HTML = inlineAssets(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'));
 
 /* ---------- infrastruktura za prijavu rezultata ---------- */
 let pass = 0, fail = 0;
@@ -46,23 +54,24 @@ function section(t){ process.stdout.write('\n' + t.padEnd(46, ' ') + ' '); }
 function extractScript(html){
   const m = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)];
   if (!m.length) throw new Error('nije nađen inline <script> blok');
-  return m.map(x => x[1]).join('\n;\n');
+  return m.map(x => x[1]);
 }
-const SCRIPT = extractScript(HTML);
+const SCRIPTS = extractScript(HTML);           // svaki inline <script> / js fajl posebno, istim redosledom kao u pregledacu
+const SCRIPT = SCRIPTS.join('\n;\n');
 
 /* ---------- podizanje app-a u vm kontekstu ---------- */
 async function boot(opts = {}){
   const g = makeGlobals(opts);
-  let script = SCRIPT;
+  let scripts = SCRIPTS.slice();
   if (opts.supabase) {
     // aktiviraj Supabase granu bez obzira da li su konstante u repou prazne
     // (pre povezivanja) ili popunjene pravim vrednostima (posle povezivanja) —
     // testu treba samo da je supa.createClient() pozvan sa NEKIM URL/ključem.
-    const before = script;
-    script = script
+    const before = scripts.join('\n');
+    scripts = scripts.map(sc => sc
       .replace(/const SUPABASE_URL = '[^']*';/, "const SUPABASE_URL = 'https://test.supabase.co';")
-      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = 'test-anon-key';");
-    if (script === before) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
+      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = 'test-anon-key';"));
+    if (scripts.join('\n') === before) throw new Error('boot(): nisam uspeo da aktiviram Supabase konstante');
     /* Auth: podrazumevano direktorska sesija (stariji T10/T15 testovi racunaju da je
        ucitavanje proslo). opts.session === null -> bez sesije (ekran za prijavu). */
     const seed = Object.assign({}, opts.seed || {});
@@ -78,12 +87,13 @@ async function boot(opts = {}){
     // Bez Supabase: isprazni konstante da app ni ne pokusa mrezu (index.html
     // od 2026-09-14 nosi prave vrednosti; bez ovoga svaki boot() loguje
     // "Supabase init: ... createClient" iz stuba i pada na memoriju).
-    script = script
+    scripts = scripts.map(sc => sc
       .replace(/const SUPABASE_URL = '[^']*';/, "const SUPABASE_URL = '';")
-      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = '';");
+      .replace(/const SUPABASE_ANON_KEY = '[^']*';/, "const SUPABASE_ANON_KEY = '';"));
   }
   const ctx = vm.createContext(g);
-  vm.runInContext(script, ctx, { filename: 'index.html<script>', displayErrors: true });
+  // redom, svaki fajl zasebno kao u pregledacu: top-level let/const dele opseg, a funkcije se dizu samo unutar svog fajla
+  scripts.forEach((sc, i) => vm.runInContext(sc, ctx, { filename: 'script-' + i + '.js', displayErrors: true }));
   if (opts.ai) vm.runInContext('AI_UKLJUCEN=true', ctx);   // asistent je podrazumevano sakriven (2026-11-01); T59 ga pali pre prvog render()-a
   // pusti async IIFE (loadState -> normalizeData -> render) da se izvrši
   for (let i = 0; i < 30; i++) await new Promise(r => setImmediate(r));   // auth + profil + 15 tabela
@@ -167,6 +177,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   /* ---- T1 sintaksa ---- */
   section('T1 sintaksa');
   check('new Function(script)', () => { new Function(SCRIPT); });
+  check('svaki js fajl se parsira sam (nijedna funkcija nije presecena)', () => { SCRIPTS.forEach((sc, i) => new vm.Script(sc, { filename: 'script-' + i + '.js' })); });
 
   /* ---- T2 boot ---- */
   section('T2 boot (režim memorija)');
@@ -2291,7 +2302,7 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
   });
 
   await acheck('marza je uklonjena (2026-10-12): nema je u izvoru, ni u jednom pogledu/fioci/preseku/izvestaju za direktora; zavrsen projekat = 100', async () => {
-    const src = require('fs').readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const src = HTML;   // index.html + css/js fajlovi
     if (/marz|marž/i.test(src)) throw new Error('index.html i dalje pominje marzu');
     if (app.run('typeof marzaPct') !== 'undefined' || app.run('typeof ostvMarzaPct') !== 'undefined') throw new Error('funkcije marze postoje');
     const nadji = () => { const d = app.g.document; return ['view', 'drawer', 'rpt', 'modal'].map(id => d.getElementById(id).innerHTML).join('\n'); };
@@ -4716,6 +4727,14 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
       if (d.length) throw new Error(d.join('; '));
     });
   }
+
+  /* ---- T68 index.html + css/ + js/: svaki fajl je ukljucen, postoji, a ?v= oznaka je azurna (kes Pages) ---- */
+  section('T68 oznake ?v= u index.html');
+  check('css/js fajlovi: ukljuceni, postoje, ?v= azuran (node tools/stamp.js)', () => {
+    const r = require('../tools/stamp').analyze(ROOT);
+    const p = [...r.missing.map(f => 'nedostaje ' + f), ...r.unreferenced.map(f => 'nije u index.html: ' + f), ...r.stale.map(f => 'zastarela oznaka za ' + f)];
+    if (p.length) throw new Error(p.join('; ') + ' — popravka: node tools/stamp.js');
+  });
 
   /* N4 — napredak je int kolona */
   await acheck('napredak se upisuje kao ceo broj', async () => {
