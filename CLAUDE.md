@@ -2,11 +2,26 @@
 
 ## Šta je ovo
 Pilot PM alat za građevinsku firmu (klijent u fazi requirements/assessment).
-Ceo alat je JEDAN fajl: `index.html` (vanilla JS, bez build koraka) — namerno,
-radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
+Statička aplikacija (vanilla JS, BEZ build koraka) — namerno, radi brzine iteracija dok se zahtevi ne slegnu: `index.html` (ljuska)
++ `css/app.css` + 21 klasičnih skripti u `js/` (do 2026-11-03 sve je bilo u jednom `index.html`). Jezik UI-ja: srpski (latinica).
+Gde god ovaj fajl kaže „index.html“ za CSS/markup/JS, misli se na ceo dokument = `index.html` + `css/` + `js/`.
 
 ## Arhitektura
-- `index.html`: CSS + HTML ljuska + sav JS u jednom <script> bloku
+- **Struktura fajlova (od 2026-11-03):** `index.html` = head + HTML ljuska + `<script src="js/….js?v=…">` tagovi; `css/app.css`; `js/*.js`
+  su KLASIČNE skripte (ne ES moduli) koje se učitavaju redom iz `index.html` i dele globalni opseg — redosled tagova JE redosled
+  originalnog jednog `<script>` bloka. Razlog za klasične skripte: ~200 inline `onclick="fn()"` traži globalne funkcije, a ES moduli
+  ne rade preko `file://`. Pravila: (1) funkcije se dižu samo UNUTAR svog fajla — top-level kod ne sme da zove funkciju iz kasnijeg fajla;
+  top-level `let/const` iz ranijeg fajla se vide u kasnijim; (2) fajl se preseca samo na granici naslova (nijedna funkcija/blok ne sme
+  da pređe u drugi fajl — T1 proverava da se svaki fajl parsira sam); (3) novi fajl = nov `<script>` tag na pravom mestu.
+  Fajlovi redom: `demo-data` (DEMO), `config` (SUPABASE_URL/KEY, NABAVKA_EMAIL — jedino mesto konfiguracije okruženja), `storage`
+  (čuvanje: supabase/skladište/memorija, `pushAll`), `roles` (uloge, moduli, `smemNa`), `helpers`, `nav`, `view-dash` (render, zdravlje,
+  upozorenja, tabla), `view-sites-people`, `view-time-tasks` (Gantt, Kanban, tajmer), `view-diary-resources`, `view-nalozi` (Admin
+  kokpit), `predmer`, `excel` (xlsx čitanje/pisanje, izvedeno), `ai`, `finance-docs`, `reports-procurement`, `situacije`, `forms`
+  (modal + forme), `drawer` (detalj gradilišta), `theme`, `boot` (start, auto-osvežavanje, auth, `pokreni()`).
+- **Posle SVAKE izmene `css/` ili `js/` fajla: `node tools/stamp.js`** (upisuje `?v=<hash>` u tagove; bez toga GitHub Pages kes
+  (10 min) može da posluži stari js uz novi `index.html`). T68 pada ako je oznaka zastarela, nedostaje fajl ili fajl nije uključen.
+  Stamp menja `index.html`, pa `proveriNovuVerziju` vidi novu verziju i osvežava klijente. Test harness (`test/e2e.js`) vraća fajlove
+  na svoje mesto za provere nad tekstom (`HTML`), a izvršava ih redom, jedan po jedan, kao pregledač.
 - **Supabase** (od 2026-09-14): projekat `gradnjaos`, ref `xqggoxrihitvqaocowlb`,
   org "jovan.miskovic@think-tech.co's Org", eu-central-1, **Pro plan** (od
   2026-10-08: ne pauzira se, dnevni backup 7 dana; ranije besplatan, v. lessons #10).
@@ -118,7 +133,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     kao non-stream odgovor (thinking + signature nepromenjeni → istorija append-only); petlja ne zna za tok. *Potrošnja:*
     `AI_CENE` je jedino mesto cena/limita.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..33.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..34.sql` redom (01–08 su već u početnoj šemi `test/fixtures/schema-v04.sql`).
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -359,6 +374,18 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 `begin; set local role authenticated; set local request.jwt.claims =
 '{"sub":"<uuid>","role":"authenticated"}'; select …` — 2026-09-23: 3 profila
 čitanja + 13 provera upisa, sve po dizajnu. Posle SVAKE izmene: e2e mora vratiti 0.
+**SQL testovi nad pravim Postgresom (od 2026-11-03, CI posao `sql`; lokalno treba Docker ili psql):**
+`node test/sql/situacije-parity.js | psql -v ON_ERROR_STOP=1` — formula situacija (`preracunaj_situacije` iz `schema.sql`) nad istim
+scenarijima iz `test/fixtures/situacije-parity.json` kao T67 u e2e (klijent + mock): formula je tako proverena na SVA TRI mesta; nov
+scenario se dodaje u JSON. Takodje proverava da je funkcija u najnovijoj migraciji (34) isti tekst kao u `schema.sql`.
+`node test/rls/run.js | psql -v ON_ERROR_STOP=1` — RLS/grantovi/view-ovi/trigeri po ulogama: `bootstrap.sql` (stub Supabase uloga,
+`auth.uid()`, `auth.users`, prazan `cron`) + `schema.sql` + `seed.sql` (nalog po ulozi, gradilista oba modula) + `tests.sql` (`t_chk`
+= izvrsi upit kao uloga sa JWT claim-ovima, svaki test nezavisan). Ocekivanja idu iz pravila u ovom fajlu, ne iz ponasanja koda.
+`node test/rls/replay.js` (treba `PGHOST…` ili `PSQL="docker exec -i gos-pg psql -U postgres"`) — dve baze: sveža iz `schema.sql` i početna šema + migracije
+09..NN redom; poredi otisak kataloga (`fingerprint.sql`: kolone, ograničenja, indeksi, polise, trigeri, funkcije, view-ovi, grantovi). Pada ako
+migracija puca ili ako se `schema.sql` i lanac migracija razilaze — **nova migracija se uvek upisuje i u `schema.sql`**.
+Nova polisa/trigger/view → dodati proveru; zaštita se dokazuje tako sto je pokvarite i test mora pasti. Lokalno (Docker):
+`docker run -d --name gos-pg -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16`, pa `... | docker exec -i gos-pg psql -v ON_ERROR_STOP=1 -U postgres`.
 
 ## Sledeće (dogovoreno, čeka)
 - [x] Supabase povezivanje — 2026-09-14

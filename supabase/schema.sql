@@ -1362,11 +1362,11 @@ begin
    where st.gr = p_gid;
   update situacija_stavke st set kumulativ = x.kum, razlika = greatest(0, x.kum - st.kol_ugovoreno)
     from (select st2.id,
-                 sum(st2.kol) over (partition by st2.gr, coalesce(st2.predmer_id, 'sifra:'||st2.sifra, 'poz:'||lower(st2.poz))
+                 sum(st2.kol) over (partition by st2.gr, coalesce(st2.predmer_id, 'sifra:'||nullif(st2.sifra, ''), 'poz:'||lower(st2.poz))
                                     order by s2.izdato, s2.id, st2.id rows between unbounded preceding and current row) as kum
             from situacija_stavke st2 join situacije s2 on s2.id = st2.sit where st2.gr = p_gid) x
    where x.id = st.id;
-  update situacije s set iznos = coalesce((select sum(st.kol * coalesce(p.cena, 0)) from situacija_stavke st left join predmer p on p.id = st.predmer_id where st.sit = s.id), 0)
+  update situacije s set iznos = round(coalesce((select sum(st.kol * coalesce(p.cena, 0)) from situacija_stavke st left join predmer p on p.id = st.predmer_id where st.sit = s.id), 0), 2)
    where s.gr = p_gid and exists (select 1 from situacija_stavke st where st.sit = s.id);
 end $$;
 revoke execute on function preracunaj_situacije(text) from public, anon;

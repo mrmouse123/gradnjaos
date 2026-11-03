@@ -1,10 +1,10 @@
 # GradnjaOS — pilot PM alat za građevinsku firmu
 
-Jedan HTML fajl (`index.html`) bez build koraka: kontrolna tabla sa finansijama i upozorenjima, gradilišta, klijenti, zaposleni sa opisom posla, Gantt rokovi, Kanban zadaci, dnevnik radova, naplata (privremene situacije), predmer, trebovanje, resursi, magacin. Uloge: **direktor** vidi sve, **rukovodilac** vidi samo svoja gradilišta i ne vidi finansije — i to važi i na serveru (RLS), ne samo u interfejsu.
+Statička aplikacija bez build koraka (`index.html` + `css/` + `js/`, vidi CLAUDE.md): kontrolna tabla sa finansijama i upozorenjima, gradilišta, klijenti, zaposleni sa opisom posla, Gantt rokovi, Kanban zadaci, dnevnik radova, naplata (privremene situacije), predmer, trebovanje, resursi, magacin. Uloge: **direktor** vidi sve, **rukovodilac** vidi samo svoja gradilišta i ne vidi finansije — i to važi i na serveru (RLS), ne samo u interfejsu.
 
 ## Pokretanje lokalno
 
-Otvori `index.html` u pretraživaču. Ako su `SUPABASE_URL`/`SUPABASE_ANON_KEY` popunjeni (jesu, od 2026-09-14), traži se prijava i podaci idu iz baze. Ako su prazni, radi u demo režimu sa ugrađenim podacima i menijem za izbor uloge (izmene traju do osvežavanja).
+Otvori `index.html` u pretraživaču (radi i preko `file://`; skripte su klasične, ne moduli). Ako su `SUPABASE_URL`/`SUPABASE_ANON_KEY` popunjeni (jesu, od 2026-09-14), traži se prijava i podaci idu iz baze. Ako su prazni, radi u demo režimu sa ugrađenim podacima i menijem za izbor uloge (izmene traju do osvežavanja).
 
 ## Prijava i korisnici
 
@@ -56,7 +56,7 @@ Postojeća baza sa starijom šemom: pokreni `supabase/migracija-NN-*.sql` redom,
 
 ### 2. GitHub Pages (hosting) — živo
 
-**https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root) — jedan link za telefon, tablet i računar; raspored se sam prilagođava širini ekrana. Svaka sledeća izmena = commit + push (Pages objavi za ~1 min). Aplikacija pri svakom otvaranju proveri da li na serveru postoji novija verzija i sama se osveži — nema potrebe za `?v=N`; u podnožju sidebara piše „verzija od <datum vreme>".
+**https://mrmouse123.github.io/gradnjaos/** (repo `mrmouse123/gradnjaos`, grana `main`, root) — jedan link za telefon, tablet i računar; raspored se sam prilagođava širini ekrana. Svaka sledeća izmena = `node tools/stamp.js` (ako si menjao `css/` ili `js/`) + commit + push (Pages objavi za ~1 min). Aplikacija pri svakom otvaranju proveri da li na serveru postoji novija verzija i sama se osveži — nema potrebe za `?v=N`; u podnožju sidebara piše „verzija od <datum vreme>".
 
 Na telefonu se instalira kao aplikacija: Android Chrome ⋮ → „Dodaj na početni ekran", iPhone Safari → Deli → „Add to Home Screen" (otvara se preko celog ekrana, sa donjom navigacijom Tabla · Gradilišta · Zadaci · Dnevnik · Više).
 
@@ -85,7 +85,7 @@ Svi iznosi su **bez PDV, u RSD**: jedinična cena artikla iz šifarnika, ugovore
 ```
 index.html                                  # cela aplikacija (UI + logika + Supabase adapter + auth)
 supabase/schema.sql                         # kompletna šema za SVEŽU bazu
-supabase/migracija-01..10-*.sql             # nadogradnje postojeće baze, redom
+supabase/migracija-01..34-*.sql             # nadogradnje postojeće baze, redom
 supabase/functions/posalji-trebovanje/      # Edge Function (Deno + Resend), nije deploy-ovana
 test/e2e.js                                 # node test/e2e.js — 540+ provera, bez framework-a
 test/{dom-stub,supabase-mock,patch-lib}.js  # stub DOM, mock Supabase (+auth), alat za bezbedne izmene
