@@ -22,7 +22,6 @@ begin
 end $$;
 revoke execute on function preracunaj_situacije(text) from public, anon;
 
--- Preracun postojecih situacija. NE zvati preracunaj_situacije direktno: trigger zastiti_kolone_situacije pusta upis iznosa
--- samo kad je pg_trigger_depth() > 1, pa bi iznos iz SQL editora (bez prijavljenog direktora) bio vracen na staru vrednost.
--- Prazan update stavki pokrece trg_stavke_preracun (security definer, dubina 1 → upis iznosa ide na dubini 2).
+-- Preracun postojecih situacija: prazan update stavki pokrece trg_stavke_preracun → preracunaj_situacije. Upis iznosa prolazi jer
+-- se izvrsava iz trigera (pg_trigger_depth() > 1 u zastiti_kolone_situacije). Provereno nad punim schema.sql (test/rls/replay.js).
 update situacija_stavke set kol = kol;

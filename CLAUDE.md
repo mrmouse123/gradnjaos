@@ -133,7 +133,7 @@ Gde god ovaj fajl kaže „index.html“ za CSS/markup/JS, misli se na ceo dokum
     kao non-stream odgovor (thinking + signature nepromenjeni → istorija append-only); petlja ne zna za tok. *Potrošnja:*
     `AI_CENE` je jedino mesto cena/limita.
 - `supabase/schema.sql` = kompletna šema za SVEŽU bazu (13 + 3 tabele, 5 view-ova,
-  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..33.sql` redom.
+  helperi, polise, trigeri, `povezi_profil`, pg_cron auto-pauza). Postojeća baza: `migracija-01..34.sql` redom (01–08 su već u početnoj šemi `test/fixtures/schema-v04.sql`).
 - `supabase/functions/posalji-trebovanje/`: Edge Function (Deno + Resend) za
   pravo slanje mejla trebovanja. Neaktivna dok nije deploy-ovana — do tada
   `posaljiMejlNabavci()` tiho pada na mailto.
@@ -381,6 +381,9 @@ scenario se dodaje u JSON. Takodje proverava da je funkcija u najnovijoj migraci
 `node test/rls/run.js | psql -v ON_ERROR_STOP=1` — RLS/grantovi/view-ovi/trigeri po ulogama: `bootstrap.sql` (stub Supabase uloga,
 `auth.uid()`, `auth.users`, prazan `cron`) + `schema.sql` + `seed.sql` (nalog po ulozi, gradilista oba modula) + `tests.sql` (`t_chk`
 = izvrsi upit kao uloga sa JWT claim-ovima, svaki test nezavisan). Ocekivanja idu iz pravila u ovom fajlu, ne iz ponasanja koda.
+`node test/rls/replay.js` (treba `PGHOST…` ili `PSQL="docker exec -i gos-pg psql -U postgres"`) — dve baze: sveža iz `schema.sql` i početna šema + migracije
+09..NN redom; poredi otisak kataloga (`fingerprint.sql`: kolone, ograničenja, indeksi, polise, trigeri, funkcije, view-ovi, grantovi). Pada ako
+migracija puca ili ako se `schema.sql` i lanac migracija razilaze — **nova migracija se uvek upisuje i u `schema.sql`**.
 Nova polisa/trigger/view → dodati proveru; zaštita se dokazuje tako sto je pokvarite i test mora pasti. Lokalno (Docker):
 `docker run -d --name gos-pg -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16`, pa `... | docker exec -i gos-pg psql -v ON_ERROR_STOP=1 -U postgres`.
 

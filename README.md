@@ -85,7 +85,7 @@ Svi iznosi su **bez PDV, u RSD**: jedinična cena artikla iz šifarnika, ugovore
 ```
 index.html                                  # cela aplikacija (UI + logika + Supabase adapter + auth)
 supabase/schema.sql                         # kompletna šema za SVEŽU bazu
-supabase/migracija-01..10-*.sql             # nadogradnje postojeće baze, redom
+supabase/migracija-01..34-*.sql             # nadogradnje postojeće baze, redom
 supabase/functions/posalji-trebovanje/      # Edge Function (Deno + Resend), nije deploy-ovana
 test/e2e.js                                 # node test/e2e.js — 540+ provera, bez framework-a
 test/{dom-stub,supabase-mock,patch-lib}.js  # stub DOM, mock Supabase (+auth), alat za bezbedne izmene

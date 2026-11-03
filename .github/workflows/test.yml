@@ -41,3 +41,4 @@ jobs:
           node-version: 24
       - run: node test/sql/situacije-parity.js | psql -v ON_ERROR_STOP=1
       - run: node test/rls/run.js | psql -v ON_ERROR_STOP=1
+      - run: node test/rls/replay.js   # schema.sql == pocetna sema + migracija 09..NN (isti katalog)
