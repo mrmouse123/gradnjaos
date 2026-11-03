@@ -16,8 +16,8 @@ jobs:
       # test/e2e.js: bez zavisnosti, izlaz 0 = sve prošlo, 1 = bar jedan pad
       - run: node test/e2e.js
 
-  # Formula situacija na SQL strani (preracunaj_situacije iz schema.sql) nad istim scenarijima kao T67 u e2e.js
-  sql-formula:
+  # Prave SQL provere nad Postgresom: formula situacija (isti scenariji kao T67 u e2e.js) i RLS po ulogama nad schema.sql
+  sql:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -40,3 +40,4 @@ jobs:
         with:
           node-version: 24
       - run: node test/sql/situacije-parity.js | psql -v ON_ERROR_STOP=1
+      - run: node test/rls/run.js | psql -v ON_ERROR_STOP=1
