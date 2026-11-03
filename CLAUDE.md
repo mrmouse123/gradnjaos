@@ -359,6 +359,15 @@ RLS na serveru se proverava DIREKTNO na bazi (recept, execute_sql):
 `begin; set local role authenticated; set local request.jwt.claims =
 '{"sub":"<uuid>","role":"authenticated"}'; select …` — 2026-09-23: 3 profila
 čitanja + 13 provera upisa, sve po dizajnu. Posle SVAKE izmene: e2e mora vratiti 0.
+**SQL testovi nad pravim Postgresom (od 2026-11-03, CI posao `sql`; lokalno treba Docker ili psql):**
+`node test/sql/situacije-parity.js | psql -v ON_ERROR_STOP=1` — formula situacija (`preracunaj_situacije` iz `schema.sql`) nad istim
+scenarijima iz `test/fixtures/situacije-parity.json` kao T67 u e2e (klijent + mock): formula je tako proverena na SVA TRI mesta; nov
+scenario se dodaje u JSON. Takodje proverava da je funkcija u najnovijoj migraciji (34) isti tekst kao u `schema.sql`.
+`node test/rls/run.js | psql -v ON_ERROR_STOP=1` — RLS/grantovi/view-ovi/trigeri po ulogama: `bootstrap.sql` (stub Supabase uloga,
+`auth.uid()`, `auth.users`, prazan `cron`) + `schema.sql` + `seed.sql` (nalog po ulozi, gradilista oba modula) + `tests.sql` (`t_chk`
+= izvrsi upit kao uloga sa JWT claim-ovima, svaki test nezavisan). Ocekivanja idu iz pravila u ovom fajlu, ne iz ponasanja koda.
+Nova polisa/trigger/view → dodati proveru; zaštita se dokazuje tako sto je pokvarite i test mora pasti. Lokalno (Docker):
+`docker run -d --name gos-pg -e POSTGRES_PASSWORD=x -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16`, pa `... | docker exec -i gos-pg psql -v ON_ERROR_STOP=1 -U postgres`.
 
 ## Sledeće (dogovoreno, čeka)
 - [x] Supabase povezivanje — 2026-09-14
