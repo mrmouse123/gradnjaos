@@ -10,6 +10,11 @@ const path = require('path');
 const schema = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', 'schema.sql'), 'utf8');
 const m = schema.match(/create or replace function preracunaj_situacije[\s\S]*?\nend \$\$;/);
 if (!m) { console.error('preracunaj_situacije nije nadjena u schema.sql'); process.exit(2); }
+/* schema.sql (sveza baza) i NAJNOVIJA migracija koja menja funkciju moraju imati isti tekst — inace postojeca i sveza baza racunaju razlicito */
+const MIG = 'migracija-34-situacije-formula.sql';
+const mm = fs.readFileSync(path.join(__dirname, '..', '..', 'supabase', MIG), 'utf8').match(/create or replace function preracunaj_situacije[\s\S]*?\nend \$\$;/);
+const norm = t => t.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
+if (!mm || norm(mm[0]) !== norm(m[0])) { console.error('preracunaj_situacije u ' + MIG + ' nije isti kao u schema.sql'); process.exit(2); }
 const scenariji = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'situacije-parity.json'), 'utf8')).scenariji;
 
 const lit = v => v === null || v === undefined ? 'null' : typeof v === 'number' ? String(v) : "'" + String(v).replace(/'/g, "''") + "'";

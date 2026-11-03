@@ -133,6 +133,34 @@
         "stavke": { "e1": { "kol_ugovoreno": 10, "kumulativ": 1, "razlika": 0 } },
         "iznos": { "s1": 5, "s2": 999 }
       }
+    },
+    {
+      "naziv": "prazna sifra je kao da sifre nema (kljuc je poz)",
+      "gr": "gx",
+      "predmer": [{ "id": "pmC", "gr": "gx", "kol": 1, "cena": 5, "poz": "C" }],
+      "situacije": [
+        { "id": "s1", "gr": "gx", "izdato": "2026-01-10", "iznos": 0 },
+        { "id": "s2", "gr": "gx", "izdato": "2026-02-10", "iznos": 0 }
+      ],
+      "stavke": [
+        { "id": "p1", "sit": "s1", "gr": "gx", "predmer_id": null, "sifra": "", "poz": "Stavka A", "kol": 1 },
+        { "id": "p2", "sit": "s2", "gr": "gx", "predmer_id": null, "sifra": "", "poz": "Stavka B", "kol": 2 }
+      ],
+      "ocekivano": {
+        "stavke": { "p1": { "kol_ugovoreno": 0, "kumulativ": 1, "razlika": 1 }, "p2": { "kol_ugovoreno": 0, "kumulativ": 2, "razlika": 2 } },
+        "iznos": { "s1": 0, "s2": 0 }
+      }
+    },
+    {
+      "naziv": "iznos se zaokruzuje na 2 decimale",
+      "gr": "gx",
+      "predmer": [{ "id": "pm1", "gr": "gx", "kol": 10, "cena": 10, "poz": "A" }],
+      "situacije": [{ "id": "s1", "gr": "gx", "izdato": "2026-01-10", "iznos": 0 }],
+      "stavke": [{ "id": "t1", "sit": "s1", "gr": "gx", "predmer_id": "pm1", "sifra": null, "poz": "A", "kol": 0.3333 }],
+      "ocekivano": {
+        "stavke": { "t1": { "kol_ugovoreno": 10, "kumulativ": 0.3333, "razlika": 0 } },
+        "iznos": { "s1": 3.33 }
+      }
     }
   ]
 }
