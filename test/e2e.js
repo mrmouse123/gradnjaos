@@ -19,7 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const { makeGlobals } = require('./dom-stub');
-const { makeSupabaseMock } = require('./supabase-mock');
+const { makeSupabaseMock, preracunSituacijeMock } = require('./supabase-mock');
 
 const ROOT = path.join(__dirname, '..');
 const HTML = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -4683,6 +4683,39 @@ const FIN_TERMS = ['Marža', 'Marza', 'marža', 'marži', 'Ostv. marža', 'Ostva
     for (const v of ['--g-col:', '--g-min:']) if (!css.includes(v)) throw new Error('CSS nema ' + v);
     if (!/\.g-months \.gm\{[^}]*overflow:hidden/.test(css)) throw new Error('.gm bez overflow:hidden — tekst meseca bi sirio kolonu');
   });
+
+  /* ---- T67 formula situacija: klijent i mock daju iste brojeve na zajednickim scenarijima (SQL ih proverava u CI, test/sql) ---- */
+  section('T67 formula situacija');
+  const PARITET = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'situacije-parity.json'), 'utf8')).scenariji;
+  const razlike = (stavke, sits, oc) => {
+    const out = [], bl = (x, y) => Math.abs(x - y) < 1e-9;
+    for (const [id, ex] of Object.entries(oc.stavke)) {
+      const st = stavke.find(x => x.id === id);
+      if (!st) { out.push('nema stavke ' + id); continue; }
+      for (const k of Object.keys(ex)) if (!bl(+st[k], ex[k])) out.push(`stavka ${id}.${k} = ${st[k]}, ocekivano ${ex[k]}`);
+    }
+    for (const [id, ex] of Object.entries(oc.iznos)) {
+      const s = sits.find(x => x.id === id);
+      if (!s || !bl(+s.iznos, ex)) out.push(`situacija ${id}.iznos = ${s && s.iznos}, ocekivano ${ex}`);
+    }
+    return out;
+  };
+  for (const sc of PARITET) {
+    await acheck('klijent: ' + sc.naziv, async () => {
+      const a = await boot();
+      const r = a.run(`(function(f){ ROLE='all'; MODUL='sve'; PODTIP='sve';
+        DATA.predmer=f.predmer; DATA.situacije=f.situacije; DATA.situacija_stavke=f.stavke;
+        preracunajSituacijeLokalno(f.gr); return JSON.stringify({st:DATA.situacija_stavke, sit:DATA.situacije}); })(${JSON.stringify(JSON.parse(JSON.stringify(sc)))})`);
+      const o = JSON.parse(r), d = razlike(o.st, o.sit, sc.ocekivano);
+      if (d.length) throw new Error(d.join('; '));
+    });
+    await acheck('mock: ' + sc.naziv, async () => {
+      const db = JSON.parse(JSON.stringify({ predmer: sc.predmer, situacije: sc.situacije, situacija_stavke: sc.stavke }));
+      preracunSituacijeMock(db, sc.gr);
+      const d = razlike(db.situacija_stavke, db.situacije, sc.ocekivano);
+      if (d.length) throw new Error(d.join('; '));
+    });
+  }
 
   /* N4 — napredak je int kolona */
   await acheck('napredak se upisuje kao ceo broj', async () => {

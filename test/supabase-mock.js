@@ -382,4 +382,4 @@ function makeSupabaseMock(seed = {}, faults = {}, authOpts = {}){
   };
 }
 
-module.exports = { makeSupabaseMock, DATE_COLS, kljuc, VIEWS, FIN_COLS };
+module.exports = { makeSupabaseMock, DATE_COLS, kljuc, VIEWS, FIN_COLS, preracunSituacijeMock };
