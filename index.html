@@ -599,8 +599,7 @@
     <nav class="nav" id="nav"></nav>
 
     <div class="side-foot" id="sideFoot">
-      <span class="dot mem"></span> Čuvanje: provera…<br>
-      <button class="reset" onclick="resetDemo()">↺ Vrati demo podatke</button>
+      <span class="dot mem"></span> Čuvanje: provera…
     </div>
   </aside>
 
@@ -1133,7 +1132,7 @@ function updateFoot(){
     skladiste:'<span class="dot"></span> Cuvanje: <b>aktivno</b> — izmene ostaju',
     memorija:'<span class="dot mem"></span> Cuvanje: <b>u memoriji</b><br><span style="opacity:.7">Za trajno cuvanje poveži Supabase (README)</span>'
   }[mode];
-  const smeReset = !PROFIL || PROFIL.uloga==='direktor';
+  const smeReset = mode!=='supabase' && (!PROFIL || PROFIL.uloga==='direktor');   // dugme za demo podatke samo bez baze (zahtev 2026-11-05): uz Supabase bi obrisalo zive podatke; resetDemo() ostaje za testove/konzolu
   const ver=verzijaTekst();
   el.innerHTML=msg+(smeReset?'<br><button class="reset" onclick="resetDemo()">↺ Vrati demo podatke</button>':'')+(ver?'<br><span style="opacity:.55;font-size:10.5px">verzija od '+ver+'</span>':'');
 }

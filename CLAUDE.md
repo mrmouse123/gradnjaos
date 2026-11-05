@@ -33,7 +33,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
   redova, a base64 prilozi ne idu na svaki klik. `saveState()` debounce 400ms
   → `doSave()` (guard protiv preklapanja, `saveErr` u footeru), flush na
   pagehide/visibilitychange. Brisanje reda je eksplicitno (`obrisiRed`).
-  Seed demo podataka i `resetDemo()` — samo direktor.
+  Seed demo podataka i `resetDemo()` — samo direktor; dugme „Vrati demo podatke“ se prikazuje SAMO u demo režimu bez baze (uklonjeno iz živog app-a 2026-11-05).
 - **Finansije van dometa rukovodioca i na nivou API-ja** (od 2026-09-23, F4b,
   migracija 11): `troskovi_st`/`situacije` čita samo direktor; finansijske
   KOLONE (`gradilista.budzet/troskovi/potroseno/naplaceno`, `predmer.cena`,
