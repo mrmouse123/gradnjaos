@@ -2617,7 +2617,7 @@ function aiPotrosnjaIz(redovi){
 }
 const fmtUsd=n=>(Math.round((+n||0)*100)/100).toFixed(2).replace('.',',')+' USD';
 function aiPotrosnjaKartica(){
-  if(!supa) return '';
+  if(!supa||!AI_UKLJUCEN) return '';   // kartica potrosnje ide uz asistenta: sakrivena dok je prekidac ugasen (2026-11-05)
   const t=AI_POTROSNJA, mesec=todayStr().slice(0,7);
   const telo = !t ? '<div class="empty">Učitavam…</div>' : (()=>{
     const sve=t.ulaz+t.kes+t.kesUpis+t.izlaz, pct=Math.min(100, Math.round(t.usd/AI_CENE.limit*100)), kesPct=(t.ulaz+t.kes+t.kesUpis)?Math.round(t.kes/(t.ulaz+t.kes+t.kesUpis)*100):0;

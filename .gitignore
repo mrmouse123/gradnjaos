@@ -5,3 +5,6 @@ Thumbs.db
 dummy-situacije/
 
 supabase/.temp/
+
+# vodici za trening (snimci zivih podataka) — ne u javni repo
+vodici/
