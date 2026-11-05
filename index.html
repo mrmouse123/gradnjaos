@@ -5738,7 +5738,6 @@ function prikaziLogin(poruka){
     <div class="f-row"><label>Lozinka</label><input id="l_pw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')prijava()"></div>
     <div id="l_msg"></div>
     <button class="btn" style="width:100%" onclick="prijava()">Prijavi se</button>
-    <button class="btn ghost" style="width:100%;margin-top:8px" onclick="prijavaLink()">Pošalji mi link za prijavu na email</button>
   </div></div>`;
 }
 function loginPoruka(html){ const m=document.getElementById('l_msg'); if(m) m.innerHTML=html; }
@@ -5750,6 +5749,7 @@ async function prijava(){
   try{ const s=await supa.auth.getSession(); SESIJA=(s&&s.data&&s.data.session)||null; await beleziLog('prijava',{uredjaj:uredjajTip()}); }catch(e){}
   location.reload();
 }
+/* Magic link: dugme uklonjeno sa ekrana za prijavu (zahtev 2026-11-05) — funkcija ostaje za konzolu/povratak jednom linijom. */
 async function prijavaLink(){
   const email=((document.getElementById('l_email')||{}).value||'').trim();
   if(!email){ loginPoruka('<div class="err">Unesi email, pa klikni na link.</div>'); return; }

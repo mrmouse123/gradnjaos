@@ -165,8 +165,8 @@ nigde ne računa — ako zatreba, to je nova odluka (stopa, prikaz sa/bez).
   auto confirm), pa u aplikaciji **Admin kokpit** → dodeli ulogu (uprava; admin ne
   može da dodeli `direktor`). SQL alternativa: `povezi_profil(...)`. Bez profila nalog
   vidi nula podataka. Dodela se loguje (`uloga_promena`).
-- Magic link ("Pošalji mi link") radi tek kad se u Auth → URL Configuration
-  postavi Site URL na pravu adresu app-a (posle GitHub Pages deploya).
+- Magic link: dugme „Pošalji mi link“ je UKLONJENO sa ekrana za prijavu (zahtev 2026-11-05); `prijavaLink()` ostaje u kodu.
+  Prijava je samo email + lozinka; novu lozinku daje direktor (Supabase → Users) ili korisnik menja dugmetom „Lozinka“.
 
 ## Ključni domeni (redosled u kodu)
 moduli (projektovanje | izvodjenje→visoko/nisko), gradilišta (+adm, nivo, površina, nadzor),
