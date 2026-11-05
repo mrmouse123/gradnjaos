@@ -1,7 +1,7 @@
 -- ============================================================
 -- GradnjaOS — šema baze za Supabase (SVEŽA baza)
 -- Pokreni ceo fajl u: Supabase konzola -> SQL Editor -> New query
--- Postojeća baza: NE ovo, nego migracija-01..30.sql redom.
+-- Postojeća baza: NE ovo, nego migracija-01..34.sql redom.
 -- Stanje: posle migracije 11 (Auth + RLS + hardening finansija, 2026-09-23)
 -- ============================================================
 
@@ -2388,3 +2388,22 @@ language sql stable security definer set search_path = public, auth as $$
    order by p.created_at limit 1
 $$;
 
+
+-- ===== migracija 34 (2026-11-05, nalazi Security Advisor-a; detalji u migracija-34-linter-2026-11-05.sql):
+alter view predmer_v set (security_barrier = true);
+
+alter function danas_bg() set search_path = public;
+alter function granica_auto_pauze(timestamptz) set search_path = public;
+alter function rad_minuta() set search_path = public;
+alter function zastiti_kolone_gradilista() set search_path = public;
+alter function zastiti_kolone_magacin() set search_path = public;
+alter function zastiti_kolone_predmer() set search_path = public;
+alter function zastiti_kolone_situacije() set search_path = public;
+alter function zastiti_kolone_zadaci() set search_path = public;
+
+revoke execute on function
+  trg_predmer_napredak(), trg_predmer_preracun_sit(), trg_situacije_preracun(), trg_stavke_preracun(),
+  trg_zadatak_sveska_izv(), zastiti_stavke_situacije(), rad_minuta(),
+  zastiti_kolone_gradilista(), zastiti_kolone_magacin(), zastiti_kolone_predmer(), zastiti_kolone_situacije(), zastiti_kolone_zadaci(),
+  osvezi_napredak(text)
+from public, anon, authenticated;
