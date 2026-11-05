@@ -109,7 +109,7 @@ radi brzine iteracija dok se zahtevi ne slegnu. Jezik UI-ja: srpski (latinica).
     kroz REST mimo app-a. `osoba` je id SAMO u `rad_na_zadatku` (u klijentima/podizvođačima je ime). T60.
   - *AI asistent (samo direktor; SAKRIVEN od 2026-11-01, odluka klijenta):* `AI_UKLJUCEN=false` → `aiDostupan()` (= `AI_UKLJUCEN && jeSuper()`)
     je JEDINI uslov za dugme, panel, `aiPitaj`, `aiAkcija`, `aiPregledSituacije` i dugme „Pregledaj sa asistentom“ u fioci situacije.
-    Reaktivacija = `AI_UKLJUCEN=true` (jedna linija; Edge Function i secret ostaju deploy-ovani). Testovi T59 pale ga kroz
+    Reaktivacija = `AI_UKLJUCEN=true` (jedna linija; Edge Function i secret ostaju deploy-ovani). Isti prekidač krije i karticu potrošnje u Admin kokpitu. Testovi T59 pale ga kroz
     `boot({ai:true})`, prvi T59 test čuva da je podrazumevano ugašen. Edge Function `ai-asistent` je tanki posrednik (ključ u secretu, kapija `profili.uloga='direktor'`),
     alati rade U KLIJENTU nad DATA (`aiIzvrsiAlat`, `aiBezModula`), model NIŠTA ne upisuje, tekst modela se `esc`-uje, keširanje
     prompta (`aiTelo`), log `ai_pitanje` bez sadržaja; UI = plutajuće dugme + panel (`renderAi` iz `render()`).
@@ -327,6 +327,7 @@ finansija, openPresek=interni sa finansijama, openKumulativ=izvedene količine),
 - `CLAUDE.md` (ovo): arhitektura, invarijante, pravila, nalozi, testiranje, deployment — kratko, važi uvek.
 - `docs/beleske-funkcija.md`: datirane beleške po funkciji (šta/kada/zašto/koji test) — čitati pasus teme pre izmene; nove beleške idu tamo.
 - `tasks/lessons.md`: lekcije iz grešaka; `tasks/todo.md`: tekući plan i review-i.
+- `vodici/` (VAN gita, .gitignore): tri PPT vodiča za trening (Direktor/Admin, Projektovanje, Izvođenje) + snimci ekrana + `gen/` generator (pptxgenjs); uputstvo u `vodici/gen/README.md`. Napravljeno 2026-11-05.
 
 ## Lekcije (vidi tasks/lessons.md — OBAVEZNO pročitati pre izmena)
 38 lekcija; najvažnije za svaku izmenu:

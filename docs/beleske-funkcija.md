@@ -202,6 +202,7 @@ Nove beleške: dodaj OVDE (pasus sa datumom, odlukom, funkcijama i T-brojem), a 
   UI: `formSituacija(gr)` (smemNa; predmer + „＋ iz šifarnika", `SIT_DODATNE` mapa, NE skriveni input),
   `detaljSituacije`, fioka „Situacije", Naplata, `computeAlerts` fin-alert „preko ugovorene količine"
   (= uprava „dobija razliku"). `predmer.izv` se iz situacije NE menja (pravilo 5). T43.
+- **Vodiči za trening (PPT)** (2026-11-05, zahtev klijenta): `vodici/GradnjaOS-vodic-{1-Direktor-Admin,2-Projektovanje,3-Izvodjenje}.pptx`, 27/22/24 slajda, boje i logo alata, snimci iz žive aplikacije (Chrome, direktor + „Pogled kao“). Generator `vodici/gen/` (pptxgenjs, `vodic-lib.js` = tema i šabloni: naslovna/sekcija/snimak/kartice/matrica/pravila/koraci). Matrice pristupa su izvedene iz `tabDozvoljen` na dan izrade — posle promene uloga/tabova ponovo generisati. Ceo folder je van gita (živi podaci). Nalaz pri izradi: kartica potrošnje asistenta u kokpitu je bila vidljiva i uz `AI_UKLJUCEN=false` → sakrivena (T28).
 - **AI asistent — prekidač** (2026-11-01, odluka klijenta „za sad sakrij, kasnije možemo da reaktiviramo“): `let AI_UKLJUCEN=false`
   + `aiDostupan()=AI_UKLJUCEN&&jeSuper()` zamenjuje `jeSuper()` na svih 6 ulaza asistenta (`renderAi`, `aiOtvori`, `aiPitaj`, `aiAkcija`,
   `aiPregledSituacije`, dugme u `detaljSituacije`). Ništa drugo nije dirano: Edge Function `ai-asistent` v6 i `ANTHROPIC_API_KEY`
